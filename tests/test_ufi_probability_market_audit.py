@@ -38,12 +38,12 @@ class ProbabilityMarketAuditTests(unittest.TestCase):
     def test_duplicate_fixture_prices_are_excluded_even_with_three_rows(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "odds.csv"
-            header = "date,league_code,home_team,away_team,home_odds,draw_odds,away_odds,captured_at_utc,kickoff_at_utc\\n"
-            row = "2026-10-01,ENG1,A,B,2.1,3.2,3.4,2026-10-01T17:00:00Z,2026-10-01T19:00:00Z\\n"
+            header = "date,league_code,home_team,away_team,home_odds,draw_odds,away_odds,captured_at_utc,kickoff_at_utc\n"
+            row = "2026-10-01,ENG1,A,B,2.1,3.2,3.4,2026-10-01T17:00:00Z,2026-10-01T19:00:00Z\n"
             path.write_text(header + row + row + row, encoding="utf-8")
             rows, rejected = audit.load_odds(path)
             self.assertEqual(rows, {})
-            self.assertEqual(rejected["duplicate_key"], 3)
+            self.assertEqual(rejected["duplicate_key"], 2)
 
     def test_end_to_end_audit_writes_probability_gap_and_scores(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -51,13 +51,13 @@ class ProbabilityMarketAuditTests(unittest.TestCase):
             predictions = root / "predictions.csv"
             odds = root / "odds.csv"
             predictions.write_text(
-                "date,league_code,home_team,away_team,actual_1x2,ensemble_p_home,ensemble_p_draw,ensemble_p_away\\n"
-                "2026-10-01,ENG1,A,B,H,0.5,0.3,0.2\\n",
+                "date,league_code,home_team,away_team,actual_1x2,ensemble_p_home,ensemble_p_draw,ensemble_p_away\n"
+                "2026-10-01,ENG1,A,B,H,0.5,0.3,0.2\n",
                 encoding="utf-8",
             )
             odds.write_text(
-                "date,league_code,home_team,away_team,home_odds,draw_odds,away_odds,captured_at_utc,kickoff_at_utc\\n"
-                "2026-10-01,ENG1,A,B,2.0,3.3333333333,5.0,2026-10-01T17:00:00Z,2026-10-01T19:00:00Z\\n",
+                "date,league_code,home_team,away_team,home_odds,draw_odds,away_odds,captured_at_utc,kickoff_at_utc\n"
+                "2026-10-01,ENG1,A,B,2.0,3.3333333333,5.0,2026-10-01T17:00:00Z,2026-10-01T19:00:00Z\n",
                 encoding="utf-8",
             )
             summary = audit.run_audit(predictions, odds, root / "out")
