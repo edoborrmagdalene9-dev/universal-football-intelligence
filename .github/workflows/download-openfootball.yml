@@ -1,6 +1,13 @@
 name: Download free OpenFootball data
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/download-openfootball.yml'
+      - 'tools/ufi_integrated_pipeline.py'
+      - 'tools/ufi_advanced_backtest.py'
+      - 'tests/**'
   workflow_dispatch:
     inputs:
       start_year:
