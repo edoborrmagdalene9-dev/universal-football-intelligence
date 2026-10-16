@@ -1,0 +1,48 @@
+name: Check UFI browser app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'styles.css'
+      - '.github/workflows/check-browser-app.yml'
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'index.html'
+      - 'styles.css'
+      - '.github/workflows/check-browser-app.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out UFI
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: node --check app.js
+      - name: Check HTML has matching fixture-matching controls
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("index.html").read_text(encoding="utf-8")
+          app = Path("app.js").read_text(encoding="utf-8")
+          for marker in ('id="matchSlipFixtures"', 'id="fixtureMatchOutput"'):
+              if marker not in html:
+                  raise SystemExit(f"Missing UI control: {marker}")
+          if "$('matchSlipFixtures').onclick=runSlipFixtureMatching" not in app:
+              raise SystemExit("Fixture matching button is not wired to its handler.")
+          if "candidate_match_id" not in app or "fixture_status" not in app:
+              raise SystemExit("Fixture matching details are missing from CSV export.")
+          print("Fixture matching controls and CSV fields are present.")
+          PY
