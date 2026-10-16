@@ -105,8 +105,35 @@ def main():
             )
             for match in payload.get("matches", []):
                 score = match.get("score") or {}
-                ft = score.get("ft")
-                has_ft = isinstance(ft, list) and len(ft) >= 2
+                ft = None
+
+                # OpenFootball files have used more than one score shape:
+                # {"ft": [home, away]} and a direct [home, away] list.
+                if isinstance(score, dict):
+                    ft = score.get("ft") or score.get("fulltime") or score.get("full_time")
+                elif isinstance(score, list):
+                    if len(score) >= 2 and all(
+                        isinstance(value, (int, float)) or
+                        (isinstance(value, str) and value.strip().isdigit())
+                        for value in score[:2]
+                    ):
+                        ft = score[:2]
+                    else:
+                        # Tolerate nested/labelled score structures where possible.
+                        for item in score:
+                            if isinstance(item, dict):
+                                candidate = (
+                                    item.get("ft") or item.get("fulltime") or
+                                    item.get("full_time") or item.get("score")
+                                )
+                                if isinstance(candidate, list) and len(candidate) >= 2:
+                                    ft = candidate[:2]
+                                    break
+
+                has_ft = (
+                    isinstance(ft, (list, tuple)) and len(ft) >= 2 and
+                    all(value is not None and str(value).strip() != "" for value in ft[:2])
+                )
                 rows.append({
                     "season": season,
                     "league_code": code,
