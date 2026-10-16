@@ -55,11 +55,11 @@ function scenarioCalc(){const h=Number($('lambdaHome').value),a=Number($('lambda
 $('runScenario').onclick=()=>{const s=scenarioCalc();if(!s)return;[['probHome',s.homeWin],['probDraw',s.draw],['probAway',s.awayWin],['probOver15',s.over15],['probOver25',s.over25],['probOver35',s.over35],['probBtts',s.btts]].forEach(([id,v])=>$(id).textContent=pct(v));$('probTopScore').textContent=s.top.h+'–'+s.top.a;$('scoreGrid').innerHTML='<table><thead><tr><th>Score</th><th>Probability (normalized grid)</th><th>Visual</th></tr></thead><tbody>'+s.grid.slice(0,35).map(x=>'<tr><td>'+esc(s.home)+' '+x.h+'–'+x.a+' '+esc(s.away)+'</td><td>'+pct(x.p/s.mass)+'</td><td><div style="height:7px;background:#243b2b;border-radius:6px;min-width:90px;overflow:hidden"><div style="height:100%;width:'+Math.max(1,x.p/s.grid[0].p*100)+'%;background:#83f3ac"></div></div></td></tr>').join('')+'</tbody></table>';$('scenarioStatus').textContent='Grid mass represented: '+pct(s.mass)+'. Tail omitted by cap: '+pct(Math.max(0,1-s.mass))+'. Probabilities normalized within grid; baseline assumes independent Poisson goals and does not incorporate all tactical/game-state effects.';addActivity('Calculated scenario for '+s.home+' vs '+s.away);toast('Scenario grid calculated.')};
 $('saveForecast').onclick=()=>{const s=S.scenario||scenarioCalc();if(!s)return;$('btMatch').value=s.home+' vs '+s.away;$('btMethod').value='Independent Poisson baseline'+(s.label?' / '+s.label:'');$('btHome').value=(100*s.homeWin).toFixed(2);$('btDraw').value=(100*s.draw).toFixed(2);$('btAway').value=(100*s.awayWin).toFixed(2);$('btNotes').value='λ home='+s.lambdaHome+', away='+s.lambdaAway+'; cap='+s.cap+'; grid mass='+(100*s.mass).toFixed(2)+'%; caveats: '+s.caveats+'; checks completed: '+s.checks.join(', ');go('backtest');toast('Forecast copied to ledger form. Select actual result when known.')};
 function normalizeTeamName(value){
- return String(value||'').normalize('NFKD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().replace(/\\b(fc|cf|sc|afc|club|football|soccer)\\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\\s+/g,' ');
+ return String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
 }
 function parseFixtureText(value){
- const text=String(value||'').replace(/\\s+/g,' ').trim();
- const m=text.match(/(.+?)\\s+(?:vs?\\.?|versus)\\s+(.+?)(?=\\s+(?:\\||[-–—])\\s+|$)/i);
+ const text=String(value||'').replace(/\s+/g,' ').trim();
+ const m=text.match(/(.+?)\s+(?:vs?\.?|versus)\s+(.+?)(?=\s+(?:\||[-–—])\s+|$)/i);
  if(!m)return null;
  return {homeText:m[1].trim(),awayText:m[2].trim()};
 }
