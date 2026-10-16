@@ -14,7 +14,7 @@ A local-first football research workstation for exploring real match-event data,
 2. **Match & tactical lab:** event filters, team/player search, event type summaries, shot/xG summaries, source-coordinate pitch plot and CSV export.
 3. **Player intelligence:** editable profiles for role/style notes, preferred foot and weak-foot evidence, source URL, confidence, plus a substitution observation log. These records are user-maintained, not automatically verified universal player facts.
 4. **Scenario engine:** independent Poisson scoreline grid, 1X2, over 1.5/2.5/3.5 and both-teams-to-score summaries, visible goal-cap tail mass and assumptions checklist.
-5. **Slip & odds lab:** extracts OCR text from uploaded screenshots, structures likely decimal odds and market labels, flags ambiguous rows for review, exports a structured CSV, calculates implied probability and combined odds only for valid prices, and supports manual editing/correlation notes. Fixture identity and model matching are still a separate next step; see [the slip-to-intelligence bridge guide](docs/ufi-slip-intelligence-bridge.md).
+5. **Slip & odds lab:** extracts OCR text from uploaded screenshots, structures likely decimal odds and market labels, flags ambiguous rows for review, exports a structured CSV, calculates implied probability and combined odds only for valid prices, and supports manual editing/correlation notes. A fixture-candidate matcher compares explicit team pairs against the currently loaded StatsBomb competition-season list, records candidate ID/date/orientation, and flags missing or ambiguous matches; market-to-model matching is still separate. See [the slip-to-intelligence bridge guide](docs/ufi-slip-intelligence-bridge.md).
 6. **Backtesting:** settled 1X2 forecasts, normalized probabilities, accuracy, multiclass Brier score, log loss and CSV export.
 7. **Research library:** source links, match notes, player observations, hypotheses and experiments.
 8. **Workspace backup:** export/import saved local records as JSON.
@@ -63,7 +63,7 @@ The app is static and can be hosted with GitHub Pages. In the repository, open *
 - StatsBomb Open Data contains selected competitions/seasons only. It is not a full live all-league feed and does not require an embedded API key for public repository files.
 - Network access is required to fetch match data. Browser cross-origin access or source availability may change.
 - Event coordinates are event locations from the dataset, not full optical player tracking or every player's continuous movement.
-- There is no automatic universal SportyBet booking-code decoder or robust screenshot OCR in this version.
+- There is no automatic universal SportyBet booking-code decoder. Screenshot OCR uses Tesseract.js and requires internet access; fixture matching is a conservative candidate aid, not authoritative bookmaker mapping.
 - Complete verified weak-foot labels, eFootball-style play styles, injuries, current availability and causal substitute impact cannot be inferred for every player. Record sources and keep unknowns unknown.
 - LocalStorage data is stored in the current browser/device and does not automatically sync across devices. Export workspace backups regularly.
 - Independent Poisson scenarios are a transparent baseline, not a complete match simulator. Goal caps omit tail probability. Probabilities are estimates, never guaranteed outcomes.
