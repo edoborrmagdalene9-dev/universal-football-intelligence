@@ -35,3 +35,17 @@ The browser app already uses Tesseract.js to extract text from one or more uploa
 `selection, market_guess, decimal_odds, implied_probability, independent_estimate, parse_confidence, correlation_group, warning, raw_line, source`
 
 Empty or uncertain values should remain empty and be verified, not silently imputed.
+
+
+## Fixture-candidate matching build
+
+The app can now compare explicit “Team A vs Team B” text against the currently loaded StatsBomb competition-season match list. It normalizes common punctuation and club suffixes, matches the team pair in either orientation, and records a candidate match ID/date and home/away orientation only when one exact normalized pair is found. It distinguishes missing opponent, no loaded fixtures, no match in the selected list and ambiguous pairs. Slip rows with recognizable market wording or an explicit fixture can remain in the review even when OCR did not find a decimal price.
+
+### Workflow
+
+1. Load the competition, season and match list in the real-data section.
+2. Analyze the slip text.
+3. Select **Match selections to loaded fixtures**.
+4. Review every candidate and export the updated review CSV.
+
+A candidate is not an authoritative match. Verify competition, date, kickoff, team identity and bookmaker market/settlement rules manually. Single-team selections such as “Arsenal win” are intentionally not assigned an opponent. The current browser matcher does not guess unmentioned fixtures, use fuzzy nearest-name matches, or connect a market to model probabilities yet. This is a conservative first fixture-resolution layer.
