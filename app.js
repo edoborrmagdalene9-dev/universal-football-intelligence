@@ -64,20 +64,20 @@ function parseFixtureText(value){
  return {homeText:m[1].trim(),awayText:m[2].trim()};
 }
 function resolveSlipFixture(row){
- const fixture=parseFixtureText(row.rawLine||row.label);
- if(!fixture)return {status:'needs-opponent',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'No explicit “Team A vs Team B” fixture found. Do not infer the opponent from a single team name.'};
- const h=normalizeTeamName(fixture.homeText),a=normalizeTeamName(fixture.awayText);
+ const raw=String(row.rawLine||row.label||'');
+ if(!parseFixtureText(raw))return {status:'needs-opponent',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'No explicit “Team A vs Team B” fixture found. Do not infer the opponent from a single team name.'};
+ const whole=' '+normalizeTeamName(raw)+' ';
  const candidates=(S.matches||[]).filter(m=>{
-  const mh=normalizeTeamName(m.home_team?.home_team_name),ma=normalizeTeamName(m.away_team?.away_team_name);
-  return (mh===h&&ma===a)||(mh===a&&ma===h);
+  const h=normalizeTeamName(m.home_team?.home_team_name),a=normalizeTeamName(m.away_team?.away_team_name);
+  return h&&a&&whole.includes(' '+h+' ')&&whole.includes(' '+a+' ');
  });
  if(candidates.length===1){
-  const m=candidates[0],mh=normalizeTeamName(m.home_team?.home_team_name);
-  const orientation=mh===h?'home-away':'away-home';
-  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,reason:'Unique team-name candidate in currently loaded StatsBomb match list. Confirm competition, date and kickoff before use.'};
+  const m=candidates[0],parsed=parseFixtureText(raw),h=normalizeTeamName(m.home_team?.home_team_name);
+  const orientation=normalizeTeamName(parsed.homeText).includes(h)?'home-away':(normalizeTeamName(parsed.awayText).includes(h)?'away-home':'verify-orientation');
+  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,reason:'Unique team pair found in the loaded StatsBomb list. Verify date, competition, kickoff and market manually.'};
  }
- if(candidates.length>1)return {status:'ambiguous',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'More than one loaded match has these teams. Add date/competition and resolve manually.'};
- return {status:S.matches.length?'not-found-in-loaded-list':'no-fixtures-loaded',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:S.matches.length?'No exact normalized team pair in the currently loaded competition/season.':'Load a competition, season and match list before fixture matching.'};
+ if(candidates.length>1)return {status:'ambiguous',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'Multiple loaded fixtures contain both team names. Add date/competition and resolve manually.'};
+ return {status:S.matches.length?'not-found-in-loaded-list':'no-fixtures-loaded',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:S.matches.length?'No unique team pair found in the currently loaded competition/season.':'Load a competition, season and match list before fixture matching.'};
 }
 function runSlipFixtureMatching(){
  const rows=S.manualSelections.map(row=>({...row,fixtureResolution:resolveSlipFixture(row)}));
@@ -124,7 +124,7 @@ $('analyzeSlip').onclick=()=>{
     if(/^---\s*PHOTO\b/i.test(line)||/^page\s+\d+\s*$/i.test(line))continue;
     const parsed=parseSlipLine(line,rows.length);
     // Avoid treating headings or long OCR fragments with no price as selections.
-    if(parsed.odd!==null||/\b(odds?|price)\b/i.test(line))rows.push(parsed);
+if(parsed.odd!==null||/\\b(odds?|price)\\b/i.test(line)||parsed.marketType!=='Unclassified — verify'||parseFixtureText(line))rows.push(parsed);
   }
   S.manualSelections=rows.map(x=>({...x}));
   renderManualSelections();
