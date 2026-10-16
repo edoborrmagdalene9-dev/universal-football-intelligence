@@ -42,6 +42,10 @@ A local-first football research workstation for exploring real match-event data,
 
 The app is static and can be hosted with GitHub Pages. In the repository, open **Settings → Pages**, select **Deploy from a branch**, choose `main` and `/(root)`, and save. The public website URL usually follows `https://<owner>.github.io/<repository>/`; confirm the exact URL and deployment status in GitHub Pages settings.
 
+## UFI development roadmap
+
+- [Evidence-first roadmap for data validation, leakage-safe forecasting, player intelligence, substitutes and evaluation](docs/ufi-next-phase-roadmap.md)
+
 ## Data and technical limits
 
 - StatsBomb Open Data contains selected competitions/seasons only. It is not a full live all-league feed and does not require an embedded API key for public repository files.
