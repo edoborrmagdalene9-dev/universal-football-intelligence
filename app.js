@@ -124,7 +124,7 @@ $('analyzeSlip').onclick=()=>{
     if(/^---\s*PHOTO\b/i.test(line)||/^page\s+\d+\s*$/i.test(line))continue;
     const parsed=parseSlipLine(line,rows.length);
     // Avoid treating headings or long OCR fragments with no price as selections.
-if(parsed.odd!==null||/\\b(odds?|price)\\b/i.test(line)||parsed.marketType!=='Unclassified — verify'||parseFixtureText(line))rows.push(parsed);
+    if(parsed.odd!==null||line.toLowerCase().includes('odds')||line.toLowerCase().includes('price')||parsed.marketType!=='Unclassified — verify'||parseFixtureText(line))rows.push(parsed);
   }
   S.manualSelections=rows.map(x=>({...x}));
   renderManualSelections();
