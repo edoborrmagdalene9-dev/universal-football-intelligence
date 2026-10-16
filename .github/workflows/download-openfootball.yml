@@ -40,6 +40,8 @@ jobs:
           python-version: "3.12"
       - name: Test baseline math before data ingestion
         run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Check browser app JavaScript syntax
+        run: node --check app.js
       - name: Fetch and normalize public-domain results
         run: |
           python tools/openfootball_download.py \
