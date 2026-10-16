@@ -5,6 +5,7 @@ All predictions for a calendar date are made before any results from that date
 are added. This is research infrastructure, not a betting recommendation.
 """
 import argparse, csv, json, math
+from datetime import datetime, timezone
 from collections import defaultdict, deque
 from pathlib import Path
 
@@ -94,9 +95,14 @@ def main():
                 key = (row.get("date","").strip(), row.get("league_code","").strip(), row.get("home_team","").strip(), row.get("away_team","").strip())
                 try:
                     vals = [float(row[k]) for k in ("home_odds","draw_odds","away_odds")]
-                    if all(math.isfinite(v) and v > 1 for v in vals) and all(key): odds[key] = vals
+                    captured = datetime.fromisoformat(row["captured_at_utc"].replace("Z", "+00:00"))
+                    kickoff = datetime.fromisoformat(row["kickoff_at_utc"].replace("Z", "+00:00"))
+                    if captured.tzinfo is None or kickoff.tzinfo is None or captured >= kickoff:
+                        continue
+                    if all(math.isfinite(v) and v > 1 for v in vals) and all(key):
+                        odds[key] = {"values": vals, "captured_at_utc": captured.astimezone(timezone.utc).isoformat(), "kickoff_at_utc": kickoff.astimezone(timezone.utc).isoformat()}
                 except (KeyError, ValueError, TypeError): continue
-        odds_status = f"loaded {len(odds)} valid odds rows; timestamps/provenance are supplied by user and must be verified"
+        odds_status = f"loaded {len(odds)} valid odds rows with timezone-aware capture timestamps earlier than kickoff"
     per_league = defaultdict(list)
     for date in sorted(by_date):
         updates = []
@@ -135,10 +141,10 @@ def main():
                 # Paper ledger only where matching, valid decimal odds were explicitly supplied.
                 key=(date,league,home,away)
                 if key in odds:
-                    o=odds[key]; implied=[1/x for x in o]; total=sum(implied); fair=[x/total for x in implied]
+                    odds_row=odds[key]; o=odds_row["values"]; implied=[1/x for x in o]; total=sum(implied); fair=[x/total for x in implied]
                     pick=max(range(3),key=lambda i:ensemble[i])
                     ledger.append({"date":date,"league_code":league,"home_team":home,"away_team":away,"actual_1x2":actual,
-                        "home_odds":o[0],"draw_odds":o[1],"away_odds":o[2],"model_probability":round(ensemble[pick],6),
+                        "home_odds":o[0],"draw_odds":o[1],"away_odds":o[2],"odds_captured_at_utc":odds_row["captured_at_utc"],"kickoff_at_utc":odds_row["kickoff_at_utc"],"model_probability":round(ensemble[pick],6),
                         "market_implied_probability_raw":round(implied[pick],6),"market_probability_no_vig":round(fair[pick],6),
                         "selection":LABELS[pick],"flat_stake_units":1,"paper_profit_units":round(o[pick]-1 if LABELS[pick]==actual else -1,4),
                         "warning":"retrospective paper test only; verify odds timestamp predates kickoff and account for limits/voids"})
