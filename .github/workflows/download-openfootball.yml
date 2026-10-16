@@ -158,7 +158,7 @@ jobs:
               "", "Player features remain disabled until sourced player-to-match participation data is verified. Historical accuracy is not proof of betting profitability."
           ]
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
-              f.write("\\n".join(lines) + "\\n")
+              f.write("\n".join(lines) + "\n")
           PY
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
