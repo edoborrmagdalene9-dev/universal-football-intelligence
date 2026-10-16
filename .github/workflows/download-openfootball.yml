@@ -133,6 +133,7 @@ jobs:
             --out output/openfootball/advanced
           mkdir -p output/openfootball/player-intelligence
           cp data/templates/player_registry_template.csv output/openfootball/player-intelligence/player_registry_template.csv
+          cp data/templates/pre_match_odds_template.csv output/openfootball/player-intelligence/pre_match_odds_template.csv
           cp docs/player-intelligence-registry.md output/openfootball/player-intelligence/README.md
           python - <<'PY'
           import json, os
