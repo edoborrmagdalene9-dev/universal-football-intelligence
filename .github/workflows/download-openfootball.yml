@@ -30,6 +30,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Test baseline math before data ingestion
+        run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Fetch and normalize public-domain results
         run: |
           python tools/openfootball_download.py \
