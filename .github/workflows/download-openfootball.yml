@@ -33,9 +33,9 @@ jobs:
       - name: Fetch and normalize public-domain results
         run: |
           python tools/openfootball_download.py \
-            --start-year "\${{ inputs.start_year }}" \
-            --end-year "\${{ inputs.end_year }}" \
-            --leagues "\${{ inputs.leagues }}" \
+            --start-year "${{ inputs.start_year }}" \
+            --end-year "${{ inputs.end_year }}" \
+            --leagues "${{ inputs.leagues }}" \
             --out output/openfootball
       - name: Validate dataset and publish summary
         run: |
@@ -127,7 +127,7 @@ jobs:
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ufi-openfootball-\${{ inputs.start_year }}-\${{ inputs.end_year }}
+          name: ufi-openfootball-${{ inputs.start_year }}-${{ inputs.end_year }}
           path: output/openfootball/
           if-no-files-found: error
           retention-days: 14
