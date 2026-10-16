@@ -42,6 +42,12 @@ A local-first football research workstation for exploring real match-event data,
 
 The app is static and can be hosted with GitHub Pages. In the repository, open **Settings → Pages**, select **Deploy from a branch**, choose `main` and `/(root)`, and save. The public website URL usually follows `https://<owner>.github.io/<repository>/`; confirm the exact URL and deployment status in GitHub Pages settings.
 
+## Integrated Phase 1–3 research pipeline
+
+- [How to run the integrated pipeline](docs/ufi-integrated-pipeline.md)
+- `tools/ufi_integrated_pipeline.py` coordinates chronological match-model evaluation, player-registry evidence auditing, and timestamp-validated odds/paper betting evaluation.
+- The GitHub Actions workflow packages a unified JSON/Markdown report with predictions and metrics. Player attributes are intentionally not used as model features until sourced player-to-match participation data exists; ROI is omitted without eligible pre-match odds.
+
 ## UFI development roadmap
 
 - [Evidence-first roadmap for data validation, leakage-safe forecasting, player intelligence, substitutes and evaluation](docs/ufi-next-phase-roadmap.md)
