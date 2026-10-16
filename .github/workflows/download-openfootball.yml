@@ -126,6 +126,35 @@ jobs:
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
               out.write("\n".join(lines) + "\n")
           PY
+      - name: Run advanced Elo plus Poisson evaluation and prepare player registry
+        run: |
+          python tools/ufi_advanced_backtest.py \\
+            --input output/openfootball/matches.csv \\
+            --out output/openfootball/advanced
+          mkdir -p output/openfootball/player-intelligence
+          cp data/templates/player_registry_template.csv output/openfootball/player-intelligence/player_registry_template.csv
+          cp docs/player-intelligence-registry.md output/openfootball/player-intelligence/README.md
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          m = json.loads(Path("output/openfootball/advanced/metrics.json").read_text(encoding="utf-8"))
+          models = m["models"]
+          lines = [
+              "", "## UFI Phase 1–3 research pipeline", "",
+              f"- **Advanced model matches:** {m['backtested_matches']:,}",
+              f"- **Elo + Poisson ensemble accuracy:** {models['fixed_elo_plus_poisson_ensemble']['accuracy']}",
+              f"- **Elo-only accuracy:** {models['elo_only']['accuracy']}",
+              f"- **Poisson-only accuracy:** {models['poisson_only']['accuracy']}",
+              f"- **League baseline accuracy:** {models['league_frequency_baseline']['accuracy']}",
+              f"- **Odds status:** {m['odds_status']}",
+              f"- **Paper bets recorded:** {m['paper_bet_count']}",
+              f"- **Paper ROI:** {m['paper_roi']}",
+              "- **Player registry:** evidence-only CSV template included in artifact; source does not contain player-level facts.",
+              "- **Leakage control:** all same-date fixtures are forecast before results from that date update the model.",
+              "", "Do not interpret historical accuracy as profitability. Paper ROI is omitted unless permitted odds with verified pre-kickoff timestamps are supplied."
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f: f.write("\\n".join(lines) + "\\n")
+          PY
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
         with:
