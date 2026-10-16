@@ -1,28 +1,39 @@
 # Universal Football Intelligence (UFI)
 
-A local-first football research dashboard for exploring real match-event data, comparing teams and players where data is available, generating transparent scoreline scenarios, and backtesting forecasts.
+A local-first football research workstation for exploring real match-event data, tactical evidence, player observations, scoreline scenarios, slip odds and forecast validation.
 
-## Current scope
+## Published app structure
 
-- StatsBomb Open Data competition and match browser
-- Match event and shot analysis, including xG where supplied by the source
-- Transparent Poisson scoreline scenario explorer based on observed goal rates
-- Bet-slip text and decimal-odds implied-probability helper
-- Forecast log, manual settlement, Brier score, CSV export, and browser-local persistence
-- JSON import/export for research records
+- `index.html` — application shell and modules
+- `styles.css` — responsive desktop/mobile interface
+- `app.js` — data source adapter, calculations, UI and local persistence
 
-## Data limitations
+## Modules
 
-StatsBomb Open Data covers selected competitions and seasons only. This dashboard is not a complete live-data feed. It does not claim to have full-pitch tracking, complete player weak-foot data, or verified eFootball-style player play-style labels for every player. Missing data must remain unknown rather than be guessed.
+1. **Real match data:** fetches the public StatsBomb Open Data competition index, selected season match lists, event files and lineup files where available.
+2. **Match & tactical lab:** event filters, team/player search, event type summaries, shot/xG summaries, source-coordinate pitch plot and CSV export.
+3. **Player intelligence:** editable profiles for role/style notes, preferred foot and weak-foot evidence, source URL, confidence, plus a substitution observation log. These records are user-maintained, not automatically verified universal player facts.
+4. **Scenario engine:** independent Poisson scoreline grid, 1X2, over 1.5/2.5/3.5 and both-teams-to-score summaries, visible goal-cap tail mass and assumptions checklist.
+5. **Slip & odds lab:** parses pasted selection text, calculates decimal-odds implied probability and combined odds, supports manual selection editing, correlation group notes and local saving.
+6. **Backtesting:** settled 1X2 forecasts, normalized probabilities, accuracy, multiclass Brier score, log loss and CSV export.
+7. **Research library:** source links, match notes, player observations, hypotheses and experiments.
+8. **Workspace backup:** export/import saved local records as JSON.
 
-## Run it
+## Run / deploy
 
-Open `index.html` in a modern browser, or publish the repository with GitHub Pages.
+The app is static and can be hosted with GitHub Pages. In the repository, open **Settings → Pages**, select **Deploy from a branch**, choose `main` and `/(root)`, and save. The public website URL usually follows `https://<owner>.github.io/<repository>/`; confirm the exact URL and deployment status in GitHub Pages settings.
 
-## Enable GitHub Pages
+## Data and technical limits
 
-In the repository, open **Settings → Pages**. Choose **Deploy from a branch**, select `main` and `/(root)`, then save. Wait for GitHub Pages to publish the site.
+- StatsBomb Open Data contains selected competitions/seasons only. It is not a full live all-league feed and does not require an embedded API key for public repository files.
+- Network access is required to fetch match data. Browser cross-origin access or source availability may change.
+- Event coordinates are event locations from the dataset, not full optical player tracking or every player's continuous movement.
+- There is no automatic universal SportyBet booking-code decoder or robust screenshot OCR in this version.
+- Complete verified weak-foot labels, eFootball-style play styles, injuries, current availability and causal substitute impact cannot be inferred for every player. Record sources and keep unknowns unknown.
+- LocalStorage data is stored in the current browser/device and does not automatically sync across devices. Export workspace backups regularly.
+- Independent Poisson scenarios are a transparent baseline, not a complete match simulator. Goal caps omit tail probability. Probabilities are estimates, never guaranteed outcomes.
+- Backtesting is only meaningful when forecasts are logged before outcomes, data leakage is avoided, and enough unseen matches are evaluated against baselines.
 
 ## Responsible use
 
-Scenario probabilities are estimates, not guarantees. Do not treat a model output as a sure bet. Track predictions against later results and evaluate calibration before trusting them.
+This is a football research and evaluation tool, not a promise of betting profit. Verify source data, record uncertainty, protect private information and never treat an output as a sure bet.
