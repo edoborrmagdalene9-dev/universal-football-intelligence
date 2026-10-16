@@ -45,7 +45,8 @@ The app is static and can be hosted with GitHub Pages. In the repository, open *
 ## Integrated Phase 1–3 research pipeline
 
 - [How to run the integrated pipeline](docs/ufi-integrated-pipeline.md)
-- `tools/ufi_integrated_pipeline.py` coordinates chronological match-model evaluation, player-registry evidence auditing, and timestamp-validated odds/paper betting evaluation.
+- `tools/ufi_integrated_pipeline.py` coordinates chronological match-model evaluation, player-registry evidence auditing, and timestamp-validated odds/paper evaluation.
+- `tools/ufi_probability_market_audit.py` compares historical model probabilities with margin-normalized market probabilities, reports Home/Draw/Away probability gaps, and compares Brier/log-loss scores. It requires timestamped pre-kickoff odds and is research-only; see [the run guide](docs/ufi-integrated-pipeline.md#probability-versus-market-audit-new).
 - The GitHub Actions workflow packages a unified JSON/Markdown report with predictions and metrics. Player attributes are intentionally not used as model features until sourced player-to-match participation data exists; ROI is omitted without eligible pre-match odds.
 
 ## Unified football mathematics research design
