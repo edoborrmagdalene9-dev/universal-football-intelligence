@@ -99,7 +99,7 @@ jobs:
               "These are baseline metrics, not proof of betting profitability. Compare with naive baselines and validate by league/season."
           ]
           with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
-              out.write("\\n".join(lines) + "\\n")
+              out.write("\n".join(lines) + "\n")
           PY
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
