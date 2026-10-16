@@ -33,15 +33,16 @@ jobs:
       - name: Fetch and normalize public-domain results
         run: |
           python tools/openfootball_download.py \
-            --start-year "${{ inputs.start_year }}" \
-            --end-year "${{ inputs.end_year }}" \
-            --leagues "${{ inputs.leagues }}" \
+            --start-year "\${{ inputs.start_year }}" \
+            --end-year "\${{ inputs.end_year }}" \
+            --leagues "\${{ inputs.leagues }}" \
             --out output/openfootball
       - name: Validate dataset and publish summary
         run: |
           python - <<'PY'
           import csv
           import json
+          import os
           from pathlib import Path
 
           root = Path("output/openfootball")
@@ -53,28 +54,41 @@ jobs:
           manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
           with csv_path.open(encoding="utf-8-sig", newline="") as handle:
               reader = csv.DictReader(handle)
-              rows = sum(1 for _ in reader)
+              required = {"date", "league_code", "home_team", "away_team", "home_goals", "away_goals"}
+              missing = required - set(reader.fieldnames or [])
+              if missing:
+                  raise SystemExit(f"CSV is missing required columns: {sorted(missing)}")
+              rows = list(reader)
 
           expected = int(manifest.get("match_rows", -1))
-          if rows != expected:
-              raise SystemExit(f"CSV row count ({rows}) does not match manifest ({expected}).")
-          if rows == 0:
+          if len(rows) != expected:
+              raise SystemExit(f"CSV row count ({len(rows)}) does not match manifest ({expected}).")
+          if not rows:
               raise SystemExit("No match rows were downloaded; refusing to mark dataset valid.")
+
+          completed = sum(
+              1 for row in rows
+              if str(row.get("home_goals", "")).strip() != ""
+              and str(row.get("away_goals", "")).strip() != ""
+          )
+          if completed == 0:
+              raise SystemExit("No completed matches with scores found; backtest cannot run.")
 
           summary = [
               "## UFI OpenFootball dataset validation",
               "",
               f"- **Seasons requested:** {manifest.get('start_year')}–{manifest.get('end_year')}",
               f"- **League-season files found:** {manifest.get('files_found')}",
-              f"- **Match rows in CSV:** {rows:,}",
-              f"- **CSV:** `output/openfootball/matches.csv`",
-              f"- **Raw JSON files:** `output/openfootball/raw/`",
+              f"- **Fixture/result rows:** {len(rows):,}",
+              f"- **Rows with scores:** {completed:,}",
+              f"- **Rows without scores:** {len(rows) - completed:,}",
+              "- **Validation:** passed",
               "",
-              "Dataset validation passed. Download the artifact only if you need the raw files locally."
+              "The source contains fixtures/results, not full player or tracking data."
           ]
-          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
-              out.write("\\n".join(summary) + "\\n")
-          print(f"Validated {rows} match rows across {manifest.get('files_found')} source files.")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\n".join(summary) + "\n")
+          print(f"Validated {len(rows)} rows; {completed} have scores across {manifest.get('files_found')} source files.")
           PY
       - name: Run chronological baseline backtest
         run: |
@@ -83,28 +97,37 @@ jobs:
             --out output/openfootball/model
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
+
           metrics = json.loads(Path("output/openfootball/model/metrics.json").read_text(encoding="utf-8"))
+          model = metrics["team_model"]
+          baseline = metrics["league_frequency_baseline"]
           lines = [
               "",
               "## UFI chronological baseline backtest",
               "",
               f"- **Matches evaluated:** {metrics['backtested_matches']:,}",
-              f"- **1X2 accuracy:** {metrics['accuracy_1x2']}",
-              f"- **Mean Brier score:** {metrics['mean_brier_1x2']}",
-              f"- **Mean log loss:** {metrics['mean_logloss_1x2']}",
-              "- **Forecasting method:** rolling home/away team-goal rates using only earlier matches",
-              "- **Outputs:** `output/openfootball/model/metrics.json` and `chronological_predictions.csv`",
+              f"- **Team model 1X2 accuracy:** {model['accuracy_1x2']}",
+              f"- **League baseline 1X2 accuracy:** {baseline['accuracy_1x2']}",
+              f"- **Team model mean Brier score:** {model['mean_brier_1x2']}",
+              f"- **League baseline mean Brier score:** {baseline['mean_brier_1x2']}",
+              f"- **Team model mean log loss:** {model['mean_logloss_1x2']}",
+              f"- **League baseline mean log loss:** {baseline['mean_logloss_1x2']}",
+              f"- **Rows skipped:** {metrics['rows_skipped_for_missing_or_invalid_fields']}",
+              f"- **Leakage control:** {metrics['same_date_leakage_control']}",
+              "- **Per-league metrics:** available in output/openfootball/model/metrics.json",
+              "- **Prediction records:** output/openfootball/model/chronological_predictions.csv",
               "",
-              "These are baseline metrics, not proof of betting profitability. Compare with naive baselines and validate by league/season."
+              "Lower Brier score and log loss are better. These are research metrics, not proof of betting profitability."
           ]
-          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
               out.write("\n".join(lines) + "\n")
           PY
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ufi-openfootball-${{ inputs.start_year }}-${{ inputs.end_year }}
+          name: ufi-openfootball-\${{ inputs.start_year }}-\${{ inputs.end_year }}
           path: output/openfootball/
           if-no-files-found: error
           retention-days: 14
