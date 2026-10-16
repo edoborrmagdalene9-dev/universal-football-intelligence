@@ -56,22 +56,21 @@ $('runScenario').onclick=()=>{const s=scenarioCalc();if(!s)return;[['probHome',s
 $('saveForecast').onclick=()=>{const s=S.scenario||scenarioCalc();if(!s)return;$('btMatch').value=s.home+' vs '+s.away;$('btMethod').value='Independent Poisson baseline'+(s.label?' / '+s.label:'');$('btHome').value=(100*s.homeWin).toFixed(2);$('btDraw').value=(100*s.draw).toFixed(2);$('btAway').value=(100*s.awayWin).toFixed(2);$('btNotes').value='λ home='+s.lambdaHome+', away='+s.lambdaAway+'; cap='+s.cap+'; grid mass='+(100*s.mass).toFixed(2)+'%; caveats: '+s.caveats+'; checks completed: '+s.checks.join(', ');go('backtest');toast('Forecast copied to ledger form. Select actual result when known.')};
 function classifySlipMarket(line){
   const s=line.toLowerCase();
-  if(/both teams to score|both teams score|\\bbtts\\b/.test(s))return 'Both teams to score';
-  if(/double chance|\\b1x\\b|\\bx2\\b|\\b12\\b/.test(s))return 'Double chance';
-  if(/over\\s*\\d|under\\s*\\d|total goals|goals over|goals under/.test(s))return 'Goals total';
-  if(/\\bcorner|corners\\b/.test(s))return 'Corners';
-  if(/\\byellow cards?\\b|\\bred cards?\\b|cards over|cards under/.test(s))return 'Cards';
-  if(/\\b(draw|home win|away win|to win|win in 90|match result|1x2)\\b/.test(s))return 'Match result (1X2)';
-  if(/\\b(half time|first half|second half|ht|2nd half)\\b/.test(s))return 'Half-time / period';
-  if(/\\b(handicap|asian handicap)\\b/.test(s))return 'Handicap';
-  if(/\\b(player|shots on target|to score anytime|anytime goalscorer)\\b/.test(s))return 'Player market';
+  if(/both teams to score|both teams score|\bbtts\b/.test(s))return 'Both teams to score';
+  if(/double chance|\b1x\b|\bx2\b|\b12\b/.test(s))return 'Double chance';
+  if(/over\s*\d|under\s*\d|total goals|goals over|goals under/.test(s))return 'Goals total';
+  if(/\bcorner|corners\b/.test(s))return 'Corners';
+  if(/\byellow cards?\b|\bred cards?\b|cards over|cards under/.test(s))return 'Cards';
+  if(/\b(draw|home win|away win|to win|win in 90|match result|1x2)\b/.test(s))return 'Match result (1X2)';
+  if(/\b(half time|first half|second half|ht|2nd half)\b/.test(s))return 'Half-time / period';
+  if(/\b(handicap|asian handicap)\b/.test(s))return 'Handicap';
+  if(/\b(player|shots on target|to score anytime|anytime goalscorer)\b/.test(s))return 'Player market';
   return 'Unclassified — verify';
 }
 function parseSlipLine(line,index){
-  const tokens=[...line.matchAll(/(?<![\\w.])(\\d{1,3}\\.\\d{1,4})(?!\\d)/g)];
+  const tokens=[...line.matchAll(/(?<![\w.])(\d{1,3}\.\d{1,4})(?!\d)/g)];
   const valid=tokens.filter(m=>{const n=Number(m[1]);return n>1&&n<=1000});
   const last=valid[valid.length-1];
-  const lastNonSpace=line.trim().slice(-1);
   const endsWithOdd=!!last&&line.trim().endsWith(last[1]);
   const odd=last?Number(last[1]):null;
   let confidence='low',warning='No confident decimal odds found; enter the odds manually.';
@@ -79,19 +78,19 @@ function parseSlipLine(line,index){
     confidence=(valid.length===1&&endsWithOdd)?'high':'medium';
     warning=valid.length>1?'Multiple decimal numbers found (possibly a goal line plus odds). Verify the final number is the selection price.':'Verify that the extracted price belongs to this selection.';
   }
-  const label=last?line.replace(last[0],' ').replace(/\\b(?:odds?|price)\\s*[:=@]?\\s*/ig,' ').replace(/\\s+/g,' ').trim():line.trim();
+  const label=last?line.replace(last[0],' ').replace(/\b(?:odds?|price)\s*[:=@]?\s*/ig,' ').replace(/\s+/g,' ').trim():line.trim();
   const market=classifySlipMarket(line);
-  const fixtureMatch=line.match(/(.+?)\\s+(?:vs?\\.?|versus)\\s+(.+?)(?=\\s+(?:\\||[-–—])\\s+|$)/i);
+  const fixtureMatch=line.match(/(.+?)\s+(?:vs?\.?|versus)\s+(.+?)(?=\s+(?:\||[-–—])\s+|$)/i);
   return {id:'ocr-'+index,label:label||line.trim(),odd,p:odd?1/odd:null,estimate:null,group:fixtureMatch?(fixtureMatch[1].trim()+' vs '+fixtureMatch[2].trim()):'',marketType:market,confidence,warning,rawLine:line.trim(),source:'OCR/text'};
 }
 $('analyzeSlip').onclick=()=>{
-  const lines=$('slipInput').value.split(/\\n/).map(x=>x.trim()).filter(Boolean);
+  const lines=$('slipInput').value.split(/\n/).map(x=>x.trim()).filter(Boolean);
   const rows=[];
   for(const line of lines){
-    if(/^---\\s*PHOTO\\b/i.test(line)||/^page\\s+\\d+\\s*$/i.test(line))continue;
+    if(/^---\s*PHOTO\b/i.test(line)||/^page\s+\d+\s*$/i.test(line))continue;
     const parsed=parseSlipLine(line,rows.length);
     // Avoid treating headings or long OCR fragments with no price as selections.
-    if(parsed.odd!==null||/\\b(odds?|price)\\b/i.test(line))rows.push(parsed);
+    if(parsed.odd!==null||/\b(odds?|price)\b/i.test(line))rows.push(parsed);
   }
   S.manualSelections=rows.map(x=>({...x}));
   renderManualSelections();
