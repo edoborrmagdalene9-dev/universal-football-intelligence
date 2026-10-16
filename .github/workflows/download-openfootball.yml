@@ -7,6 +7,7 @@ on:
       - '.github/workflows/download-openfootball.yml'
       - 'tools/ufi_integrated_pipeline.py'
       - 'tools/ufi_advanced_backtest.py'
+      - 'tools/ufi_probability_market_audit.py'
       - 'tests/**'
   workflow_dispatch:
     inputs:
@@ -42,9 +43,9 @@ jobs:
       - name: Fetch and normalize public-domain results
         run: |
           python tools/openfootball_download.py \
-            --start-year "${{ inputs.start_year }}" \
-            --end-year "${{ inputs.end_year }}" \
-            --leagues "${{ inputs.leagues }}" \
+            --start-year "${{ inputs.start_year || '2010' }}" \
+            --end-year "${{ inputs.end_year || '2025' }}" \
+            --leagues "${{ inputs.leagues || 'en.1,en.2,en.3,en.4,de.1,de.2,es.1,es.2,it.1,it.2,fr.1,fr.2,nl.1,pt.1,sco.1' }}" \
             --out output/openfootball
       - name: Validate dataset and publish summary
         run: |
