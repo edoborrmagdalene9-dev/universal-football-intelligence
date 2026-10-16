@@ -43,3 +43,21 @@ Run the integrated command again. Only matched records with valid odds and pre-k
 ## Current gate status and honest limits
 
 A successful workflow means the pipeline executed and its checks passed. It does not mean all three data requirements are complete: the default public workflow has results but no sourced player records or supplied odds, so player-aware forecasting remains gated and betting ROI is not computed. No model can guarantee winning bets. Evaluate on multiple unseen chronological windows and compare to a market baseline before making claims about edge.
+
+
+## Probability-versus-market audit (new)
+
+After generating historical predictions, compare them with odds that were captured before kickoff and that your source permits you to use. The audit removes the raw 1X2 overround by normalizing implied probabilities, records the model-minus-market probability gap for Home/Draw/Away, and scores both probability vectors with Brier score and log loss.
+
+```bash
+python tools/ufi_probability_market_audit.py \
+  --predictions output/openfootball/integrated/advanced/advanced_predictions.csv \
+  --odds-csv data/private/pre_match_odds.csv \
+  --out output/openfootball/integrated/market_audit
+```
+
+Outputs:
+- `probability_market_audit.csv` — one row per matched historical fixture, with timestamp evidence, normalized market probabilities, probability gaps and forecast scores.
+- `probability_market_audit.json` — aggregate comparison and counts of unmatched/rejected records.
+
+The tool rejects missing/timezone-free timestamps, odds captured at or after kickoff, invalid decimal odds, and invalid model probability vectors. Duplicate fixture keys are excluded as ambiguous. Negative mean model-minus-market score differences mean the model had lower average loss on that matched historical sample; they do not prove a future edge or profitability. The tool does not recommend selections. Run it across multiple chronological periods and retain all eligible rows, including poor forecasts.
