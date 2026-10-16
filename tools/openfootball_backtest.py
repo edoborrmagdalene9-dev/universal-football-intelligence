@@ -113,10 +113,14 @@ def main() -> None:
         for row in by_date[date]:
             hg = safe_float(row.get("home_goals"))
             ag = safe_float(row.get("away_goals"))
+            match_date = (row.get("date") or "").strip()
             league = (row.get("league_code") or "").strip()
             home_team = (row.get("home_team") or "").strip()
             away_team = (row.get("away_team") or "").strip()
-            if hg is None or ag is None or not league or not home_team or not away_team:
+            if (
+                hg is None or ag is None or not hg.is_integer() or not ag.is_integer()
+                or not match_date or not league or not home_team or not away_team
+            ):
                 skipped_invalid += 1
                 continue
             hk, ak = (league, home_team), (league, away_team)
