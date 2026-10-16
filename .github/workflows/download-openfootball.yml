@@ -126,35 +126,39 @@ jobs:
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
               out.write("\n".join(lines) + "\n")
           PY
-      - name: Run advanced Elo plus Poisson evaluation and prepare player registry
+      - name: Prepare evidence templates and run integrated Phase 1–3 pipeline
         run: |
-          python tools/ufi_advanced_backtest.py \
-            --input output/openfootball/matches.csv \
-            --out output/openfootball/advanced
           mkdir -p output/openfootball/player-intelligence
           cp data/templates/player_registry_template.csv output/openfootball/player-intelligence/player_registry_template.csv
           cp data/templates/pre_match_odds_template.csv output/openfootball/player-intelligence/pre_match_odds_template.csv
           cp docs/player-intelligence-registry.md output/openfootball/player-intelligence/README.md
+          python tools/ufi_integrated_pipeline.py \
+            --matches output/openfootball/matches.csv \
+            --out output/openfootball/integrated
           python - <<'PY'
           import json, os
           from pathlib import Path
-          m = json.loads(Path("output/openfootball/advanced/metrics.json").read_text(encoding="utf-8"))
-          models = m["models"]
+          report = json.loads(Path("output/openfootball/integrated/ufi_integrated_report.json").read_text(encoding="utf-8"))
+          p1, p2, p3 = report["phase_1_match_model"], report["phase_2_player_intelligence"], report["phase_3_odds_validation"]
+          models = p1["models"]
           lines = [
-              "", "## UFI Phase 1–3 research pipeline", "",
-              f"- **Advanced model matches:** {m['backtested_matches']:,}",
-              f"- **Elo + Poisson ensemble accuracy:** {models['fixed_elo_plus_poisson_ensemble']['accuracy']}",
-              f"- **Elo-only accuracy:** {models['elo_only']['accuracy']}",
-              f"- **Poisson-only accuracy:** {models['poisson_only']['accuracy']}",
-              f"- **League baseline accuracy:** {models['league_frequency_baseline']['accuracy']}",
-              f"- **Odds status:** {m['odds_status']}",
-              f"- **Paper bets recorded:** {m['paper_bet_count']}",
-              f"- **Paper ROI:** {m['paper_roi']}",
-              "- **Player registry:** evidence-only CSV template included in artifact; source does not contain player-level facts.",
-              "- **Leakage control:** all same-date fixtures are forecast before results from that date update the model.",
-              "", "Do not interpret historical accuracy as profitability. Paper ROI is omitted unless permitted odds with verified pre-kickoff timestamps are supplied."
+              "", "## UFI integrated Phase 1–3 pipeline", "",
+              f"- **Advanced model matches:** {p1['backtested_matches']:,}",
+              f"- **Elo + Poisson ensemble accuracy:** {models.get('fixed_elo_plus_poisson_ensemble', {}).get('accuracy')}",
+              f"- **Elo-only accuracy:** {models.get('elo_only', {}).get('accuracy')}",
+              f"- **Historical baseline accuracy:** {models.get('league_frequency_baseline', {}).get('accuracy')}",
+              f"- **Phase 2 status:** {p2['status']}",
+              f"- **Sourced player records:** {p2['registry_audit']['records']}",
+              f"- **Phase 3 status:** {p3['status']}",
+              f"- **Odds status:** {p3['odds_status']}",
+              f"- **Paper bets recorded:** {p3['paper_bet_count']}",
+              f"- **Paper ROI:** {p3['paper_roi']}",
+              "- **Leakage control:** all same-date fixtures are forecast before that date's results update the model.",
+              "- **Integrated report:** output/openfootball/integrated/ufi_integrated_report.md and .json",
+              "", "Player features remain disabled until sourced player-to-match participation data is verified. Historical accuracy is not proof of betting profitability."
           ]
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f: f.write("\n".join(lines) + "\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+              f.write("\\n".join(lines) + "\\n")
           PY
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
