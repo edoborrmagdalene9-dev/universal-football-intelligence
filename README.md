@@ -14,7 +14,7 @@ A local-first football research workstation for exploring real match-event data,
 2. **Match & tactical lab:** event filters, team/player search, event type summaries, shot/xG summaries, source-coordinate pitch plot and CSV export.
 3. **Player intelligence:** editable profiles for role/style notes, preferred foot and weak-foot evidence, source URL, confidence, plus a substitution observation log. These records are user-maintained, not automatically verified universal player facts.
 4. **Scenario engine:** independent Poisson scoreline grid, 1X2, over 1.5/2.5/3.5 and both-teams-to-score summaries, visible goal-cap tail mass and assumptions checklist.
-5. **Slip & odds lab:** parses pasted selection text, calculates decimal-odds implied probability and combined odds, supports manual selection editing, correlation group notes and local saving.
+5. **Slip & odds lab:** extracts OCR text from uploaded screenshots, structures likely decimal odds and market labels, flags ambiguous rows for review, exports a structured CSV, calculates implied probability and combined odds only for valid prices, and supports manual editing/correlation notes. Fixture identity and model matching are still a separate next step; see [the slip-to-intelligence bridge guide](docs/ufi-slip-intelligence-bridge.md).
 6. **Backtesting:** settled 1X2 forecasts, normalized probabilities, accuracy, multiclass Brier score, log loss and CSV export.
 7. **Research library:** source links, match notes, player observations, hypotheses and experiments.
 8. **Workspace backup:** export/import saved local records as JSON.
