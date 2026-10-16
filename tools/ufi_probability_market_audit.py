@@ -54,7 +54,8 @@ def log_loss(probs: list[float], actual: str) -> float:
 
 
 def load_odds(path: Path) -> tuple[dict, dict]:
-    valid, rejected = {}, {"missing_or_invalid_timestamp": 0, "bad_odds": 0, "duplicate_key": 0}
+    valid, ambiguous = {}, set()
+    rejected = {"missing_or_invalid_timestamp": 0, "bad_odds": 0, "duplicate_key": 0}
     with path.open(encoding="utf-8-sig", newline="") as f:
         for row in csv.DictReader(f):
             key = tuple((row.get(k) or "").strip() for k in
@@ -76,10 +77,14 @@ def load_odds(path: Path) -> tuple[dict, dict]:
             except (KeyError, ValueError, TypeError):
                 rejected["bad_odds"] += 1
                 continue
+            if key in ambiguous:
+                rejected["duplicate_key"] += 1
+                continue
             if key in valid:
                 rejected["duplicate_key"] += 1
                 # Ambiguous duplicate prices are excluded rather than silently choosing one.
                 valid.pop(key, None)
+                ambiguous.add(key)
                 continue
             valid[key] = {"odds": odds, "market": market, "overround": overround,
                           "captured_at_utc": captured.isoformat(), "kickoff_at_utc": kickoff.isoformat()}
