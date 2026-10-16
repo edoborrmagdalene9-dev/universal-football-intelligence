@@ -60,16 +60,6 @@ def get_json(url: str):
         raise
 
 
-def goals(match, key):
-    score = match.get("score") or {}
-    value = score.get(key)
-    if isinstance(value, list) and value:
-        return value[0]
-    if isinstance(value, (int, float, str)):
-        return value
-    return ""
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start-year", type=int, default=2010,
@@ -115,7 +105,8 @@ def main():
             )
             for match in payload.get("matches", []):
                 score = match.get("score") or {}
-                has_ft = "ft" in score and isinstance(score.get("ft"), list) and len(score["ft"]) >= 2
+                ft = score.get("ft")
+                has_ft = isinstance(ft, list) and len(ft) >= 2
                 rows.append({
                     "season": season,
                     "league_code": code,
@@ -124,8 +115,8 @@ def main():
                     "round": match.get("round", ""),
                     "home_team": match.get("team1", ""),
                     "away_team": match.get("team2", ""),
-                    "home_goals": goals(match, "ft")[0] if has_ft else "",
-                    "away_goals": goals(match, "ft")[1] if has_ft else "",
+                    "home_goals": ft[0] if has_ft else "",
+                    "away_goals": ft[1] if has_ft else "",
                     "status": "finished" if has_ft else "scheduled_or_unscored",
                     "source_url": url,
                 })
