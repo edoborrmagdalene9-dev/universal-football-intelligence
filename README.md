@@ -24,6 +24,13 @@ A local-first football research workstation for exploring real match-event data,
 - **Football-Data.co.uk:** valuable historical results, bookmaker odds and selected match statistics across multiple leagues/seasons. Its stated terms restrict use to private individuals and exclude commercial or data-training products using automated bots/scrapers/AI. Because UFI is AI-assisted, bulk ingestion and model training are **not enabled** until permission is confirmed. See [the source assessment and safe integration plan](docs/data-sources/football-data-co-uk.md).
 - Do not commit third-party bulk match datasets or API secrets to this public repository. Preserve source provenance, missing values and odds timestamps, and use chronological backtesting without future-data leakage.
 
+## Free public-domain historical results
+
+- [OpenFootball data source and local download guide](docs/data-sources/openfootball.md)
+- [OpenFootball downloader](tools/openfootball_download.py)
+- No API key is required. The script downloads available seasons for 15 configured leagues and normalizes fixtures/results into a local CSV.
+- Output stays under `data/private/openfootball/`, which is git-ignored. The source is public domain, but the result files contain fixtures and scores only—not odds, player traits or full tracking data.
+
 ## Authenticated historical data adapter
 
 - [TheStatsAPI integration notes](docs/data-sources/thestatsapi.md)
