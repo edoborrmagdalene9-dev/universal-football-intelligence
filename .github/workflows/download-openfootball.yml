@@ -1,0 +1,46 @@
+name: Download free OpenFootball data
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_year:
+        description: "First season start year (example: 2010 for 2010/11)"
+        required: true
+        default: "2010"
+      end_year:
+        description: "Last season start year (example: 2025 for 2025/26)"
+        required: true
+        default: "2025"
+      leagues:
+        description: "Comma-separated codes; default covers configured leagues"
+        required: true
+        default: "en.1,en.2,en.3,en.4,de.1,de.2,es.1,es.2,it.1,it.2,fr.1,fr.2,nl.1,pt.1,sco.1"
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out UFI
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch and normalize public-domain results
+        run: |
+          python tools/openfootball_download.py \
+            --start-year "${{ inputs.start_year }}" \
+            --end-year "${{ inputs.end_year }}" \
+            --leagues "${{ inputs.leagues }}" \
+            --out output/openfootball
+      - name: Upload dataset artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ufi-openfootball-${{ inputs.start_year }}-${{ inputs.end_year }}
+          path: output/openfootball/
+          if-no-files-found: error
+          retention-days: 14
