@@ -19,6 +19,11 @@ A local-first football research workstation for exploring real match-event data,
 7. **Research library:** source links, match notes, player observations, hypotheses and experiments.
 8. **Workspace backup:** export/import saved local records as JSON.
 
+## Additional historical data sources
+
+- **Football-Data.co.uk:** valuable historical results, bookmaker odds and selected match statistics across multiple leagues/seasons. Its stated terms restrict use to private individuals and exclude commercial or data-training products using automated bots/scrapers/AI. Because UFI is AI-assisted, bulk ingestion and model training are **not enabled** until permission is confirmed. See [the source assessment and safe integration plan](docs/data-sources/football-data-co-uk.md).
+- Do not commit third-party bulk match datasets or API secrets to this public repository. Preserve source provenance, missing values and odds timestamps, and use chronological backtesting without future-data leakage.
+
 ## Run / deploy
 
 The app is static and can be hosted with GitHub Pages. In the repository, open **Settings → Pages**, select **Deploy from a branch**, choose `main` and `/(root)`, and save. The public website URL usually follows `https://<owner>.github.io/<repository>/`; confirm the exact URL and deployment status in GitHub Pages settings.
