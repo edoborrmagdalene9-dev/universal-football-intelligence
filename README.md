@@ -48,6 +48,11 @@ The app is static and can be hosted with GitHub Pages. In the repository, open *
 - `tools/ufi_integrated_pipeline.py` coordinates chronological match-model evaluation, player-registry evidence auditing, and timestamp-validated odds/paper betting evaluation.
 - The GitHub Actions workflow packages a unified JSON/Markdown report with predictions and metrics. Player attributes are intentionally not used as model features until sourced player-to-match participation data exists; ROI is omitted without eligible pre-match odds.
 
+## Unified football mathematics research design
+
+- [Unified architecture: football physics, human/player evidence, Bayesian and quantum-inspired probability experiments, betting-slip odds, market value, correlation, and rigorous validation](docs/ufi-unified-mathematics.md)
+- This is a staged research design, not a claim that all components are implemented. Physics features require suitable event/tracking data; player-aware predictions require verified player-match participation; quantum-inspired methods must beat simpler models in chronological tests.
+
 ## UFI development roadmap
 
 - [Evidence-first roadmap for data validation, leakage-safe forecasting, player intelligence, substitutes and evaluation](docs/ufi-next-phase-roadmap.md)
