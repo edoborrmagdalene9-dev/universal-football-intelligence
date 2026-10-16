@@ -37,6 +37,45 @@ jobs:
             --end-year "${{ inputs.end_year }}" \
             --leagues "${{ inputs.leagues }}" \
             --out output/openfootball
+      - name: Validate dataset and publish summary
+        run: |
+          python - <<'PY'
+          import csv
+          import json
+          from pathlib import Path
+
+          root = Path("output/openfootball")
+          manifest_path = root / "manifest.json"
+          csv_path = root / "matches.csv"
+          if not manifest_path.is_file() or not csv_path.is_file():
+              raise SystemExit("Expected manifest.json and matches.csv were not created.")
+
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          with csv_path.open(encoding="utf-8-sig", newline="") as handle:
+              reader = csv.DictReader(handle)
+              rows = sum(1 for _ in reader)
+
+          expected = int(manifest.get("match_rows", -1))
+          if rows != expected:
+              raise SystemExit(f"CSV row count ({rows}) does not match manifest ({expected}).")
+          if rows == 0:
+              raise SystemExit("No match rows were downloaded; refusing to mark dataset valid.")
+
+          summary = [
+              "## UFI OpenFootball dataset validation",
+              "",
+              f"- **Seasons requested:** {manifest.get('start_year')}–{manifest.get('end_year')}",
+              f"- **League-season files found:** {manifest.get('files_found')}",
+              f"- **Match rows in CSV:** {rows:,}",
+              f"- **CSV:** `output/openfootball/matches.csv`",
+              f"- **Raw JSON files:** `output/openfootball/raw/`",
+              "",
+              "Dataset validation passed. Download the artifact only if you need the raw files locally."
+          ]
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\\n".join(summary) + "\\n")
+          print(f"Validated {rows} match rows across {manifest.get('files_found')} source files.")
+          PY
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
         with:
