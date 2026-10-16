@@ -76,6 +76,31 @@ jobs:
               out.write("\\n".join(summary) + "\\n")
           print(f"Validated {rows} match rows across {manifest.get('files_found')} source files.")
           PY
+      - name: Run chronological baseline backtest
+        run: |
+          python tools/openfootball_backtest.py \
+            --input output/openfootball/matches.csv \
+            --out output/openfootball/model
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          metrics = json.loads(Path("output/openfootball/model/metrics.json").read_text(encoding="utf-8"))
+          lines = [
+              "",
+              "## UFI chronological baseline backtest",
+              "",
+              f"- **Matches evaluated:** {metrics['backtested_matches']:,}",
+              f"- **1X2 accuracy:** {metrics['accuracy_1x2']}",
+              f"- **Mean Brier score:** {metrics['mean_brier_1x2']}",
+              f"- **Mean log loss:** {metrics['mean_logloss_1x2']}",
+              "- **Forecasting method:** rolling home/away team-goal rates using only earlier matches",
+              "- **Outputs:** `output/openfootball/model/metrics.json` and `chronological_predictions.csv`",
+              "",
+              "These are baseline metrics, not proof of betting profitability. Compare with naive baselines and validate by league/season."
+          ]
+          with open(__import__("os").environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
+              out.write("\\n".join(lines) + "\\n")
+          PY
       - name: Upload dataset artifact
         uses: actions/upload-artifact@v4
         with:
