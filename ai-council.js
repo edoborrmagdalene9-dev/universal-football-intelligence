@@ -22,6 +22,13 @@ const providers = () => [
  {id:'Hugging Face',key:$('aiHfKey')?.value.trim(),model:$('aiHfModel')?.value.trim(),run:huggingface}
 ].filter(p=>p.key && p.model);
 const promptFor = (ctx, slipText) => SYSTEM_RULES + "\n\n"+RESEARCH_BRAIN+"\n\nCURRENT UFI EVIDENCE JSON:\n" + JSON.stringify(ctx) + "\n\nRAW SLIP TEXT (OCR may be wrong):\n" + (slipText||"(no pasted slip text)") + "\n\nChallenge the evidence. Do not assume absent data exists. Flag any leg with no exact fixture/market/odds/probability linkage. Keep verdict conservative.";
+async function fetchWithTimeout(url,options,ms=25000) {
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),ms);
+ try { return await fetch(url,{...options,signal:controller.signal}); }
+ catch(e) { if(e?.name==='AbortError') throw new Error('Provider request timed out after '+Math.round(ms/1000)+' seconds; trying fallback.'); throw e; }
+ finally { clearTimeout(timer); }
+}
 async function readJson(res) {
  const txt=await res.text(); let data; try{data=JSON.parse(txt)}catch{throw new Error('Non-JSON response (HTTP '+res.status+').')}
  if(!res.ok) throw new Error((data.error?.message||data.message||'HTTP '+res.status).slice(0,240));
@@ -29,11 +36,11 @@ async function readJson(res) {
 }
 async function gemini(p,prompt) {
  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(p.model)+':generateContent?key='+encodeURIComponent(p.key);
- const data=await readJson(await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:1200,responseMimeType:'application/json'}})}));
+ const data=await readJson(await fetchWithTimeout(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:0.1,maxOutputTokens:1200,responseMimeType:'application/json'}})}));
  const text=(data.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('\n'); if(!text) throw new Error('Empty Gemini response.'); return text;
 }
 async function openAiCompat(p,url,extraHeaders,prompt) {
- const data=await readJson(await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+p.key,...extraHeaders},body:JSON.stringify({model:p.model,messages:[{role:'system',content:SYSTEM_RULES},{role:'user',content:prompt}],temperature:0.1,max_tokens:1200})}));
+ const data=await readJson(await fetchWithTimeout(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+p.key,...extraHeaders},body:JSON.stringify({model:p.model,messages:[{role:'system',content:SYSTEM_RULES},{role:'user',content:prompt}],temperature:0.1,max_tokens:1200})}));
  const text=data.choices?.[0]?.message?.content; if(!text) throw new Error('Empty model response.'); return typeof text==='string'?text:JSON.stringify(text);
 }
 async function groq(p,prompt){return openAiCompat(p,'https://api.groq.com/openai/v1/chat/completions',{},prompt)}
@@ -99,6 +106,7 @@ async function runCouncil() {
  if(status) status.textContent=successes>=3?'Three model opinions received. Check disagreements and missing evidence below.':successes?('Fallback completed, but only '+successes+' model(s) responded. Treat as degraded review; failures are listed below.'):'All configured providers failed. UFI deterministic audit remains available; no AI result was used.';
  buttons.forEach(b=>{b.disabled=false;b.textContent=b.id==='runAiCouncilScenario'?'Run AI council on current prediction':'Run 3-model evidence challenge'});
 }
+$('discoverOpenRouterFree')?.addEventListener('click',async()=>{const b=$('discoverOpenRouterFree');b.disabled=true;b.textContent='Checking model list…';try{const res=await fetch('https://openrouter.ai/api/v1/models');if(!res.ok)throw new Error('Model catalogue HTTP '+res.status);const d=await res.json();const free=(d.data||[]).filter(m=>String(m.id||'').endsWith(':free')&&String(m.pricing?.prompt)==='0'&&String(m.pricing?.completion)==='0');const prefer=free.find(m=>/qwen|llama|gpt-oss|deepseek/i.test(m.id))||free[0];if(!prefer)throw new Error('No free text model found in public catalogue.');$('aiOpenRouterModel').value=prefer.id;if($('aiCouncilStatus'))$('aiCouncilStatus').textContent='OpenRouter catalogue selected '+prefer.id+'. Confirm availability when running the council.';}catch(e){if($('aiCouncilStatus'))$('aiCouncilStatus').textContent='Could not discover a free OpenRouter model automatically: '+String(e?.message||e)+'. Edit the model ID manually.';}finally{b.disabled=false;b.textContent='Find current free model';}});
 $('runAiCouncil')?.addEventListener('click',runCouncil);
 $('runAiCouncilScenario')?.addEventListener('click',runCouncil);
 $('clearAiKeys')?.addEventListener('click',()=>{['aiGeminiKey','aiGroqKey','aiOpenRouterKey','aiHfKey'].forEach(id=>{if($(id))$(id).value=''});if($('aiCouncilStatus'))$('aiCouncilStatus').textContent='Provider keys cleared from this page.';});
