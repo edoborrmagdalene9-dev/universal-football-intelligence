@@ -6,6 +6,7 @@ on:
     paths:
       - 'app.js'
       - 'ai-council.js'
+      - 'tests/ai-council.test.cjs'
       - 'research/ufi-model-brain.md'
       - 'index.html'
       - 'styles.css'
@@ -35,6 +36,7 @@ jobs:
         run: |
           node --check app.js
           node --check ai-council.js
+          node tests/ai-council.test.cjs
       - name: Check HTML has matching fixture-matching controls
         run: |
           python - <<'PY'
