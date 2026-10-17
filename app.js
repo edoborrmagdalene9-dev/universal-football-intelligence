@@ -323,6 +323,23 @@ async function loadLiveFixtures(){
  finally{if(button){button.disabled=false;button.textContent='Load current & upcoming fixtures'}}
 }
 $('loadLiveFixtures').onclick=loadLiveFixtures;
+$('runFullSlipAudit').onclick=async()=>{
+ const button=$('runFullSlipAudit');
+ if(!S.manualSelections.length){notice('strictAuditOutput','First upload your slip images or paste the extracted selections, click Analyze slip, and correct the teams/markets/odds.','warning');return;}
+ button.disabled=true;button.textContent='Running full pipeline…';
+ try{
+  await loadLiveFixtures();
+  runSlipFixtureMatching();
+  await runStrictSlipAudit();
+  const total=S.manualSelections.length;
+  const latest=S.lastRiskAudit;
+  const cut=latest?.rows?.filter(x=>x.status==='CUT').length||0;
+  const hold=latest?.rows?.filter(x=>x.status==='HOLD — verify').length||0;
+  const survivors=latest?.rows?.filter(x=>x.status==='SURVIVOR CANDIDATE').length||0;
+  notice('strictAuditOutput','Full pipeline finished: '+total+' selections checked; '+cut+' hard-stop CUT; '+hold+' HOLD for missing/uncertain evidence; '+survivors+' survivor candidates. Replacement picks are not auto-filled unless a candidate has an independently supported, fixture-specific estimate and odds. Review the per-leg table below.','');
+ }catch(err){notice('strictAuditOutput','Full audit stopped safely: '+String(err?.message||err)+'. No bets were automatically placed or removed.','error')}
+ finally{button.disabled=false;button.textContent='Run FULL slip audit (all stages)'}
+};
 const NEWS_BASE='https://api.gdeltproject.org/api/v2/doc/doc';
 function riskNewsKeywords(title){
  const s=String(title||'').toLowerCase();
