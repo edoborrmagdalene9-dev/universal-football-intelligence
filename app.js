@@ -336,7 +336,7 @@ $('runFullSlipAudit').onclick=async()=>{
   const cut=latest?.rows?.filter(x=>x.status==='CUT').length||0;
   const hold=latest?.rows?.filter(x=>x.status==='HOLD — verify').length||0;
   const survivors=latest?.rows?.filter(x=>x.status==='SURVIVOR CANDIDATE').length||0;
-  notice('strictAuditOutput','Full pipeline finished: '+total+' selections checked; '+cut+' hard-stop CUT; '+hold+' HOLD for missing/uncertain evidence; '+survivors+' survivor candidates. Replacement picks are not auto-filled unless a candidate has an independently supported, fixture-specific estimate and odds. Review the per-leg table below.','');
+  notice('liveFixtureOutput','Full pipeline finished: '+total+' selections checked; '+cut+' hard-stop CUT; '+hold+' HOLD for missing/uncertain evidence; '+survivors+' survivor candidates. Replacement picks are not auto-filled unless a candidate has an independently supported, fixture-specific estimate and odds. Review the per-leg table in the Strict Slip Auditor below.','');
  }catch(err){notice('strictAuditOutput','Full audit stopped safely: '+String(err?.message||err)+'. No bets were automatically placed or removed.','error')}
  finally{button.disabled=false;button.textContent='Run FULL slip audit (all stages)'}
 };
