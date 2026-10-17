@@ -39,7 +39,7 @@ async function groq(p,prompt){return openAiCompat(p,'https://api.groq.com/openai
 async function openrouter(p,prompt){return openAiCompat(p,'https://openrouter.ai/api/v1/chat/completions',{'HTTP-Referer':location.origin,'X-Title':'Universal Football Intelligence'},prompt)}
 async function huggingface(p,prompt){return openAiCompat(p,'https://router.huggingface.co/v1/chat/completions',{},prompt)}
 function parseModel(text) {
- try { const cleaned=String(text).replace(/^\s*json\s*/i,'').replace(/\s*$/,''); return JSON.parse(cleaned); }
+ try { const cleaned=String(text).trim().replace(/^\u0060\u0060\u0060(?:json)?/i,'').replace(/\u0060\u0060\u0060$/,'').trim(); const start=cleaned.indexOf('{'), end=cleaned.lastIndexOf('}'); if(start<0||end<start) throw new Error('No JSON object found'); return JSON.parse(cleaned.slice(start,end+1)); }
  catch { return {overall_status:'HOLD',summary:'Model returned unstructured text; treat as unparsed advisory only.',traps:[],missing_evidence:['Could not parse required JSON output'],model_limitations:[String(text).slice(0,5000)],replacement_readiness:'NONE QUALIFIED unless independently validated',disagreements:[],questions_to_verify:[]}; }
 }
 function safe(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
