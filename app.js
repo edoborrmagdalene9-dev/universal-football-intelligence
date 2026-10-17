@@ -44,6 +44,47 @@ function clearPlayerForm(){['playerId','playerName','playerTeam','playerPosition
 $('newPlayer').onclick=()=>{clearPlayerForm();go('players');$('playerName').focus()};
 $('clearPlayer').onclick=clearPlayerForm;
 $('savePlayer').onclick=()=>{const name=$('playerName').value.trim();if(!name)return notice('playerStatus','Enter a player name first.','warning');const id=$('playerId').value||crypto.randomUUID(),old=S.players.findIndex(p=>p.id===id);const p={id,name,team:$('playerTeam').value.trim(),position:$('playerPosition').value.trim(),foot:$('playerFoot').value,weakFoot:$('playerWeakFoot').value,styles:$('playerStyles').value.trim(),source:$('playerSource').value.trim(),confidence:$('playerConfidence').value,notes:$('playerNotes').value.trim(),updated:now()};if(old>=0)S.players[old]=p;else S.players.unshift(p);persist();renderPlayers();notice('playerStatus','Saved. Check source and confidence before treating this as a verified fact.','good');addActivity('Saved player evidence profile: '+name);clearPlayerForm()};
+
+function buildPlayerEventProfile(){
+ const match=S.selectedMatch;
+ if(!match||!S.events.length){notice('playerEventProfileStatus','Load a match and its event data in Real match data first. No profile was generated.','warning');return;}
+ const map=new Map();
+ const ensure=(name,team)=>{if(!name)return null;const key=team+'||'+name;if(!map.has(key))map.set(key,{player:name,team,match_id:String(match.match_id),match_date:match.match_date||'',competition_id:match.competition?.competition_id??'',events:0,shots:0,goals:0,source_xg:0,xg_events:0,passes:0,completed_passes:0,carries:0,pressures:0,duels:0,interceptions:0,ball_recoveries:0,clearances:0,blocks:0,assists:0,key_passes:0,substitution_events:0,first_minute:null,last_minute:null,lineup_status:'not loaded',positions:'',evidence_scope:'single loaded match'});return map.get(key)};
+ for(const e of S.events){
+  const p=ensure(eventPlayer(e),eventTeam(e));if(!p)continue;
+  p.events++;const minute=Number(e.minute);if(Number.isFinite(minute)){p.first_minute=p.first_minute===null?minute:Math.min(p.first_minute,minute);p.last_minute=p.last_minute===null?minute:Math.max(p.last_minute,minute)}
+  const type=e.type?.name||'';
+  if(type==='Shot'){p.shots++;if(e.shot?.outcome?.name==='Goal')p.goals++;if(Number.isFinite(e.shot?.statsbomb_xg)){p.source_xg+=e.shot.statsbomb_xg;p.xg_events++}if(e.shot?.key_pass_id)p.key_passes++}
+  if(type==='Pass'){p.passes++;if(!e.pass?.outcome?.name)p.completed_passes++;if(e.pass?.goal_assist)p.assists++;if(e.pass?.shot_assist)p.key_passes++}
+  if(type==='Carry')p.carries++;
+  if(type==='Pressure')p.pressures++;
+  if(type==='Duel')p.duels++;
+  if(type==='Interception')p.interceptions++;
+  if(type==='Ball Recovery')p.ball_recoveries++;
+  if(type==='Clearance')p.clearances++;
+  if(type==='Block')p.blocks++;
+  if(type==='Substitution')p.substitution_events++;
+ }
+ const lineupPlayers=new Map();
+ for(const t of S.lineups||[])for(const p of t.lineup||[]){const key=(t.team_name||'')+'||'+(p.player_name||'');lineupPlayers.set(key,p)}
+ for(const p of map.values()){
+  const lp=lineupPlayers.get(p.team+'||'+p.player);
+  if(lp){p.lineup_status='listed in loaded lineup';p.positions=(lp.positions||[]).map(z=>z.position||'').filter(Boolean).join('; ')}
+ }
+ const rows=[...map.values()].sort((x,y)=>x.team.localeCompare(y.team)||x.player.localeCompare(y.player));
+ S.playerEventProfile={match_id:String(match.match_id),match_date:match.match_date||'',match_name:matchName(match),built_at:now(),rows};
+ $('playerEventProfileTable').innerHTML=rows.length?'<table><thead><tr><th>Player / team</th><th>Lineup</th><th>Events</th><th>Shots</th><th>Goals</th><th>Source xG</th><th>Passes / completed</th><th>Carries</th><th>Pressures</th><th>Duels</th><th>Other actions</th><th>Observed minute range*</th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+esc(p.player)+'<br><span class="muted">'+esc(p.team)+'</span></td><td>'+esc(p.lineup_status)+(p.positions?' · '+esc(p.positions):'')+'</td><td>'+p.events+'</td><td>'+p.shots+'</td><td>'+p.goals+'</td><td>'+(p.xg_events?p.source_xg.toFixed(3)+' ('+p.xg_events+' shots)':'Not supplied')+'</td><td>'+p.passes+' / '+p.completed_passes+'</td><td>'+p.carries+'</td><td>'+p.pressures+'</td><td>'+p.duels+'</td><td>I '+p.interceptions+' · R '+p.ball_recoveries+' · C '+p.clearances+' · B '+p.blocks+'</td><td>'+(p.first_minute===null?'—':p.first_minute+'–'+p.last_minute)+'</td></tr>').join('')+'</tbody></table><p class="muted">*First/last recorded event minutes are not player minutes played. Pass completion here uses absence of a pass outcome as the event-data convention; event coverage varies by competition and season. This is a single-match descriptive profile.</p>':'<p class="muted">No player-attributed events found in the loaded match.</p>';
+ notice('playerEventProfileStatus','Built '+rows.length+' player profiles from '+S.events.length+' loaded events for '+matchName(match)+'. Evidence scope: one match; no footedness or universal style inference.','good');
+ addActivity('Built event-based player evidence for '+matchName(match));
+}
+$('buildPlayerEventProfile').addEventListener('click',buildPlayerEventProfile);
+$('exportPlayerEventProfile').addEventListener('click',()=>{
+ const profile=S.playerEventProfile;
+ if(!profile?.rows?.length)return toast('Build a player event profile first.');
+ const fields=['match_id','match_date','player','team','lineup_status','positions','events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks','assists','key_passes','substitution_events','first_minute','last_minute','evidence_scope'];
+ download('ufi-player-event-profile-'+profile.match_id+'.csv',csv([fields,...profile.rows.map(p=>fields.map(k=>p[k]??''))]),'text/csv');
+});
+
 function renderPlayers(){const q=($('playerSearch')?.value||'').toLowerCase();const ps=S.players.filter(p=>(p.name+' '+p.team+' '+p.position+' '+p.styles).toLowerCase().includes(q));$('playerTable').innerHTML=ps.length?'<table><thead><tr><th>Player</th><th>Club / role</th><th>Foot</th><th>Weak-foot evidence</th><th>Style tags</th><th>Confidence</th><th>Source</th><th></th></tr></thead><tbody>'+ps.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+esc(p.team)+'<br>'+esc(p.position)+'</td><td>'+esc(p.foot)+'</td><td>'+esc(p.weakFoot)+'</td><td>'+esc(p.styles||'Not entered')+'</td><td>'+esc(p.confidence)+'</td><td>'+(p.source?'<a href="'+esc(p.source)+'" target="_blank" rel="noopener">Open source ↗</a>':'Not supplied')+'</td><td><button class="button small" data-edit-player="'+p.id+'">Edit</button> <button class="button danger small" data-delete-player="'+p.id+'">Delete</button></td></tr>').join('')+'</tbody></table>':'<p class="muted">No matching player profiles. Add one, or change your search.</p>'}
 $('playerSearch').addEventListener('input',renderPlayers);
 $('playerTable').addEventListener('click',e=>{const edit=e.target.closest('[data-edit-player]'),del=e.target.closest('[data-delete-player]');if(edit){const p=S.players.find(x=>x.id===edit.dataset.editPlayer);if(!p)return;const map={playerId:'id',playerName:'name',playerTeam:'team',playerPosition:'position',playerFoot:'foot',playerWeakFoot:'weakFoot',playerStyles:'styles',playerSource:'source',playerConfidence:'confidence',playerNotes:'notes'};Object.entries(map).forEach(([el,k])=>$(el).value=p[k]||'');go('players');window.scrollTo({top:0,behavior:'smooth'})}if(del){S.players=S.players.filter(x=>x.id!==del.dataset.deletePlayer);persist();renderPlayers();toast('Player profile deleted.')}});
