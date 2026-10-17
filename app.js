@@ -471,6 +471,37 @@ function renderAllSaved(){renderPlayers();renderSubs();renderContexts();renderNo
 $('exportAll').onclick=()=>{const data={app:'Universal Football Intelligence',version:3,exported_at:now(),players:S.players,subs:S.subs,contexts:S.contexts,notes:S.notes,backtests:S.backtests,slips:S.slips,playerEventMatches:S.playerEventMatches,riskAudits:S.riskAudits,activity:S.activity};download('ufi-workspace-backup.json',JSON.stringify(data,null,2),'application/json');toast('Workspace backup exported.')};
 $('importAll').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text());for(const k of ['players','subs','contexts','notes','backtests','slips','playerEventMatches','riskAudits','activity'])if(Array.isArray(d[k]))S[k]=d[k];persist();renderAllSaved();toast('Workspace imported. Review imported records and sources.');addActivity('Imported workspace backup')}catch(err){toast('Import failed: invalid JSON workspace file.')}finally{e.target.value=''}});
 $('resetWorkspace').onclick=()=>{if(!confirm('This permanently clears saved UFI records from this browser. Export a backup first if needed.'))return;localStorage.removeItem(STORE);for(const k of ['players','subs','contexts','notes','backtests','slips','playerEventMatches','riskAudits','activity'])S[k]=[];renderAllSaved();notice('settingsStatus','Local workspace cleared. Loaded match data in memory may remain until you refresh.','good');toast('Local workspace reset.')};
+
+window.UFI_AI_CONTEXT = () => {
+ const countBy=(items,keyFn)=>(items||[]).reduce((o,x)=>{const k=keyFn(x)||'Unknown';o[k]=(o[k]||0)+1;return o;},{});
+ const match=S.selectedMatch||{};
+ const teamName=t=>typeof t==='string'?t:(t?.home_team_name||t?.away_team_name||t?.name||'');
+ const eventTypes=countBy(S.events,e=>e.type?.name||e.type||e.event_type);
+ const shots=(S.events||[]).filter(e=>(e.type?.name||e.type)==='Shot');
+ const xg=shots.reduce((n,e)=>n+(Number(e.shot?.statsbomb_xg??e.statsbomb_xg)||0),0);
+ return {
+  generatedAt:now(),
+  dataInventory:{competitionsLoaded:(S.competitions||[]).length,matchesLoaded:(S.matches||[]).length,currentUpcomingFixtures:(S.liveFixtures||[]).length,eventsLoaded:(S.events||[]).length,lineupRows:(S.lineups||[]).length,lineupMatchId:S.lineupsMatchId||null,playerProfiles:(S.players||[]).length,playerMatchProfiles:(S.playerEventMatches||[]).length,substitutionNotes:(S.subs||[]).length,teamContextNotes:(S.contexts||[]).length,savedForecasts:(S.backtests||[]).length,researchNotes:(S.notes||[]).length,previousRiskAudits:(S.riskAudits||[]).length},
+  selectedMatch:Object.keys(match).length?{id:match.match_id||match.id||null,date:match.match_date||match.date||null,home:teamName(match.home_team)||match.home_team_name||null,away:teamName(match.away_team)||match.away_team_name||null,competition:match.competition?.competition_name||match.competition_name||null,season:match.season?.season_name||match.season_name||null,score:match.home_score!=null?[match.home_score,match.away_score]:null,eventTypeCounts:eventTypes,shotCount:shots.length,summedSourceXg:Number(xg.toFixed(3)),lineupsLoaded:!!S.lineups.length&&String(S.lineupsMatchId)===String(match.match_id||match.id)}:null,
+  scenario:S.scenario?{home:$('scenarioHomeName')?.value,away:$('scenarioAwayName')?.value,homeLambda:Number($('lambdaHome')?.value),awayLambda:Number($('lambdaAway')?.value),source:'UFI experimental scoreline scenario; not calibrated unless backtest proves it'}:null,
+  currentSelections:(S.manualSelections||[]).map((r,i)=>({row:i,selection:r.label,rawLine:r.rawLine||null,market:r.marketType||null,decimalOdds:Number(r.odd)||null,independentProbability:r.p!=null?Number(r.p):r.estimate!=null?Number(r.estimate):null,confidence:r.confidence||'unknown',fixture:r.fixtureResolution?{status:r.fixtureResolution.status,source:r.fixtureResolution.source,matchId:r.fixtureResolution.matchId,date:r.fixtureResolution.matchDate,home:r.fixtureResolution.homeTeam,away:r.fixtureResolution.awayTeam,reason:r.fixtureResolution.reason}:null,marketEstimate:r.marketEstimate?{status:r.marketEstimate.status,probability:r.marketEstimate.probability,ev:r.marketEstimate.ev,source:r.marketEstimate.modelSource,fixtureId:r.marketEstimate.fixtureId}:null,newsStatus:r.liveNews?.status||null,newsCount:r.liveNews?.articles?.length||0})),
+  latestRiskAudit:S.lastRiskAudit?{date:S.lastRiskAudit.date,pipelineVersion:S.lastRiskAudit.pipelineVersion,cutCount:S.lastRiskAudit.cutCount,holdCount:S.lastRiskAudit.holdCount,survivorCount:S.lastRiskAudit.survivorCount,replacementSearch:S.lastRiskAudit.replacementSearch,workspaceEvidence:S.lastRiskAudit.workspaceEvidence,rows:(S.lastRiskAudit.rows||[]).map(r=>({label:r.label,status:r.status,riskScore:r.riskScore,reasons:r.reasons,warnings:r.warnings,probability:r.probability,probabilitySource:r.probabilitySource,ev:r.ev,evidence:r.evidence,newsStatus:r.newsStatus,articleTitles:(r.articles||[]).slice(0,4).map(a=>({title:a.title,url:a.url,date:a.seenDate}))}))}:null,
+  playerEvidence:(S.players||[]).slice(0,80).map(p=>({name:p.name,team:p.team,position:p.position,preferredFoot:p.foot||p.preferredFoot||'Unknown',weakFoot:p.weakFoot||'Unknown',styles:p.styles||p.playerStyles||'',confidence:p.confidence||'unknown',source:p.source||null})),
+  substitutionEvidence:(S.subs||[]).slice(0,60),
+  teamContext:(S.contexts||[]).slice(0,60),
+  playerMatchProfiles:(S.playerEventMatches||[]).slice(0,80),
+  backtestSummary:{n:(S.backtests||[]).length,methods:[...new Set((S.backtests||[]).map(x=>x.method).filter(Boolean))],latest:(S.backtests||[]).slice(-10).map(x=>({match:x.match,method:x.method,probs:x.probs,result:x.result,date:x.date}))},
+  researchNotes:(S.notes||[]).slice(0,30).map(n=>({title:n.title,type:n.type,source:n.source,body:String(n.body||'').slice(0,500)})),
+  physicsAndModelRules:'Physics layers require measured inputs. Ball drag/Magnus/spin affect flight, not directly match outcome. Pitch control needs tracking coordinates, speeds, acceleration and reaction assumptions; event locations are not full tracking. Fit time-stamped attack/defence rates; compare Poisson/Dixon-Coles and simple baselines; validate on unseen results with log loss, Brier/RPS and calibration. EV requires independent calibrated probability and exact market price, accounting for vig and correlation. Kelly is stake sizing, not prediction. Unknown lineup, injuries, weak foot, tracking, weather, odds or calibration must remain unknown. LLM opinions are evidence triage only.'
+ };
+};
+window.UFI_ATTACH_AI_COUNCIL = result => {
+ if(S.lastRiskAudit) S.lastRiskAudit.aiCouncil=result;
+ S.aiCouncilLast=result;
+ persist();
+ addActivity('AI council review: '+(result?.successfulModels||0)+' models responded; status '+(result?.status||'unknown'));
+};
+
 renderAllSaved();renderManualSelections();
 if(location.protocol==='file:')$('netState').textContent='Local file mode';
 else $('netState').textContent='Ready';
