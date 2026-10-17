@@ -45,3 +45,7 @@ The repository already has a chronological Elo/Poisson backtest, a coordinated P
 5. Add event-level geometry/physics features only when source data supports them.
 6. Experiment with Bayesian or other quantum-inspired probability representations only as challengers to the simpler validated models.
 7. Keep paper-trading results separate from real-world profit claims.
+
+
+## Strict slip audit operational gates
+The browser feature joins OCR confidence, unique fixture resolution and orientation, supported scenario mapping, estimated EV, current news/lineup/injury/form/rest/price attestations, a source URL, written caveats, lineup evidence and the local settled-forecast count. Current context is user-attested: the static app does not automatically verify news or lineups. It must not create three fresh alternatives without a separate verified fixture, odds and model estimate for each.
