@@ -34,3 +34,8 @@ This is deliberately a **single-match event summary**, not a player ability scor
 ## Multi-match player evidence dataset
 
 The browser app can save the current single-match event profile into a local player-match evidence dataset. Repeat for additional matches; rows are deduplicated by match ID, team and player. The aggregate table sums observed event counts across saved matches and shows match count and date window. It does **not** calculate per-90 rates because reliable player minutes are not established by first/last event timestamps. It does not yet feed forecasts. Export the CSV or workspace backup to move the data to another device; local browser storage does not sync automatically. Identity changes, transfers, competition coverage and source omissions must be reviewed before comparing players.
+
+
+## Approximate appearance and minutes evidence (new)
+
+When a loaded StatsBomb lineup explicitly labels a player as part of the Starting XI, the app records a starter status. When a substitution event names a replacement, the app records an estimated exposure window from the substitution minute to the last recorded event minute; a starter's window ends at their recorded substitution minute or the last event minute. These are **rough clock-minute estimates**, not official minutes played: stoppage time, period-clock details, red cards, missing lineups and source-specific event coverage can introduce errors. The app labels the method and confidence, includes the fields in CSV export, and must not use these values for per-90 rates or forecasts until validated against an authoritative minutes source. A lineup-listed player without an evidenced start or substitution is not assumed to have appeared.
