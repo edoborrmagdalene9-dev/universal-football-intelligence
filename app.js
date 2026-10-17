@@ -327,6 +327,15 @@ function scoreSlipLeg(row,news){
  }
  const market=String(row.marketType||classifySlipMarket(row.rawLine||row.label||''));
  if(/Player market|Cards|Corners|Half-time|Handicap|Unclassified/.test(market))warn(15,'High-variance or unsupported-by-current-model market type: '+market);
+ if(f.status==='candidate-found'){
+  const teams=[f.homeTeam,f.awayTeam].filter(Boolean).map(normalizeTeamName);
+  const playerEvidence=(S.playerEventMatches||[]).some(p=>teams.includes(normalizeTeamName(p.team)))||(S.players||[]).some(p=>teams.includes(normalizeTeamName(p.team))&&p.source&&p.confidence);
+  if(!playerEvidence)warn(8,'No saved player-event / sourced player-intelligence evidence for these teams');
+  if(!S.lineups?.length||String(S.lineupsMatchId)!==String(f.matchId))warn(12,'No lineup file loaded for this exact fixture; availability and rotation remain unverified');
+  const teamContext=(S.contexts||[]).some(c=>teams.includes(normalizeTeamName(c.team||c.teamName||'')));
+  if(!teamContext)warn(5,'No saved team-context note found for this fixture');
+ }
+ if((S.backtests||[]).length<30)warn(10,'Limited saved settled-forecast history; predictive calibration is not established');
  if(news?.status==='unavailable')cut(18,'Live-news service unavailable; current availability risk remains unknown');
  else if(news?.status==='blocked')cut(20,'No fixture-specific live-news search possible');
  else if(news?.status==='live-results'){
@@ -362,7 +371,7 @@ async function runStrictSlipAudit(){
   const replacements=survivors.filter(r=>r.source==='replacement');
   const original=survivors.find(r=>r.source!=='replacement');
   const picks=[{label:'Game 1 — highest-probability surviving original',row:original||null},{label:'Game 2 — replacement A (surviving candidate)',row:replacements[0]||null},{label:'Game 3 — replacement B (next surviving candidate)',row:replacements[1]||null}];
-  S.lastRiskAudit={date:now(),newsProvider:'GDELT DOC 2.0 public article search',newsWindow:'last 7 days',rows:rows.map(r=>({label:r.label,odds:r.odd,fixture:r.audit.fixture,newsStatus:r.audit.newsStatus,articles:r.audit.news?.articles||[],riskScore:r.audit.riskScore,status:r.audit.status,reasons:r.audit.reasons,warnings:r.audit.warnings,probability:r.audit.probability,ev:r.audit.ev})),cutCount:cut.length,holdCount:hold.length,survivorCount:survivors.length,shortlist:picks.map(p=>({slot:p.label,selection:p.row?.label||null,probability:p.row?.audit.probability??null,odds:p.row?.odd??null,ev:p.row?.audit.ev??null}))};
+  S.lastRiskAudit={date:now(),newsProvider:'GDELT DOC 2.0 public article search',newsWindow:'last 7 days',workspaceEvidence:{playerRecords:S.players.length,playerMatchProfiles:S.playerEventMatches.length,substitutionNotes:S.subs.length,teamContextNotes:S.contexts.length,savedSettledForecasts:S.backtests.length,loadedLineupMatchId:S.lineupsMatchId||null},rows:rows.map(r=>({label:r.label,odds:r.odd,fixture:r.audit.fixture,newsStatus:r.audit.newsStatus,articles:r.audit.news?.articles||[],riskScore:r.audit.riskScore,status:r.audit.status,reasons:r.audit.reasons,warnings:r.audit.warnings,probability:r.audit.probability,ev:r.audit.ev})),cutCount:cut.length,holdCount:hold.length,survivorCount:survivors.length,shortlist:picks.map(p=>({slot:p.label,selection:p.row?.label||null,probability:p.row?.audit.probability??null,odds:p.row?.odd??null,ev:p.row?.audit.ev??null}))};
   S.riskAudits.unshift(S.lastRiskAudit);S.riskAudits=S.riskAudits.slice(0,100);persist();
   const listNews=r=>r.audit.news?.articles?.length?'<ul>'+r.audit.news.articles.slice(0,4).map(a=>'<li><a target="_blank" rel="noopener noreferrer" href="'+esc(a.url)+'">'+esc(a.title)+'</a> <small>'+esc(a.domain)+' · '+esc(a.seenDate||'date unavailable')+'</small>'+(a.terms.length?' <b>Signals: '+esc(a.terms.join(', '))+'</b>':'')+'</li>').join('')+'</ul>':'<small>'+esc(r.audit.news?.message||'No news status')+'</small>';
   const table=rows.length?'<div class="table-wrap"><table><thead><tr><th>Selection</th><th>Risk / 100</th><th>Decision</th><th>Model P / EV</th><th>Reasons & live source headlines</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.label)+'<br><small>'+esc(r.audit.fixture.homeTeam&&r.audit.fixture.awayTeam?r.audit.fixture.homeTeam+' vs '+r.audit.fixture.awayTeam:'Unmatched fixture')+'</small></td><td>'+r.audit.riskScore+'</td><td><b>'+esc(r.audit.status)+'</b></td><td>'+(r.audit.probability==null?'—':pct(r.audit.probability))+'<br>'+(r.audit.ev==null?'EV —':(r.audit.ev*100).toFixed(1)+'% EV')+'</td><td>'+(r.audit.reasons.length?'<b>Cut reasons</b><ul>'+r.audit.reasons.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+(r.audit.warnings.length?'<b>Warnings</b><ul>'+r.audit.warnings.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+listNews(r)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No selections to audit.</p>';
