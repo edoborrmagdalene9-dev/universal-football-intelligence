@@ -354,19 +354,19 @@ async function fetchLiveFixtureNews(fixture){
 }
 function scoreSlipLeg(row,news){
  const f=row.fixtureResolution||{},e=row.marketEstimate||null,reasons=[],warnings=[];
- let risk=0;
- const cut=(n,reason)=>{risk+=n;reasons.push(reason)};
+ let risk=0,hardStop=false;
+ const cut=(n,reason)=>{risk+=n;reasons.push(reason);hardStop=true};
  const warn=(n,reason)=>{risk+=n;warnings.push(reason)};
  if(!(Number(row.odd)>1))cut(100,'Odds missing or invalid');
- if(row.confidence&&row.confidence!=='high')cut(22,'OCR confidence is not high; selection/price may be misread');
- if(f.status!=='candidate-found')cut(100,'Fixture is not uniquely matched to a loaded fixture');
- if(f.orientation==='verify-orientation')cut(100,'Home/away orientation needs verification');
- if(!e||e.status!=='estimated')cut(100,'No supported model probability for this exact market');
+ if(row.confidence&&row.confidence!=='high')warn(22,'OCR confidence is not high; manually verify the selection and price');
+ if(f.status!=='candidate-found')warn(35,'Fixture is not uniquely matched; cannot verify current fixture or kickoff');
+ if(f.orientation==='verify-orientation')warn(35,'Home/away orientation needs manual verification');
+ if(!e||e.status!=='estimated')warn(35,'No supported probability for this exact market. This is not proof the match is bad; hold it until a valid estimate exists.');
  if(e?.status==='estimated'){
   if(!Number.isFinite(e.probability)||e.probability<0||e.probability>1)cut(100,'Model probability is invalid');
-  else if(e.probability<0.55)cut(28,'Estimated hit probability below strict 55% floor');
+  else if(e.probability<0.55)warn(28,'Experimental estimate is below the strict 55% threshold; reject unless independently validated');
   else if(e.probability<0.65)warn(10,'Estimated hit probability is below 65%');
-  if(!Number.isFinite(e.ev)||e.ev<=0)cut(35,'Estimated expected value is not positive versus entered odds');
+  if(!Number.isFinite(e.ev)||e.ev<=0)warn(25,'Estimated expected value is not positive; price may be poor and the model is not calibrated');
   else if(e.ev<0.03)warn(8,'Estimated edge is under 3 percentage points and fragile');
  }
  const market=String(row.marketType||classifySlipMarket(row.rawLine||row.label||''));
@@ -380,20 +380,20 @@ function scoreSlipLeg(row,news){
   const teamContext=(S.contexts||[]).some(c=>teams.includes(normalizeTeamName(c.team||c.teamName||'')));
   if(!teamContext)warn(5,'No saved team-context note found for this fixture');
  }
- if((S.backtests||[]).length<30)warn(10,'Limited saved settled-forecast history; predictive calibration is not established');
- if(news?.status==='unavailable')cut(18,'Live-news service unavailable; current availability risk remains unknown');
- else if(news?.status==='blocked')cut(20,'No fixture-specific live-news search possible');
+ if((S.backtests||[]).length<30)warn(10,'Fewer than 30 saved settled forecasts; predictive calibration is not established');
+ if(news?.status==='unavailable')warn(18,'Live-news service unavailable; current availability risk remains unknown');
+ else if(news?.status==='blocked')warn(20,'No fixture-specific live-news search possible');
  else if(news?.status==='live-results'){
   if(!news.articles.length)warn(12,'No matching reports found; absence of news is not clearance');
-  if(news.riskTerms.includes('injury / fitness'))cut(25,'Recent headlines mention injury/fitness concerns; verify the original report');
-  if(news.riskTerms.includes('availability / suspension'))cut(28,'Recent headlines mention availability/suspension concerns');
-  if(news.riskTerms.includes('rotation / rest'))cut(18,'Recent headlines mention rotation/rest risk');
+  if(news.riskTerms.includes('injury / fitness'))warn(25,'Headlines contain injury/fitness keywords. Verify named player, team, date and original report before treating this as a real risk.');
+  if(news.riskTerms.includes('availability / suspension'))warn(28,'Headlines contain availability/suspension keywords; source text has not been verified.');
+  if(news.riskTerms.includes('rotation / rest'))warn(18,'Headlines contain rotation/rest keywords; verify this exact fixture.');
   if(news.riskTerms.includes('late lineup / uncertainty'))warn(12,'Recent headlines mention lineup/selection uncertainty');
   if(news.riskTerms.includes('fixture congestion / fatigue'))warn(8,'Recent headlines mention congestion/fatigue');
   if(news.riskTerms.includes('motivation / context'))warn(5,'Recent headlines mention a context/motivation factor');
  }
- const status=reasons.length?'CUT':risk>=25?'CUT':risk>=12?'HOLD — verify':'SURVIVOR CANDIDATE';
- return {riskScore:Math.min(100,risk),status,reasons,warnings,probability:e?.status==='estimated'?e.probability:null,ev:e?.status==='estimated'?e.ev:null,newsStatus:news?.status||'not checked'};
+ const status=hardStop?'CUT':risk>=12?'HOLD — verify':'SURVIVOR CANDIDATE';
+ return {riskScore:Math.min(100,risk),status,hardStop,reasons,warnings,probability:e?.status==='estimated'?e.probability:null,ev:e?.status==='estimated'?e.ev:null,newsStatus:news?.status||'not checked'};
 }
 async function runStrictSlipAudit(){
  const button=$('runStrictAudit');button.disabled=true;button.textContent='Fetching live news & auditing…';
