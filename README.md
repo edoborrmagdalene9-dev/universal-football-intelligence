@@ -104,3 +104,12 @@ The Strict Slip Auditor now queries the public GDELT DOC 2.0 article-search API 
 The slip audit now attaches a 400-signal registry to every selection across 20 domains: slip integrity, probability mathematics, value/pricing, goal markets, BTTS, corners, shots/player props, cards/fouls, team form, squad availability, biomechanics, tactics/styles, schedule/motivation, venue/environment, goalkeeper/defence, live/market mechanics, accumulator exposure, provenance, model validation, and decision/reporting.
 
 **Important distinction:** these are 400 named audit signals/checks, not 400 trained prediction models or 400 live data feeds. Signals are explicitly marked `ASSESSED`, `NEEDS_DATA`, or `FAIL`. The current release only assesses a subset from fields already available in UFI; many signals correctly remain `NEEDS_DATA` until verified sources, player/lineup data, market odds, and validated datasets are connected. The registry must never be interpreted as a 400-factor prediction with 400 facts independently verified. A `SURVIVOR CANDIDATE` is not a guarantee, and a missing signal alone does not prove a selection is a trap.
+
+
+## Live SportyBet feed connector (experimental)
+
+UFI now attempts to read upcoming Nigerian-region football fixtures and market/outcome prices from SportyBet's undocumented public web endpoint before falling back to ESPN's public scoreboard feeds. SportyBet's endpoint is not an official supported developer API and can change or be blocked by browser CORS/network policy. If the request fails, UFI labels the failure and uses ESPN only for fixture discovery; it must not imply those fallback fixtures carry SportyBet prices.
+
+Fetched source prices are timestamped and retained with matched fixture candidates. A source price is **not** considered an exact slip-market verification until UFI maps the selection's precise market, line, outcome, fixture and odds to the source record. Current fixture discovery alone does not provide verified lineups/injuries or a calibrated prediction. Replacement picks remain unqualified until market matching, per-fixture prediction validation, and data coverage are demonstrated.
+
+The browser app cannot securely store a private API key or run a reliable CORS proxy by itself. Do not commit credentials to this public repository. For stronger production data access, run a private backend/proxy with source caching, request throttling, audit timestamps and explicit provider terms review.
