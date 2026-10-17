@@ -3,7 +3,7 @@
 const BASE='https://raw.githubusercontent.com/statsbomb/open-data/master/data/';
 const $=id=>document.getElementById(id);
 const STORE='ufi_workspace_v2';
-const S={competitions:[],matches:[],events:[],lineups:[],selectedMatch:null,scenario:null,manualSelections:[],activity:[],players:[],subs:[],contexts:[],notes:[],backtests:[],slips:[],lastSlip:null};
+const S={competitions:[],matches:[],events:[],lineups:[],selectedMatch:null,scenario:null,manualSelections:[],activity:[],players:[],subs:[],contexts:[],notes:[],backtests:[],slips:[],playerEventMatches:[],lastSlip:null};
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const now=()=>new Date().toISOString();
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2800)}
@@ -12,8 +12,8 @@ function go(view){document.querySelectorAll('.view').forEach(v=>v.classList.togg
 document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>go(b.dataset.view)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>go(b.dataset.go)));
 function addActivity(msg){S.activity.unshift({msg,date:now()});S.activity=S.activity.slice(0,12);renderActivity()}
-function persist(){const data={players:S.players,subs:S.subs,contexts:S.contexts,notes:S.notes,backtests:S.backtests,slips:S.slips,activity:S.activity};try{localStorage.setItem(STORE,JSON.stringify(data));return true}catch(e){toast('Browser storage is full; export workspace and remove old records.');return false}}
-function restore(){try{const d=JSON.parse(localStorage.getItem(STORE)||'{}');for(const k of ['players','subs','contexts','notes','backtests','slips','activity'])if(Array.isArray(d[k]))S[k]=d[k]}catch(e){console.warn('Workspace restore failed',e)}renderAllSaved()}
+function persist(){const data={players:S.players,subs:S.subs,contexts:S.contexts,notes:S.notes,backtests:S.backtests,slips:S.slips,playerEventMatches:S.playerEventMatches,activity:S.activity};try{localStorage.setItem(STORE,JSON.stringify(data));return true}catch(e){toast('Browser storage is full; export workspace and remove old records.');return false}}
+function restore(){try{const d=JSON.parse(localStorage.getItem(STORE)||'{}');for(const k of ['players','subs','contexts','notes','backtests','slips','playerEventMatches','activity'])if(Array.isArray(d[k]))S[k]=d[k]}catch(e){console.warn('Workspace restore failed',e)}renderAllSaved()}
 function fmtDate(x){if(!x)return 'date unknown';const d=new Date(x);return Number.isNaN(+d)?String(x):d.toLocaleDateString()}
 async function json(url){const r=await fetch(url);if(!r.ok)throw Error('HTTP '+r.status+' '+url.split('/').slice(-2).join('/'));return r.json()}
 function pct(n){return (100*n).toFixed(2)+'%'}
@@ -76,8 +76,31 @@ function buildPlayerEventProfile(){
  $('playerEventProfileTable').innerHTML=rows.length?'<table><thead><tr><th>Player / team</th><th>Lineup</th><th>Events</th><th>Shots</th><th>Goals</th><th>Source xG</th><th>Passes / completed</th><th>Carries</th><th>Pressures</th><th>Duels</th><th>Other actions</th><th>Observed minute range*</th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+esc(p.player)+'<br><span class="muted">'+esc(p.team)+'</span></td><td>'+esc(p.lineup_status)+(p.positions?' · '+esc(p.positions):'')+'</td><td>'+p.events+'</td><td>'+p.shots+'</td><td>'+p.goals+'</td><td>'+(p.xg_events?p.source_xg.toFixed(3)+' ('+p.xg_events+' shots)':'Not supplied')+'</td><td>'+p.passes+' / '+p.completed_passes+'</td><td>'+p.carries+'</td><td>'+p.pressures+'</td><td>'+p.duels+'</td><td>I '+p.interceptions+' · R '+p.ball_recoveries+' · C '+p.clearances+' · B '+p.blocks+'</td><td>'+(p.first_minute===null?'—':p.first_minute+'–'+p.last_minute)+'</td></tr>').join('')+'</tbody></table><p class="muted">*First/last recorded event minutes are not player minutes played. Pass completion here uses absence of a pass outcome as the event-data convention; event coverage varies by competition and season. This is a single-match descriptive profile.</p>':'<p class="muted">No player-attributed events found in the loaded match.</p>';
  notice('playerEventProfileStatus','Built '+rows.length+' player profiles from '+S.events.length+' loaded events for '+matchName(match)+'. Evidence scope: one match; no footedness or universal style inference.','good');
  addActivity('Built event-based player evidence for '+matchName(match));
+ renderPlayerEventAggregate();
 }
 $('buildPlayerEventProfile').addEventListener('click',buildPlayerEventProfile);
+
+function savePlayerEventMatch(){
+ if(!S.playerEventProfile?.rows?.length){buildPlayerEventProfile();if(!S.playerEventProfile?.rows?.length)return;}
+ const profile=S.playerEventProfile, matchId=String(profile.match_id);
+ const existing=new Set(S.playerEventMatches.filter(r=>String(r.match_id)===matchId).map(r=>r.team+'||'+r.player));
+ const fresh=profile.rows.filter(r=>!existing.has(r.team+'||'+r.player)).map(r=>({...r,source_name:'StatsBomb Open Data',source_url:'https://github.com/statsbomb/open-data',saved_at:now()}));
+ if(!fresh.length){notice('playerEventAggregateStatus','This match and its player rows are already saved. No duplicate rows added.','warning');return;}
+ S.playerEventMatches.push(...fresh);persist();renderPlayerEventAggregate();
+ notice('playerEventAggregateStatus','Saved '+fresh.length+' player rows from '+profile.match_name+'. Load another match and repeat; same match/player/team rows are deduplicated.','good');
+ addActivity('Saved '+fresh.length+' player-match evidence rows from '+profile.match_name);toast('Match profiles added to evidence dataset.');
+}
+function renderPlayerEventAggregate(){
+ const rows=S.playerEventMatches||[], map=new Map();
+ for(const r of rows){const key=(r.team||'')+'||'+(r.player||'');if(!map.has(key))map.set(key,{player:r.player,team:r.team,matches:new Set(),events:0,shots:0,goals:0,source_xg:0,xg_events:0,passes:0,completed_passes:0,carries:0,pressures:0,duels:0,interceptions:0,ball_recoveries:0,clearances:0,blocks:0,first_date:'',last_date:'',match_ids:new Set()});
+ const x=map.get(key);x.matches.add(String(r.match_id));x.match_ids.add(String(r.match_id));for(const k of ['events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks'])x[k]+=(Number(r[k])||0);
+ const date=String(r.match_date||'');if(date&&(!x.first_date||date<x.first_date))x.first_date=date;if(date&&(!x.last_date||date>x.last_date))x.last_date=date;
+ }
+ const agg=[...map.values()].sort((x,y)=>y.matches.size-x.matches.size||x.player.localeCompare(y.player));
+ $('playerEventAggregateTable').innerHTML=agg.length?'<table><thead><tr><th>Player / team</th><th>Matches</th><th>Events</th><th>Shots</th><th>Goals</th><th>Source xG</th><th>Passes / complete</th><th>Carries</th><th>Pressures</th><th>Duels</th><th>Defensive actions</th><th>Date window</th></tr></thead><tbody>'+agg.map(x=>'<tr><td>'+esc(x.player)+'<br><span class="muted">'+esc(x.team)+'</span></td><td>'+x.matches.size+'</td><td>'+x.events+'</td><td>'+x.shots+'</td><td>'+x.goals+'</td><td>'+(x.xg_events?x.source_xg.toFixed(3)+' ('+x.xg_events+' shots)':'Not supplied')+'</td><td>'+x.passes+' / '+x.completed_passes+'</td><td>'+x.carries+'</td><td>'+x.pressures+'</td><td>'+x.duels+'</td><td>I '+x.interceptions+' · R '+x.ball_recoveries+' · C '+x.clearances+' · B '+x.blocks+'</td><td>'+esc(x.first_date||'unknown')+' – '+esc(x.last_date||'unknown')+'</td></tr>').join('')+'</tbody></table><p class="muted">'+rows.length+' saved player-match rows · '+agg.length+' player/team aggregates. Counts are totals, not per-90 rates; appearances/minutes and team changes are not inferred.</p>':'<p class="muted">No saved match profiles yet. Load a StatsBomb match, build its player profile, then save it here. Repeat across matches to grow the evidence dataset.</p>';
+}
+$('savePlayerEventMatch').addEventListener('click',savePlayerEventMatch);
+$('exportPlayerEventMatches').addEventListener('click',()=>{if(!S.playerEventMatches.length)return toast('Save at least one match profile first.');const fields=['match_id','match_date','player','team','lineup_status','positions','events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks','assists','key_passes','substitution_events','first_minute','last_minute','evidence_scope','source_name','source_url','saved_at'];download('ufi-multi-match-player-evidence.csv',csv([fields,...S.playerEventMatches.map(p=>fields.map(k=>p[k]??''))]),'text/csv')});
 $('exportPlayerEventProfile').addEventListener('click',()=>{
  const profile=S.playerEventProfile;
  if(!profile?.rows?.length)return toast('Build a player event profile first.');
@@ -231,10 +254,10 @@ function renderNotes(){const q=($('noteSearch').value||'').toLowerCase(),ns=S.no
 $('noteSearch').addEventListener('input',renderNotes);
 $('notesList').addEventListener('click',e=>{const b=e.target.closest('[data-delete-note]');if(!b)return;S.notes=S.notes.filter(n=>n.id!==b.dataset.deleteNote);persist();renderNotes()});
 function renderActivity(){$('activityFeed').innerHTML=S.activity.length?S.activity.slice(0,8).map(a=>'<div class="activity-item">'+esc(a.msg)+'<small>'+new Date(a.date).toLocaleString()+'</small></div>').join(''):'<p class="muted">No activity yet.</p>'}
-function renderAllSaved(){renderPlayers();renderSubs();renderContexts();renderNotes();renderBacktests();renderActivity();$('metricPlayers').textContent=S.players.length;$('metricForecasts').textContent=S.backtests.length;$('metricNotes').textContent=S.notes.length}
-$('exportAll').onclick=()=>{const data={app:'Universal Football Intelligence',version:2,exported_at:now(),players:S.players,subs:S.subs,contexts:S.contexts,notes:S.notes,backtests:S.backtests,slips:S.slips,activity:S.activity};download('ufi-workspace-backup.json',JSON.stringify(data,null,2),'application/json');toast('Workspace backup exported.')};
+function renderAllSaved(){renderPlayers();renderSubs();renderContexts();renderNotes();renderBacktests();renderPlayerEventAggregate();renderActivity();$('metricPlayers').textContent=S.players.length;$('metricForecasts').textContent=S.backtests.length;$('metricNotes').textContent=S.notes.length}
+$('exportAll').onclick=()=>{const data={app:'Universal Football Intelligence',version:3,exported_at:now(),players:S.players,subs:S.subs,contexts:S.contexts,notes:S.notes,backtests:S.backtests,slips:S.slips,playerEventMatches:S.playerEventMatches,activity:S.activity};download('ufi-workspace-backup.json',JSON.stringify(data,null,2),'application/json');toast('Workspace backup exported.')};
 $('importAll').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const d=JSON.parse(await f.text());for(const k of ['players','subs','contexts','notes','backtests','slips','activity'])if(Array.isArray(d[k]))S[k]=d[k];persist();renderAllSaved();toast('Workspace imported. Review imported records and sources.');addActivity('Imported workspace backup')}catch(err){toast('Import failed: invalid JSON workspace file.')}finally{e.target.value=''}});
-$('resetWorkspace').onclick=()=>{if(!confirm('This permanently clears saved UFI records from this browser. Export a backup first if needed.'))return;localStorage.removeItem(STORE);for(const k of ['players','subs','contexts','notes','backtests','slips','activity'])S[k]=[];renderAllSaved();notice('settingsStatus','Local workspace cleared. Loaded match data in memory may remain until you refresh.','good');toast('Local workspace reset.')};
+$('resetWorkspace').onclick=()=>{if(!confirm('This permanently clears saved UFI records from this browser. Export a backup first if needed.'))return;localStorage.removeItem(STORE);for(const k of ['players','subs','contexts','notes','backtests','slips','playerEventMatches','activity'])S[k]=[];renderAllSaved();notice('settingsStatus','Local workspace cleared. Loaded match data in memory may remain until you refresh.','good');toast('Local workspace reset.')};
 renderAllSaved();renderManualSelections();
 if(location.protocol==='file:')$('netState').textContent='Local file mode';
 else $('netState').textContent='Ready';
