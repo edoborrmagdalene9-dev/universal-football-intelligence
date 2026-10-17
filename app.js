@@ -93,16 +93,16 @@ function estimateSlipMarket(row,scenario){
  const fixture=row.fixtureResolution;
  if(!fixture||fixture.status!=='candidate-found')return {status:'blocked',reason:'Resolve a unique fixture candidate first.'};
  const same=(x,y)=>normalizeTeamName(x)===normalizeTeamName(y);
- if(!((same(fixture.homeTeam,scenario.home)&&same(fixture.awayTeam,scenario.away))||(same(fixture.homeTeam,scenario.away)&&same(fixture.awayTeam,scenario.home))))return {status:'blocked',reason:'Current scenario teams do not match this candidate fixture. Set the scenario teams and rerun it.'};
+ if(!(same(fixture.homeTeam,scenario.home)&&same(fixture.awayTeam,scenario.away)))return {status:'blocked',reason:'Scenario home/away teams must match the candidate fixture in the same orientation. Set the scenario teams exactly as listed and rerun it.'};
  const odds=Number(row.odd);
  if(!Number.isFinite(odds)||odds<=1)return {status:'blocked',reason:'Valid decimal odds are required before comparing prices.'};
  const m=text.match(/\b(over|under)\s*(1\.5|2\.5|3\.5)\b/);
  let p=null,market='';
  if(/\bbtts\b|both teams to score|both teams score/.test(text)){p=scenario.btts;market='Both teams to score — YES';}
  else if(m){const line=Number(m[2]),over=scenario.grid.reduce((sum,g)=>sum+((g.h+g.a>line)?g.p:0),0)/scenario.mass;p=m[1]==='over'?over:1-over;market=(m[1]==='over'?'Over ':'Under ')+line+' goals';}
- else if(/\b(home win|home to win|\b1\b|\b1x2\b)/.test(text)){p=scenario.homeWin;market='Home win';}
+ else if(/\b(home win|home to win|home team to win|match result home|\b1x2\b)/.test(text)||new RegExp('\\\\b'+scenario.home.toLowerCase().replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\else if(/\b(home win|home to win|\b1\b|\b1x2\b)/.test(text)){p=scenario.homeWin;market='Home win';}')+'\\\\s+(?:to\\\\s+)?win\\\\b').test(text)){p=scenario.homeWin;market='Home win';}
  else if(/\b(draw|tie)\b/.test(text)){p=scenario.draw;market='Draw';}
- else if(/\b(away win|away to win|\b2\b)/.test(text)){p=scenario.awayWin;market='Away win';}
+ else if(/\b(away win|away to win|away team to win|match result away)\b/.test(text)||new RegExp('\\\\b'+scenario.away.toLowerCase().replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\else if(/\b(away win|away to win|\b2\b)/.test(text)){p=scenario.awayWin;market='Away win';}')+'\\\\s+(?:to\\\\s+)?win\\\\b').test(text)){p=scenario.awayWin;market='Away win';}
  else if(/\b(1x)\b|home or draw/.test(text)){p=scenario.homeWin+scenario.draw;market='Home or draw';}
  else if(/\b(x2)\b|draw or away/.test(text)){p=scenario.draw+scenario.awayWin;market='Draw or away';}
  else if(/\b(12)\b|home or away|no draw/.test(text)){p=scenario.homeWin+scenario.awayWin;market='Home or away';}
