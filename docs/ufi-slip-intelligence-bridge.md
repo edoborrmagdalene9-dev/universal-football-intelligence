@@ -60,3 +60,7 @@ This is not a recommendation engine: the current scenario is a simplified baseli
 
 ## Strict Slip Auditor
 The consolidated gate checks OCR confidence, fixture resolution, supported market estimate, positive estimated EV, six current-context checks, source URL, written caveats, loaded lineup evidence and at least 30 locally saved settled forecasts. These are conservative operational gates, not validated universal thresholds. Current-news checks are user-attested; search links do not mean UFI fetched the page. Mark replacement candidates by row number and model them individually. Unqualified slots remain empty.
+
+
+## Live-news and automatic cut feature
+The Strict Slip Auditor now queries GDELT DOC 2.0 for recent articles for each uniquely matched fixture, displays source links and timestamps, flags injury/availability/rotation/lineup/congestion language, scores each selection, and separates CUT, HOLD and survivor candidates. The user can explicitly remove all CUT rows from the current slip. A failed feed or unresolved fixture is treated as unknown/high risk, not as clearance. Headline matching is heuristic and cannot verify reports; official club/league announcements and exact market settlement still require checking.
