@@ -49,3 +49,10 @@ The app can now compare explicit “Team A vs Team B” text against the current
 4. Review every candidate and export the updated review CSV.
 
 A candidate is not an authoritative match. Verify competition, date, kickoff, team identity and bookmaker market/settlement rules manually. Single-team selections such as “Arsenal win” are intentionally not assigned an opponent. The current browser matcher does not guess unmentioned fixtures, use fuzzy nearest-name matches, or connect a market to model probabilities yet. This is a conservative first fixture-resolution layer.
+
+
+## Scenario-to-market bridge build
+
+A new optional **Compare supported markets with current scenario** action compares clearly recognized slip selections against the currently calculated independent-Poisson score grid. It requires a unique fixture candidate and exact agreement between the candidate teams and scenario teams, plus decimal odds. Supported examples are BTTS yes, over/under 1.5/2.5/3.5 goals, explicit home/draw/away result, and common double-chance wording. Unsupported or ambiguous selections remain unestimated rather than being guessed. It displays model probability, raw odds-implied probability, and estimated expected value (p \times odds - 1) for research review.
+
+This is not a recommendation engine: the current scenario is a simplified baseline, not necessarily calibrated for the fixture. The exact market/settlement rule and candidate fixture still require human verification. EV estimates must not be treated as a proven edge without chronological out-of-sample validation, uncertainty checks, and correlation-aware analysis.
