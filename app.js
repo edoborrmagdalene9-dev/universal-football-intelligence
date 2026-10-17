@@ -279,44 +279,108 @@ $('manualSelectionTable').addEventListener('click',e=>{const b=e.target.closest(
 $('matchSlipFixtures').onclick=runSlipFixtureMatching;
 $('bridgeSlipMarkets').onclick=runSlipMarketBridge;
 
-function runStrictSlipAudit(){
- const checks=[['news','Latest team/news checked'],['lineups','Lineups/rotation checked'],['injuries','Injuries/suspensions checked'],['form','Recent form and home/away checked'],['rest','Rest/congestion/motivation checked'],['price','Current odds and settlement rules checked']];
- const missing=checks.filter(([id])=>!$('audit-'+id).checked).map(x=>x[1]);
- const source=$('auditSource').value.trim(),notes=$('auditNotes').value.trim();
- const rows=S.manualSelections.map((r,index)=>{
-  const f=r.fixtureResolution||{},e=r.marketEstimate||(S.scenario?estimateSlipMarket(r,S.scenario):{status:'blocked',reason:'No scenario calculated'});
-  const reasons=[];
-  if(!(Number(r.odd)>1))reasons.push('Odds missing/invalid');
-  if(r.confidence&&r.confidence!=='high')reasons.push('OCR confidence below high');
-  if(f.status!=='candidate-found')reasons.push('Fixture not uniquely matched');
-  if(f.orientation==='verify-orientation')reasons.push('Home/away order needs review');
-  if(e.status!=='estimated')reasons.push('No supported model estimate');
-  if(e.status==='estimated'&&(!Number.isFinite(e.ev)||e.ev<=0))reasons.push('Estimated EV is not positive');
-  if(missing.length)reasons.push('Unchecked current context: '+missing.join(', '));
-  if(!source)reasons.push('Current source URL missing');
-  if(!notes)reasons.push('Evidence notes/caveats missing');
-  if(S.backtests.length<30)reasons.push('Fewer than 30 saved settled forecasts');
-  if(!S.lineups.length||String(S.lineupsMatchId)!==String(f.matchId))reasons.push('No lineup file loaded for this exact fixture; player availability unverified');
-  const teamNames=[f.homeTeam,f.awayTeam].filter(Boolean).map(normalizeTeamName);
-  const playerEvidence=(S.playerEventMatches||[]).some(p=>teamNames.includes(normalizeTeamName(p.team)))||(S.players||[]).some(p=>teamNames.includes(normalizeTeamName(p.team))&&p.source&&p.confidence);
-  if(f.status==='candidate-found'&&!playerEvidence)reasons.push('No saved player/event evidence for either team');
-  const prob=e.status==='estimated'?e.probability:(Number.isFinite(Number(r.estimate))?Number(r.estimate):null);
-  const query=encodeURIComponent('"'+(f.homeTeam||'')+'" "'+(f.awayTeam||'')+'" football injury lineup news');
-  const news=f.status==='candidate-found'?'<a target="_blank" rel="noopener" href="https://news.google.com/search?q='+query+'">Latest news ↗</a> · <a target="_blank" rel="noopener" href="https://www.google.com/search?q='+query+'">Team/lineup search ↗</a>':'';
-  return {...r,audit:{index,fixture:f,estimate:e,probability:prob,reasons,status:reasons.length?'CUT / HOLD — NOT QUALIFIED':'PASSes gates; not a guarantee',news}};
- });
- const qualified=rows.filter(r=>!r.audit.reasons.length&&Number.isFinite(r.audit.probability)).sort((a,b)=>b.audit.probability-a.audit.probability);
- const originals=qualified.filter(x=>x.source!=='replacement'),alts=qualified.filter(x=>x.source==='replacement');
- const picks=[{label:'Game 1 — safest eligible original',row:originals[0]||null},{label:'Game 2 — replacement A',row:alts[0]||null},{label:'Game 3 — higher-risk/value replacement B',row:alts.filter(x=>x.audit.estimate?.ev>0).sort((a,b)=>(b.audit.estimate?.ev||0)-(a.audit.estimate?.ev||0))[1]||null}];
- S.lastRiskAudit={date:now(),source,notes,missingChecks:missing,rows:rows.map(r=>({label:r.label,odds:r.odd,probability:r.audit.probability,ev:r.audit.estimate?.ev??null,status:r.audit.status,reasons:r.audit.reasons,fixture:r.audit.fixture})),shortlist:picks.map(p=>({slot:p.label,selection:p.row?.label||null,probability:p.row?.audit.probability??null,odds:p.row?.odd??null,ev:p.row?.audit.estimate?.ev??null}))};
- S.riskAudits.unshift(S.lastRiskAudit);S.riskAudits=S.riskAudits.slice(0,100);persist();
- const table=rows.length?'<div class="table-wrap"><table><thead><tr><th>Selection</th><th>Fixture</th><th>Model P</th><th>Est. EV</th><th>Decision</th><th>Why / latest news</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.label)+'</td><td>'+esc(r.audit.fixture.homeTeam&&r.audit.fixture.awayTeam?r.audit.fixture.homeTeam+' vs '+r.audit.fixture.awayTeam:'Unmatched')+'</td><td>'+(r.audit.probability==null?'—':pct(r.audit.probability))+'</td><td>'+(r.audit.estimate?.ev==null?'—':(r.audit.estimate.ev*100).toFixed(1)+'%')+'</td><td>'+esc(r.audit.status)+'</td><td>'+esc(r.audit.reasons.join('; ')||'No configured gate failed; manual review still required')+(r.audit.news?'<br>'+r.audit.news:'')+'</td></tr>').join('')+'</tbody></table></div>':'<p>Analyze a slip first.</p>';
- const shortlist='<h3>Three-slot shortlist</h3><ol>'+picks.map(p=>'<li><b>'+esc(p.label)+'</b>: '+(p.row?esc(p.row.label)+' · '+pct(p.row.audit.probability)+' model estimate · odds '+Number(p.row.odd).toFixed(2):'<span class="amber">NO QUALIFIED PICK — insufficient evidence/alternatives</span>')+'</li>').join('')+'</ol>';
- $('strictAuditOutput').innerHTML='<p><b>Audit:</b> '+esc(now())+' · '+rows.length+' legs · '+qualified.length+' passed all gates. Evidence store: '+S.players.length+' player records, '+S.playerEventMatches.length+' player-match profiles, '+S.subs.length+' substitution notes, '+S.contexts.length+' team-context notes, '+S.backtests.length+' settled forecasts.</p>'+shortlist+table+'<p class="amber">Current-news checkboxes are user attestations, not automatic verification. The static app opens research links but does not fetch or authenticate their contents. The scenario is an independent-Poisson baseline, not a proven edge. Add and mark replacement candidates, then give each its own exact fixture, odds and matching scenario before expecting a qualified slot.</p>';
- addActivity('Strict slip audit: '+rows.length+' legs, '+qualified.length+' passed');toast('Strict audit complete. Review blocked reasons.');
+const NEWS_BASE='https://api.gdeltproject.org/api/v2/doc/doc';
+function riskNewsKeywords(title){
+ const s=String(title||'').toLowerCase();
+ const rules=[
+  ['injury / fitness',/\binjur(?:y|ed|ies)\b|\bhamstring\b|\bmuscle\b|\bknock\b|\bfitness\b|\bfitness test\b|\bmedical\b|\breturn from injury\b/],
+  ['availability / suspension',/\bsuspend(?:ed|sion)?\b|\bmiss(?:es|ing)\b|\bruled out\b|\bunavailable\b|\bwill not play\b|\bset to miss\b|\bban\b/],
+  ['rotation / rest',/\brotat(?:e|ion|ed)\b|\brest(?:ed|ing)?\b|\bchanges to the lineup\b|\bchanged side\b|\bsecond string\b|\bpriorit(?:y|ise|ize)\b/],
+  ['late lineup / uncertainty',/\bdoubt(?:ful)?\b|\bquestionable\b|\blate decision\b|\bstarting xi\b|\blineup\b|\bteam news\b|\bstarting eleven\b/],
+  ['fixture congestion / fatigue',/\bfatigue\b|\bcongestion\b|\bthree games in\b|\bshort turnaround\b|\bextra time\b|\btravel\b/],
+  ['motivation / context',/\brelegation\b|\btitle race\b|\bmust win\b|\bdead rubber\b|\brotation expected\b|\bcup tie\b/]
+ ];
+ return rules.filter(x=>x[1].test(s)).map(x=>x[0]);
+}
+async function fetchLiveFixtureNews(fixture){
+ if(!fixture||fixture.status!=='candidate-found'||!fixture.homeTeam||!fixture.awayTeam) return {status:'blocked',checkedAt:now(),articles:[],riskTerms:[],message:'Cannot search news until a unique fixture candidate is matched.'};
+ const query='"'+fixture.homeTeam+'" "'+fixture.awayTeam+'" (football OR soccer) (injury OR injured OR suspension OR suspended OR lineup OR team news OR rotation OR fitness OR doubtful OR unavailable)';
+ const params=new URLSearchParams({query,mode:'ArtList',format:'json',maxrecords:'12',sort:'DateDesc',timespan:'7d'});
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+ try{
+  const response=await fetch(NEWS_BASE+'?'+params.toString(),{signal:controller.signal,headers:{Accept:'application/json'}});
+  if(!response.ok)throw Error('News service HTTP '+response.status);
+  const data=await response.json();
+  const articles=(Array.isArray(data.articles)?data.articles:[]).map(a=>({title:String(a.title||''),url:String(a.url||''),domain:String(a.domain||''),seenDate:String(a.seendate||''),language:String(a.language||''),terms:riskNewsKeywords(a.title)})).filter(a=>a.title&&/^https?:\/\//i.test(a.url));
+  const riskTerms=[...new Set(articles.flatMap(a=>a.terms))];
+  return {status:'live-results',checkedAt:now(),query,articles,riskTerms,message:articles.length?'Recent articles found. Headlines are signals only; open sources and confirm the facts.':'No matching articles found in this search window. This is not evidence of no team risk.'};
+ }catch(err){
+  return {status:'unavailable',checkedAt:now(),articles:[],riskTerms:[],message:'Live news could not be verified: '+(err?.name==='AbortError'?'request timed out':String(err?.message||err))};
+ }finally{clearTimeout(timer);}
+}
+function scoreSlipLeg(row,news){
+ const f=row.fixtureResolution||{},e=row.marketEstimate||null,reasons=[],warnings=[];
+ let risk=0;
+ const cut=(n,reason)=>{risk+=n;reasons.push(reason)};
+ const warn=(n,reason)=>{risk+=n;warnings.push(reason)};
+ if(!(Number(row.odd)>1))cut(100,'Odds missing or invalid');
+ if(row.confidence&&row.confidence!=='high')cut(22,'OCR confidence is not high; selection/price may be misread');
+ if(f.status!=='candidate-found')cut(100,'Fixture is not uniquely matched to a loaded fixture');
+ if(f.orientation==='verify-orientation')cut(100,'Home/away orientation needs verification');
+ if(!e||e.status!=='estimated')cut(100,'No supported model probability for this exact market');
+ if(e?.status==='estimated'){
+  if(!Number.isFinite(e.probability)||e.probability<0||e.probability>1)cut(100,'Model probability is invalid');
+  else if(e.probability<0.55)cut(28,'Estimated hit probability below strict 55% floor');
+  else if(e.probability<0.65)warn(10,'Estimated hit probability is below 65%');
+  if(!Number.isFinite(e.ev)||e.ev<=0)cut(35,'Estimated expected value is not positive versus entered odds');
+  else if(e.ev<0.03)warn(8,'Estimated edge is under 3 percentage points and fragile');
+ }
+ const market=String(row.marketType||classifySlipMarket(row.rawLine||row.label||''));
+ if(/Player market|Cards|Corners|Half-time|Handicap|Unclassified/.test(market))warn(15,'High-variance or unsupported-by-current-model market type: '+market);
+ if(news?.status==='unavailable')cut(18,'Live-news service unavailable; current availability risk remains unknown');
+ else if(news?.status==='blocked')cut(20,'No fixture-specific live-news search possible');
+ else if(news?.status==='live-results'){
+  if(!news.articles.length)warn(12,'No matching reports found; absence of news is not clearance');
+  if(news.riskTerms.includes('injury / fitness'))cut(25,'Recent headlines mention injury/fitness concerns; verify the original report');
+  if(news.riskTerms.includes('availability / suspension'))cut(28,'Recent headlines mention availability/suspension concerns');
+  if(news.riskTerms.includes('rotation / rest'))cut(18,'Recent headlines mention rotation/rest risk');
+  if(news.riskTerms.includes('late lineup / uncertainty'))warn(12,'Recent headlines mention lineup/selection uncertainty');
+  if(news.riskTerms.includes('fixture congestion / fatigue'))warn(8,'Recent headlines mention congestion/fatigue');
+  if(news.riskTerms.includes('motivation / context'))warn(5,'Recent headlines mention a context/motivation factor');
+ }
+ const status=reasons.length?'CUT':risk>=25?'CUT':risk>=12?'HOLD — verify':'SURVIVOR CANDIDATE';
+ return {riskScore:Math.min(100,risk),status,reasons,warnings,probability:e?.status==='estimated'?e.probability:null,ev:e?.status==='estimated'?e.ev:null,newsStatus:news?.status||'not checked'};
+}
+async function runStrictSlipAudit(){
+ const button=$('runStrictAudit');button.disabled=true;button.textContent='Fetching live news & auditing…';
+ try{
+  if(!S.manualSelections.length){notice('strictAuditOutput','Analyze a slip or add selections first.','warning');return;}
+  const rows=[];
+  for(let i=0;i<S.manualSelections.length;i++){
+   const row=S.manualSelections[i],fixture=row.fixtureResolution||{};
+   notice('strictAuditOutput','Searching recent news and scoring leg '+(i+1)+' of '+S.manualSelections.length+'…');
+   const news=await fetchLiveFixtureNews(fixture);
+   row.liveNews=news;
+   const estimate=row.marketEstimate||(S.scenario?estimateSlipMarket(row,S.scenario):null);
+   row.marketEstimate=estimate;
+   row.riskAudit=scoreSlipLeg(row,news);
+   rows.push({...row,audit:{index:i,fixture,estimate,news,...row.riskAudit}});
+  }
+  const survivors=rows.filter(r=>r.audit.status==='SURVIVOR CANDIDATE').sort((a,b)=>(b.audit.probability??-1)-(a.audit.probability??-1));
+  const cut=rows.filter(r=>r.audit.status==='CUT');
+  const hold=rows.filter(r=>r.audit.status==='HOLD — verify');
+  const replacements=survivors.filter(r=>r.source==='replacement');
+  const original=survivors.find(r=>r.source!=='replacement');
+  const picks=[{label:'Game 1 — highest-probability surviving original',row:original||null},{label:'Game 2 — replacement A (surviving candidate)',row:replacements[0]||null},{label:'Game 3 — replacement B (next surviving candidate)',row:replacements[1]||null}];
+  S.lastRiskAudit={date:now(),newsProvider:'GDELT DOC 2.0 public article search',newsWindow:'last 7 days',rows:rows.map(r=>({label:r.label,odds:r.odd,fixture:r.audit.fixture,newsStatus:r.audit.newsStatus,articles:r.audit.news?.articles||[],riskScore:r.audit.riskScore,status:r.audit.status,reasons:r.audit.reasons,warnings:r.audit.warnings,probability:r.audit.probability,ev:r.audit.ev})),cutCount:cut.length,holdCount:hold.length,survivorCount:survivors.length,shortlist:picks.map(p=>({slot:p.label,selection:p.row?.label||null,probability:p.row?.audit.probability??null,odds:p.row?.odd??null,ev:p.row?.audit.ev??null}))};
+  S.riskAudits.unshift(S.lastRiskAudit);S.riskAudits=S.riskAudits.slice(0,100);persist();
+  const listNews=r=>r.audit.news?.articles?.length?'<ul>'+r.audit.news.articles.slice(0,4).map(a=>'<li><a target="_blank" rel="noopener noreferrer" href="'+esc(a.url)+'">'+esc(a.title)+'</a> <small>'+esc(a.domain)+' · '+esc(a.seenDate||'date unavailable')+'</small>'+(a.terms.length?' <b>Signals: '+esc(a.terms.join(', '))+'</b>':'')+'</li>').join('')+'</ul>':'<small>'+esc(r.audit.news?.message||'No news status')+'</small>';
+  const table=rows.length?'<div class="table-wrap"><table><thead><tr><th>Selection</th><th>Risk / 100</th><th>Decision</th><th>Model P / EV</th><th>Reasons & live source headlines</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.label)+'<br><small>'+esc(r.audit.fixture.homeTeam&&r.audit.fixture.awayTeam?r.audit.fixture.homeTeam+' vs '+r.audit.fixture.awayTeam:'Unmatched fixture')+'</small></td><td>'+r.audit.riskScore+'</td><td><b>'+esc(r.audit.status)+'</b></td><td>'+(r.audit.probability==null?'—':pct(r.audit.probability))+'<br>'+(r.audit.ev==null?'EV —':(r.audit.ev*100).toFixed(1)+'% EV')+'</td><td>'+(r.audit.reasons.length?'<b>Cut reasons</b><ul>'+r.audit.reasons.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+(r.audit.warnings.length?'<b>Warnings</b><ul>'+r.audit.warnings.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+listNews(r)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No selections to audit.</p>';
+  const shortlist='<h3>Survivors-only shortlist</h3><ol>'+picks.map(p=>'<li><b>'+esc(p.label)+'</b>: '+(p.row?esc(p.row.label)+' · '+pct(p.row.audit.probability)+' estimated probability · odds '+Number(p.row.odd).toFixed(2):'<span class="amber">NO QUALIFIED CANDIDATE — do not fill this slot without separate fixture, odds and evidence</span>')+'</li>').join('')+'</ol>';
+  const cutButton=cut.length?'<button id="removeCutLegsNow" class="button danger">Remove '+cut.length+' CUT leg(s) from current slip</button>':'';
+  $('strictAuditOutput').innerHTML='<p><b>Live risk audit completed:</b> '+esc(S.lastRiskAudit.date)+' · news search window: 7 days · '+rows.length+' legs checked · <b>'+cut.length+' CUT</b> · '+hold.length+' HOLD · '+survivors.length+' survivor candidates.</p>'+shortlist+cutButton+table+'<p class="amber">News is discovered by GDELT article search and may be incomplete, duplicated, late or wrong. Headlines are risk signals, not verified injury reports. Open the original article. Scenario probabilities come from the app’s current experimental score model, not a proven edge. A leg is only a survivor candidate—not a guarantee.</p>';
+  $('removeCutLegsNow')?.addEventListener('click',()=>{
+   const removed=new Set(rows.filter(r=>r.audit.status==='CUT').map(r=>r.id||r.label));
+   S.manualSelections=S.manualSelections.filter(r=>!removed.has(r.id||r.label));
+   renderManualSelections();notice('strictAuditOutput','Removed '+cut.length+' CUT leg(s) from the current slip. Re-run fixture matching, scenario bridge and risk audit after adding replacements.','good');
+   addActivity('Removed '+cut.length+' CUT legs from slip after risk audit');
+  });
+  addActivity('Live strict risk audit: '+cut.length+' cut, '+hold.length+' hold, '+survivors.length+' survivor candidates');toast('Live audit finished. Review headlines and cut reasons.');
+ }catch(err){notice('strictAuditOutput','Risk audit stopped: '+String(err?.message||err)+'. No selections were automatically removed.','error');}
+ finally{button.disabled=false;button.textContent='Fetch live news + run strict risk audit';}
 }
 $('runStrictAudit').onclick=runStrictSlipAudit;
-$('exportStrictAudit').onclick=()=>{if(!S.lastRiskAudit)return toast('Run the strict audit first.');download('ufi-strict-slip-audit.json',JSON.stringify(S.lastRiskAudit,null,2),'application/json');};
+$('exportStrictAudit').onclick=()=>{if(!S.lastRiskAudit)return toast('Run the live risk audit first.');download('ufi-live-strict-slip-audit.json',JSON.stringify(S.lastRiskAudit,null,2),'application/json');};
 $('markReplacement').onclick=()=>{const n=Number($('replacementIndex').value);if(!Number.isInteger(n)||n<0||n>=S.manualSelections.length)return toast('Enter a valid row number from 0.');S.manualSelections[n].source='replacement';renderManualSelections();toast('Marked as replacement candidate. Re-run market bridge and audit.');};
 
 $('exportSlipReview').onclick=()=>{if(!S.manualSelections.length)return toast('Analyze a slip first.');const rows=[['selection','market_guess','decimal_odds','implied_probability','independent_estimate','parse_confidence','correlation_group','fixture_status','candidate_match_id','candidate_match_date','candidate_home_team','candidate_away_team','candidate_orientation','fixture_reason','warning','raw_line','source'],...S.manualSelections.map(x=>{const f=x.fixtureResolution||{};return [x.label,x.marketType||'',x.odd??'',x.p??'',x.estimate??'',x.confidence||'',x.group||'',f.status||'not_checked',f.matchId||'',f.matchDate||'',f.homeTeam||'',f.awayTeam||'',f.orientation||'',f.reason||'',x.warning||'',x.rawLine||x.label,x.source||'manual']})];download('ufi-slip-review.csv',csv(rows),'text/csv;charset=utf-8');toast('Slip review CSV exported. Verify it before modelling.');};
