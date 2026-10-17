@@ -83,3 +83,7 @@ This is a football research and evaluation tool, not a promise of betting profit
 - It deliberately leaves shortlist slots empty when three fully reviewed candidates cannot be qualified. Alternatives must be added and modelled individually; no match inherits another match's expected-goal assumptions.
 - Current news/lineup checkboxes are user attestations, not automatically verified facts. The static app opens external searches but does not fetch/authenticate their contents.
 - See [UFI research source register](docs/ufi-research-source-register.md) for the supplied reading list, related sources and implementation limits.
+
+
+## Live-news risk-removal engine
+The Strict Slip Auditor now queries the public GDELT DOC 2.0 article-search API for each uniquely matched fixture (last 7 days), displays article titles/links/date/domain, scans headlines for injury, availability, rotation, lineup, congestion and context signals, and assigns a conservative per-leg risk score. It marks legs CUT, HOLD — verify, or SURVIVOR CANDIDATE; an explicit action removes CUT legs from the current slip. Export includes article evidence, statuses, reasons and probabilities. It does not claim headlines are verified facts or that the news search is exhaustive. This browser-side live feed needs internet access and can fail due to network/rate limits.
