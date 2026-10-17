@@ -87,3 +87,13 @@ This is a football research and evaluation tool, not a promise of betting profit
 
 ## Live-news risk-removal engine
 The Strict Slip Auditor now queries the public GDELT DOC 2.0 article-search API for each uniquely matched fixture (last 7 days), displays article titles/links/date/domain, scans headlines for injury, availability, rotation, lineup, congestion and context signals, and assigns a conservative per-leg risk score. It marks legs CUT, HOLD — verify, or SURVIVOR CANDIDATE; an explicit action removes CUT legs from the current slip. Export includes article evidence, statuses, reasons and probabilities. It does not claim headlines are verified facts or that the news search is exhaustive. This browser-side live feed needs internet access and can fail due to network/rate limits.
+
+
+## AI Council and model brain
+
+- `ai-council.js` connects user-supplied keys to Google Gemini, Groq, OpenRouter and Hugging Face chat APIs. It queries the first three configured providers concurrently, then calls configured spare providers sequentially if fewer than three succeed.
+- Provider keys are **not stored** in UFI local storage and are not committed to this repository. Browser-direct API use can expose keys to browser extensions, device users or network inspection; use a private backend proxy for production. Do not enter a key on a shared device.
+- Free-tier quotas, model IDs, provider CORS and access rules can change. A successful API request proves connectivity, not prediction accuracy.
+- AI results are advisory and attached to the latest risk-audit JSON. They cannot override deterministic CUT/HOLD gates, claim missing facts, or qualify a replacement.
+- `research/ufi-model-brain.md` preserves the supplied research URLs and rules for provenance, physics, pitch control, Dixon-Coles, EV, backtesting, risk gates and replacement qualification.
+- UFI still does not have a calibrated, verified live SportyBet market feed or enough tracking data for a real physics/pitch-control prediction. Do not treat AI output as a guaranteed edge.
