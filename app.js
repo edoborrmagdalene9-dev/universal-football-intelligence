@@ -88,6 +88,37 @@ function runSlipFixtureMatching(){
  $('fixtureMatchOutput').innerHTML='<p><b>Fixture matching audit</b></p><p>Rows checked: '+rows.length+' · '+Object.entries(counts).map(([k,v])=>esc(labels[k]||k)+': '+v).join(' · ')+'</p>'+(rows.length?'<div class="table-wrap"><table><thead><tr><th>Selection</th><th>Status</th><th>Candidate fixture</th><th>Date</th><th>Orientation</th><th>Reason / next action</th></tr></thead><tbody>'+rows.map(r=>{const f=r.fixtureResolution;return '<tr><td>'+esc(r.label)+'</td><td>'+esc(labels[f.status]||f.status)+'</td><td>'+esc(f.homeTeam&&f.awayTeam?f.homeTeam+' vs '+f.awayTeam:'—')+'</td><td>'+esc(f.matchDate||'—')+'</td><td>'+esc(f.orientation||'—')+'</td><td>'+esc(f.reason)+'</td></tr>'}).join('')+'</tbody></table></div>':'<p>No selections to match. Analyze a slip first.</p>')+'<p class="amber">A candidate is not a verified bookmaker fixture mapping. The loaded StatsBomb list covers selected competitions/seasons only; competition, exact date, kickoff and market settlement rules still need human confirmation.</p>';
  addActivity('Ran fixture candidate matching for '+rows.length+' slip selections');
 }
+function estimateSlipMarket(row,scenario){
+ const text=String(row.rawLine||row.label||'').toLowerCase();
+ const fixture=row.fixtureResolution;
+ if(!fixture||fixture.status!=='candidate-found')return {status:'blocked',reason:'Resolve a unique fixture candidate first.'};
+ const same=(x,y)=>normalizeTeamName(x)===normalizeTeamName(y);
+ if(!((same(fixture.homeTeam,scenario.home)&&same(fixture.awayTeam,scenario.away))||(same(fixture.homeTeam,scenario.away)&&same(fixture.awayTeam,scenario.home))))return {status:'blocked',reason:'Current scenario teams do not match this candidate fixture. Set the scenario teams and rerun it.'};
+ const odds=Number(row.odd);
+ if(!Number.isFinite(odds)||odds<=1)return {status:'blocked',reason:'Valid decimal odds are required before comparing prices.'};
+ const m=text.match(/\b(over|under)\s*(1\.5|2\.5|3\.5)\b/);
+ let p=null,market='';
+ if(/\bbtts\b|both teams to score|both teams score/.test(text)){p=scenario.btts;market='Both teams to score — YES';}
+ else if(m){const line=Number(m[2]),over=scenario.grid.reduce((sum,g)=>sum+((g.h+g.a>line)?g.p:0),0)/scenario.mass;p=m[1]==='over'?over:1-over;market=(m[1]==='over'?'Over ':'Under ')+line+' goals';}
+ else if(/\b(home win|home to win|\b1\b|\b1x2\b)/.test(text)){p=scenario.homeWin;market='Home win';}
+ else if(/\b(draw|tie)\b/.test(text)){p=scenario.draw;market='Draw';}
+ else if(/\b(away win|away to win|\b2\b)/.test(text)){p=scenario.awayWin;market='Away win';}
+ else if(/\b(1x)\b|home or draw/.test(text)){p=scenario.homeWin+scenario.draw;market='Home or draw';}
+ else if(/\b(x2)\b|draw or away/.test(text)){p=scenario.draw+scenario.awayWin;market='Draw or away';}
+ else if(/\b(12)\b|home or away|no draw/.test(text)){p=scenario.homeWin+scenario.awayWin;market='Home or away';}
+ else return {status:'unsupported',reason:'Market/selection wording is not specific enough for a safe probability mapping.'};
+ p=Math.max(0,Math.min(1,p));
+ return {status:'estimated',market,probability:p,implied:1/odds,ev:p*odds-1,scenarioLabel:scenario.label||'Independent Poisson baseline',reason:'Research estimate from the current independent-Poisson score grid only; verify selection, fixture and market settlement.'};
+}
+function runSlipMarketBridge(){
+ const scenario=S.scenario;
+ if(!scenario){notice('marketBridgeOutput','Calculate a scoreline scenario first. No market estimates were produced.','warning');return;}
+ const rows=S.manualSelections.map(row=>({...row,marketEstimate:estimateSlipMarket(row,scenario)}));
+ S.manualSelections=rows;renderManualSelections();
+ const estimated=rows.filter(r=>r.marketEstimate.status==='estimated').length;
+ $('marketBridgeOutput').innerHTML='<p><b>Scenario-to-market comparison</b></p><p>Scenario: '+esc(scenario.home)+' vs '+esc(scenario.away)+' · λ '+scenario.lambdaHome.toFixed(2)+' / '+scenario.lambdaAway.toFixed(2)+' · mapped estimates: '+estimated+'/'+rows.length+'</p>'+(rows.length?'<div class="table-wrap"><table><thead><tr><th>Selection</th><th>Market mapping</th><th>Model estimate</th><th>Odds-implied</th><th>Estimated EV</th><th>Status / caveat</th></tr></thead><tbody>'+rows.map(r=>{const e=r.marketEstimate||{},f=r.fixtureResolution||{};return '<tr><td>'+esc(r.label)+'</td><td>'+esc(e.market||'—')+'</td><td>'+(e.probability==null?'—':pct(e.probability))+'</td><td>'+(e.implied==null?'—':pct(e.implied))+'</td><td>'+(e.ev==null?'—':(e.ev*100).toFixed(1)+'%')+'</td><td>'+esc(e.reason||'Not evaluated')+' Fixture: '+esc(f.status||'not matched')+'</td></tr>'}).join('')+'</tbody></table></div>':'<p>Analyze a slip first.</p>')+'<p class="amber">These are experimental model comparisons, not betting recommendations. Only explicit, supported markets are mapped. A positive estimated EV is not evidence of a real edge until probabilities are calibrated out of sample and the exact bookmaker market is verified. This simple Poisson model assumes independent team goals and does not model bet correlations.</p>';
+ addActivity('Compared '+rows.length+' slip selections against current scenario; '+estimated+' mapped');
+}
 function classifySlipMarket(line){
   const s=line.toLowerCase();
   if(/both teams to score|both teams score|\bbtts\b/.test(s))return 'Both teams to score';
@@ -145,6 +176,7 @@ function renderManualSelections(){
 }
 $('manualSelectionTable').addEventListener('click',e=>{const b=e.target.closest('[data-remove-selection]');if(!b)return;S.manualSelections.splice(Number(b.dataset.removeSelection),1);renderManualSelections()});
 $('matchSlipFixtures').onclick=runSlipFixtureMatching;
+$('bridgeSlipMarkets').onclick=runSlipMarketBridge;
 $('exportSlipReview').onclick=()=>{if(!S.manualSelections.length)return toast('Analyze a slip first.');const rows=[['selection','market_guess','decimal_odds','implied_probability','independent_estimate','parse_confidence','correlation_group','fixture_status','candidate_match_id','candidate_match_date','candidate_home_team','candidate_away_team','candidate_orientation','fixture_reason','warning','raw_line','source'],...S.manualSelections.map(x=>{const f=x.fixtureResolution||{};return [x.label,x.marketType||'',x.odd??'',x.p??'',x.estimate??'',x.confidence||'',x.group||'',f.status||'not_checked',f.matchId||'',f.matchDate||'',f.homeTeam||'',f.awayTeam||'',f.orientation||'',f.reason||'',x.warning||'',x.rawLine||x.label,x.source||'manual']})];download('ufi-slip-review.csv',csv(rows),'text/csv;charset=utf-8');toast('Slip review CSV exported. Verify it before modelling.');};
 $('saveSlipAnalysis').onclick=()=>{if(!S.manualSelections.length)return toast('Analyze or add selections first.');const allPriced=S.manualSelections.every(x=>Number.isFinite(Number(x.odd))&&Number(x.odd)>1);const item={id:crypto.randomUUID(),date:now(),selections:S.manualSelections,combinedOdds:allPriced?S.manualSelections.reduce((a,x)=>a*Number(x.odd),1):null,stake:Number($('slipStake').value)||0,needsReview:!allPriced||S.manualSelections.some(x=>x.confidence!=='high')};S.slips.unshift(item);persist();addActivity('Saved slip analysis with '+item.selections.length+' selections');toast('Slip analysis saved in this browser.')};
 function renderBacktests(){const rows=S.backtests;$('btTotal').textContent=rows.length;if(!rows.length){$('btAccuracy').textContent='—';$('btBrier').textContent='—';$('btLogloss').textContent='—';$('calibrationSummary').textContent='No settled forecasts. Save forecasts with actual results after the match.';$('backtestTable').innerHTML='<p class="muted">No forecasts logged yet.</p>';return}const acc=rows.filter(x=>['H','D','A'][x.probs.indexOf(Math.max(...x.probs))]===x.result).length/rows.length;const brier=rows.reduce((a,x)=>a+x.probs.reduce((s,p,i)=>s+(p-(['H','D','A'][i]===x.result?1:0))**2,0),0)/rows.length;const logloss=rows.reduce((a,x)=>a-Math.log(Math.max(1e-15,x.probs[['H','D','A'].indexOf(x.result)])),0)/rows.length;$('btAccuracy').textContent=pct(acc);$('btBrier').textContent=brier.toFixed(4);$('btLogloss').textContent=logloss.toFixed(4);$('calibrationSummary').textContent='Mean scores over '+rows.length+' settled records. Lower Brier and log loss are better. Accuracy alone ignores confidence quality; evaluate chronologically and compare against a baseline.';$('backtestTable').innerHTML='<table><thead><tr><th>Match</th><th>Method</th><th>Forecast H/D/A</th><th>Actual</th><th>Brier</th><th>Logged</th><th></th></tr></thead><tbody>'+rows.slice().reverse().map(x=>{const y=['H','D','A'].indexOf(x.result),br=x.probs.reduce((s,p,i)=>s+(p-(i===y?1:0))**2,0);return '<tr><td>'+esc(x.match)+'</td><td>'+esc(x.method||'Not specified')+'</td><td>'+x.probs.map(pct).join(' / ')+'</td><td>'+esc(x.result)+'</td><td>'+br.toFixed(4)+'</td><td>'+fmtDate(x.date)+'</td><td><button class="button danger small" data-delete-bt="'+x.id+'">Delete</button></td></tr>'}).join('')+'</tbody></table>'}
