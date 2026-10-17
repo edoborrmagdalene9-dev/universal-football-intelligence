@@ -26,9 +26,10 @@ function evaluate(row,news,state){
  set('UFI-039','NEEDS_DATA','Independence of accumulator legs is not assumed or proven.');
  set('UFI-040','NEEDS_DATA','Joint hit-rate requires calibrated per-leg probabilities and dependence treatment.');
  set('UFI-041',row.marketType?'ASSESSED':'NEEDS_DATA',row.marketType?'Market type: '+row.marketType+'.':'Market type not confidently classified.');
- set('UFI-101',news?.status==='ok'?'ASSESSED':'NEEDS_DATA',news?.status==='ok'?'Recent news search returned articles; headlines are clues, not verified injury reports.':'News feed did not return verifiable results.');
- set('UFI-181',f.source==='live-fixture-feed'?'ASSESSED':'NEEDS_DATA',f.source==='live-fixture-feed'?'Fixture candidate came from the current fixture feed; verify source and kickoff.':'No current fixture-feed match established.');
- set('UFI-301','NEEDS_DATA','Backtesting needs settled outcomes and time-safe prediction records.');
+ set('UFI-101','NEEDS_DATA','Shots line parsing needs a structured player/team shots market and source.');
+ set('UFI-181',f.status==='candidate-found'?'ASSESSED':'NEEDS_DATA',f.status==='candidate-found'?'Fixture match exists; confirmed starting lineup is not implied.':'Fixture match missing; lineup cannot be assessed.');
+ set('UFI-301','NEEDS_DATA','Live score, match clock, and live event verification are not connected to this pre-match audit.');
+ set('UFI-198',news?.status==='ok'?'ASSESSED':'NEEDS_DATA',news?.status==='ok'?'News search returned articles; headlines are clues, not verified injury reports.':'News feed did not return verifiable results.');
  set('UFI-381','ASSESSED','The audit permits HOLD / no-pick; a survivor label is not a guarantee.');
  set('UFI-389','ASSESSED','Unverified data is surfaced as NEEDS_DATA rather than silently passed.');
  const counts=checks.reduce((a,c)=>(a[c.status]=(a[c.status]||0)+1,a),{});
