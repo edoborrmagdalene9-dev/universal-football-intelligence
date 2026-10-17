@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'app.js'
+      - 'ai-council.js'
+      - 'research/ufi-model-brain.md'
       - 'index.html'
       - 'styles.css'
       - '.github/workflows/check-browser-app.yml'
@@ -30,7 +32,9 @@ jobs:
         with:
           node-version: '22'
       - name: Check JavaScript syntax
-        run: node --check app.js
+        run: |
+          node --check app.js
+          node --check ai-council.js
       - name: Check HTML has matching fixture-matching controls
         run: |
           python - <<'PY'
@@ -44,5 +48,13 @@ jobs:
               raise SystemExit("Fixture matching button is not wired to its handler.")
           if "candidate_match_id" not in app or "fixture_status" not in app:
               raise SystemExit("Fixture matching details are missing from CSV export.")
-          print("Fixture matching controls and CSV fields are present.")
+          if 'src="ai-council.js"' not in html or 'id="aiCouncilPanel"' not in html:
+              raise SystemExit("AI council UI/script is not connected.")
+          if "window.UFI_AI_CONTEXT" not in app or "window.UFI_ATTACH_AI_COUNCIL" not in app:
+              raise SystemExit("AI council cannot read UFI evidence or bridge flags into the risk manager.")
+          ai = Path("ai-council.js").read_text(encoding="utf-8")
+          for provider in ("generativelanguage.googleapis.com", "api.groq.com", "openrouter.ai", "router.huggingface.co"):
+              if provider not in ai:
+                  raise SystemExit(f"Missing AI provider connector: {provider}")
+          print("Fixture matching and AI council controls/providers are present.")
           PY
