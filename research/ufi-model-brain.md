@@ -56,3 +56,10 @@ The 24 URLs supplied by the project owner are preserved below. Pages and papers 
 - Added to the web UI: multi-provider AI evidence challenge; up to three providers called concurrently; configured fourth provider is sequential fallback; results remain advisory and are attached to the current risk-audit export.
 - Not solved by adding LLMs: verified SportyBet live odds, official lineups/injury feed, complete event/tracking coverage, calibrated fixture-specific replacement predictions, or evidence that the model beats bookmaker prices after margin.
 - Next quantitative step: create a reproducible historical training/evaluation pipeline, fit league-specific Dixon-Coles and simple baselines, store model version and data cutoff, produce out-of-sample calibration, and only then let exact-market probabilities enter EV/risk gating.
+
+
+## Additional primary/adjacent sources discovered while following the supplied references
+
+25. Dixon & Coles (1997), original peer-reviewed paper, *Modelling Association Football Scores and Inefficiencies in the Football Betting Market*, Journal of the Royal Statistical Society Series C, DOI 10.1111/1467-9876.00065 — https://rss.onlinelibrary.wiley.com/doi/abs/10.1111/1467-9876.00065. This is the canonical source for the score model and historical market evaluation; its old-period reported returns are not evidence of current profitability.
+26. Hudl StatsBomb Open Data official README — https://github.com/hudl/open-data/blob/master/README.md. Documents the free-data repository's competitions, matches, events, lineups, selected 360 data, and attribution expectations. The open dataset is selected coverage, not a universal live feed.
+27. Kovalchik (2023), *Player Tracking Data in Sports*, Annual Review of Statistics and Its Application — https://doi.org/10.1146/annurev-statistics-033021-110117. Reviews high-resolution spatiotemporal tracking and analytics methods, with data/method limitations; supports the rule that player-level spatial claims require actual tracking data.
