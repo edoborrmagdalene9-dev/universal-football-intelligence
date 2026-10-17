@@ -308,7 +308,7 @@ async function fetchSportyBetUpcoming(){
  if(!rows.length)throw Error('SportyBet returned no usable football fixtures.');
  return rows;
 }
-async function loadLiveFixtures(){
+async async function loadLiveFixtures(){
  const button=$('loadLiveFixtures');if(button){button.disabled=true;button.textContent='Loading current fixtures…'}
  notice('liveFixtureOutput','Connecting to SportyBet fixture/market feed first, then using ESPN as a fallback. Browser access to SportyBet may be blocked by CORS.','');
  try{
