@@ -48,8 +48,9 @@ $('savePlayer').onclick=()=>{const name=$('playerName').value.trim();if(!name)re
 function buildPlayerEventProfile(){
  const match=S.selectedMatch;
  if(!match||!S.events.length){notice('playerEventProfileStatus','Load a match and its event data in Real match data first. No profile was generated.','warning');return;}
- const map=new Map();
- const ensure=(name,team)=>{if(!name)return null;const key=team+'||'+name;if(!map.has(key))map.set(key,{player:name,team,match_id:String(match.match_id),match_date:match.match_date||'',competition_id:match.competition?.competition_id??'',events:0,shots:0,goals:0,source_xg:0,xg_events:0,passes:0,completed_passes:0,carries:0,pressures:0,duels:0,interceptions:0,ball_recoveries:0,clearances:0,blocks:0,assists:0,key_passes:0,substitution_events:0,first_minute:null,last_minute:null,lineup_status:'not loaded',positions:'',evidence_scope:'single loaded match'});return map.get(key)};
+ const map=new Map(), substitutionTimeline=new Map();
+ const matchEnd=Math.max(0,...S.events.map(e=>Number(e.minute)).filter(Number.isFinite));
+ const ensure=(name,team)=>{if(!name)return null;const key=team+'||'+name;if(!map.has(key))map.set(key,{player:name,team,match_id:String(match.match_id),match_date:match.match_date||'',competition_id:match.competition?.competition_id??'',events:0,shots:0,goals:0,source_xg:0,xg_events:0,passes:0,completed_passes:0,carries:0,pressures:0,duels:0,interceptions:0,ball_recoveries:0,clearances:0,blocks:0,assists:0,key_passes:0,substitution_events:0,first_minute:null,last_minute:null,lineup_status:'not loaded',positions:'',appearance_status:'unknown',minutes_estimate:null,minutes_method:'unavailable',exposure_confidence:'insufficient evidence',evidence_scope:'single loaded match'});return map.get(key)};
  for(const e of S.events){
   const p=ensure(eventPlayer(e),eventTeam(e));if(!p)continue;
   p.events++;const minute=Number(e.minute);if(Number.isFinite(minute)){p.first_minute=p.first_minute===null?minute:Math.min(p.first_minute,minute);p.last_minute=p.last_minute===null?minute:Math.max(p.last_minute,minute)}
@@ -63,17 +64,52 @@ function buildPlayerEventProfile(){
   if(type==='Ball Recovery')p.ball_recoveries++;
   if(type==='Clearance')p.clearances++;
   if(type==='Block')p.blocks++;
-  if(type==='Substitution')p.substitution_events++;
+  if(type==='Substitution'){
+   p.substitution_events++;
+   const minute=Number(e.minute), incoming=e.substitution?.replacement?.name;
+   if(Number.isFinite(minute)){const outKey=eventTeam(e)+'||'+eventPlayer(e);if(!substitutionTimeline.has(outKey))substitutionTimeline.set(outKey,{});substitutionTimeline.get(outKey).offMinute=minute;
+    if(incoming){const inKey=eventTeam(e)+'||'+incoming;if(!substitutionTimeline.has(inKey))substitutionTimeline.set(inKey,{});substitutionTimeline.get(inKey).onMinute=minute;}}
+  }
  }
  const lineupPlayers=new Map();
- for(const t of S.lineups||[])for(const p of t.lineup||[]){const key=(t.team_name||'')+'||'+(p.player_name||'');lineupPlayers.set(key,p)}
+ for(const t of S.lineups||[])for(const lp of t.lineup||[]){
+  const team=t.team_name||'', key=team+'||'+(lp.player_name||'');
+  lineupPlayers.set(key,lp);
+  ensure(lp.player_name,team);
+ }
  for(const p of map.values()){
-  const lp=lineupPlayers.get(p.team+'||'+p.player);
-  if(lp){p.lineup_status='listed in loaded lineup';p.positions=(lp.positions||[]).map(z=>z.position||'').filter(Boolean).join('; ')}
+  const lp=lineupPlayers.get(p.team+'||'+p.player), timeline=substitutionTimeline.get(p.team+'||'+p.player)||{};
+  if(lp){
+   p.lineup_status='listed in loaded lineup';
+   p.positions=(lp.positions||[]).map(z=>z.position||'').filter(Boolean).join('; ');
+   const starts=(lp.positions||[]).some(z=>/starting\s*(xi|lineup)/i.test(z.start_reason||''));
+   const explicitStart=(lp.positions||[]).some(z=>z.start_reason!=null&&String(z.start_reason).trim()!=='');
+   if(starts){
+    p.appearance_status='starter';
+    const endMinute=Number.isFinite(timeline.offMinute)?timeline.offMinute:matchEnd;
+    p.minutes_estimate=Math.max(0,endMinute);
+    p.minutes_method=Number.isFinite(timeline.offMinute)?'starter to recorded substitution minute':'starter to last recorded match minute';
+    p.exposure_confidence=Number.isFinite(timeline.offMinute)?'approximate; substitution recorded':'approximate; no substitution recorded';
+   } else if(Number.isFinite(timeline.onMinute)){
+    p.appearance_status='substitute appeared';
+    p.minutes_estimate=Math.max(0,matchEnd-timeline.onMinute);
+    p.minutes_method='recorded substitution minute to last recorded match minute';
+    p.exposure_confidence='approximate; clock-minute difference';
+   } else if(explicitStart){
+    p.appearance_status='listed; appearance not evidenced';
+   } else {
+    p.appearance_status='lineup listed; starter status unclear';
+   }
+  } else if(Number.isFinite(timeline.onMinute)){
+   p.appearance_status='substitute appeared';
+   p.minutes_estimate=Math.max(0,matchEnd-timeline.onMinute);
+   p.minutes_method='recorded substitution minute to last recorded match minute';
+   p.exposure_confidence='approximate; lineup file missing';
+  }
  }
  const rows=[...map.values()].sort((x,y)=>x.team.localeCompare(y.team)||x.player.localeCompare(y.player));
  S.playerEventProfile={match_id:String(match.match_id),match_date:match.match_date||'',match_name:matchName(match),built_at:now(),rows};
- $('playerEventProfileTable').innerHTML=rows.length?'<table><thead><tr><th>Player / team</th><th>Lineup</th><th>Events</th><th>Shots</th><th>Goals</th><th>Source xG</th><th>Passes / completed</th><th>Carries</th><th>Pressures</th><th>Duels</th><th>Other actions</th><th>Observed minute range*</th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+esc(p.player)+'<br><span class="muted">'+esc(p.team)+'</span></td><td>'+esc(p.lineup_status)+(p.positions?' · '+esc(p.positions):'')+'</td><td>'+p.events+'</td><td>'+p.shots+'</td><td>'+p.goals+'</td><td>'+(p.xg_events?p.source_xg.toFixed(3)+' ('+p.xg_events+' shots)':'Not supplied')+'</td><td>'+p.passes+' / '+p.completed_passes+'</td><td>'+p.carries+'</td><td>'+p.pressures+'</td><td>'+p.duels+'</td><td>I '+p.interceptions+' · R '+p.ball_recoveries+' · C '+p.clearances+' · B '+p.blocks+'</td><td>'+(p.first_minute===null?'—':p.first_minute+'–'+p.last_minute)+'</td></tr>').join('')+'</tbody></table><p class="muted">*First/last recorded event minutes are not player minutes played. Pass completion here uses absence of a pass outcome as the event-data convention; event coverage varies by competition and season. This is a single-match descriptive profile.</p>':'<p class="muted">No player-attributed events found in the loaded match.</p>';
+ $('playerEventProfileTable').innerHTML=rows.length?'<table><thead><tr><th>Player / team</th><th>Appearance / lineup</th><th>Estimated minutes*</th><th>Events</th><th>Shots</th><th>Goals</th><th>Source xG</th><th>Passes / completed</th><th>Carries</th><th>Pressures</th><th>Duels</th><th>Other actions</th><th>Observed minute range*</th></tr></thead><tbody>'+rows.map(p=>'<tr><td>'+esc(p.player)+'<br><span class="muted">'+esc(p.team)+'</span></td><td>'+esc(p.appearance_status)+' · '+esc(p.lineup_status)+(p.positions?' · '+esc(p.positions):'')+'</td><td>'+(p.minutes_estimate===null?'Unknown':p.minutes_estimate.toFixed(1))+'</td><td>'+p.events+'</td><td>'+p.shots+'</td><td>'+p.goals+'</td><td>'+(p.xg_events?p.source_xg.toFixed(3)+' ('+p.xg_events+' shots)':'Not supplied')+'</td><td>'+p.passes+' / '+p.completed_passes+'</td><td>'+p.carries+'</td><td>'+p.pressures+'</td><td>'+p.duels+'</td><td>I '+p.interceptions+' · R '+p.ball_recoveries+' · C '+p.clearances+' · B '+p.blocks+'</td><td>'+(p.first_minute===null?'—':p.first_minute+'–'+p.last_minute)+'</td></tr>').join('')+'</tbody></table><p class="muted">*Minutes are rough estimates from lineup start reasons, recorded substitution times and the last event minute; stoppage-time/period-clock details and red cards may make them inaccurate. Never treat these as verified minutes or calculate per-90 rates from them. First/last event times are not minutes played. Pass completion uses absence of a pass outcome as the event-data convention; coverage varies by competition and season.</p>':'<p class="muted">No player-attributed events found in the loaded match.</p>';
  notice('playerEventProfileStatus','Built '+rows.length+' player profiles from '+S.events.length+' loaded events for '+matchName(match)+'. Evidence scope: one match; no footedness or universal style inference.','good');
  addActivity('Built event-based player evidence for '+matchName(match));
  renderPlayerEventAggregate();
@@ -92,19 +128,19 @@ function savePlayerEventMatch(){
 }
 function renderPlayerEventAggregate(){
  const rows=S.playerEventMatches||[], map=new Map();
- for(const r of rows){const key=(r.team||'')+'||'+(r.player||'');if(!map.has(key))map.set(key,{player:r.player,team:r.team,matches:new Set(),events:0,shots:0,goals:0,source_xg:0,xg_events:0,passes:0,completed_passes:0,carries:0,pressures:0,duels:0,interceptions:0,ball_recoveries:0,clearances:0,blocks:0,first_date:'',last_date:'',match_ids:new Set()});
- const x=map.get(key);x.matches.add(String(r.match_id));x.match_ids.add(String(r.match_id));for(const k of ['events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks'])x[k]+=(Number(r[k])||0);
+ for(const r of rows){const key=(r.team||'')+'||'+(r.player||'');if(!map.has(key))map.set(key,{player:r.player,team:r.team,matches:new Set(),events:0,shots:0,goals:0,source_xg:0,xg_events:0,passes:0,completed_passes:0,carries:0,pressures:0,duels:0,interceptions:0,ball_recoveries:0,clearances:0,blocks:0,estimated_minutes:0,minutes_estimate_rows:0,appearances:0,first_date:'',last_date:'',match_ids:new Set()});
+ const x=map.get(key);x.matches.add(String(r.match_id));x.match_ids.add(String(r.match_id));for(const k of ['events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks'])x[k]+=(Number(r[k])||0);if(r.minutes_estimate!==null&&r.minutes_estimate!==''&&Number.isFinite(Number(r.minutes_estimate))){x.estimated_minutes+=Number(r.minutes_estimate);x.minutes_estimate_rows++}if(['starter','substitute appeared'].includes(r.appearance_status))x.appearances++;
  const date=String(r.match_date||'');if(date&&(!x.first_date||date<x.first_date))x.first_date=date;if(date&&(!x.last_date||date>x.last_date))x.last_date=date;
  }
  const agg=[...map.values()].sort((x,y)=>y.matches.size-x.matches.size||x.player.localeCompare(y.player));
- $('playerEventAggregateTable').innerHTML=agg.length?'<table><thead><tr><th>Player / team</th><th>Matches</th><th>Events</th><th>Shots</th><th>Goals</th><th>Source xG</th><th>Passes / complete</th><th>Carries</th><th>Pressures</th><th>Duels</th><th>Defensive actions</th><th>Date window</th></tr></thead><tbody>'+agg.map(x=>'<tr><td>'+esc(x.player)+'<br><span class="muted">'+esc(x.team)+'</span></td><td>'+x.matches.size+'</td><td>'+x.events+'</td><td>'+x.shots+'</td><td>'+x.goals+'</td><td>'+(x.xg_events?x.source_xg.toFixed(3)+' ('+x.xg_events+' shots)':'Not supplied')+'</td><td>'+x.passes+' / '+x.completed_passes+'</td><td>'+x.carries+'</td><td>'+x.pressures+'</td><td>'+x.duels+'</td><td>I '+x.interceptions+' · R '+x.ball_recoveries+' · C '+x.clearances+' · B '+x.blocks+'</td><td>'+esc(x.first_date||'unknown')+' – '+esc(x.last_date||'unknown')+'</td></tr>').join('')+'</tbody></table><p class="muted">'+rows.length+' saved player-match rows · '+agg.length+' player/team aggregates. Counts are totals, not per-90 rates; appearances/minutes and team changes are not inferred.</p>':'<p class="muted">No saved match profiles yet. Load a StatsBomb match, build its player profile, then save it here. Repeat across matches to grow the evidence dataset.</p>';
+ $('playerEventAggregateTable').innerHTML=agg.length?'<table><thead><tr><th>Player / team</th><th>Matches</th><th>Appeared*</th><th>Est. minutes*</th><th>Events</th><th>Shots</th><th>Goals</th><th>Source xG</th><th>Passes / complete</th><th>Carries</th><th>Pressures</th><th>Duels</th><th>Defensive actions</th><th>Date window</th></tr></thead><tbody>'+agg.map(x=>'<tr><td>'+esc(x.player)+'<br><span class="muted">'+esc(x.team)+'</span></td><td>'+x.matches.size+'</td><td>'+x.appearances+'</td><td>'+(x.minutes_estimate_rows?x.estimated_minutes.toFixed(1)+' (approx.)':'Unknown')+'</td><td>'+x.events+'</td><td>'+x.shots+'</td><td>'+x.goals+'</td><td>'+(x.xg_events?x.source_xg.toFixed(3)+' ('+x.xg_events+' shots)':'Not supplied')+'</td><td>'+x.passes+' / '+x.completed_passes+'</td><td>'+x.carries+'</td><td>'+x.pressures+'</td><td>'+x.duels+'</td><td>I '+x.interceptions+' · R '+x.ball_recoveries+' · C '+x.clearances+' · B '+x.blocks+'</td><td>'+esc(x.first_date||'unknown')+' – '+esc(x.last_date||'unknown')+'</td></tr>').join('')+'</tbody></table><p class="muted">'+rows.length+' saved player-match rows · '+agg.length+' player/team aggregates. Event counts are totals, not per-90 rates. Appeared count and minute totals are approximate and only populated where lineup/substitution evidence supports an estimate; red cards and detailed match-clock corrections are not applied. Team changes and player identity across clubs need review.</p>':'<p class="muted">No saved match profiles yet. Load a StatsBomb match, build its player profile, then save it here. Repeat across matches to grow the evidence dataset.</p>';
 }
 $('savePlayerEventMatch').addEventListener('click',savePlayerEventMatch);
-$('exportPlayerEventMatches').addEventListener('click',()=>{if(!S.playerEventMatches.length)return toast('Save at least one match profile first.');const fields=['match_id','match_date','player','team','lineup_status','positions','events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks','assists','key_passes','substitution_events','first_minute','last_minute','evidence_scope','source_name','source_url','saved_at'];download('ufi-multi-match-player-evidence.csv',csv([fields,...S.playerEventMatches.map(p=>fields.map(k=>p[k]??''))]),'text/csv')});
+$('exportPlayerEventMatches').addEventListener('click',()=>{if(!S.playerEventMatches.length)return toast('Save at least one match profile first.');const fields=['match_id','match_date','player','team','lineup_status','positions','appearance_status','minutes_estimate','minutes_method','exposure_confidence','events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks','assists','key_passes','substitution_events','first_minute','last_minute','evidence_scope','source_name','source_url','saved_at'];download('ufi-multi-match-player-evidence.csv',csv([fields,...S.playerEventMatches.map(p=>fields.map(k=>p[k]??''))]),'text/csv')});
 $('exportPlayerEventProfile').addEventListener('click',()=>{
  const profile=S.playerEventProfile;
  if(!profile?.rows?.length)return toast('Build a player event profile first.');
- const fields=['match_id','match_date','player','team','lineup_status','positions','events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks','assists','key_passes','substitution_events','first_minute','last_minute','evidence_scope'];
+ const fields=['match_id','match_date','player','team','lineup_status','positions','appearance_status','minutes_estimate','minutes_method','exposure_confidence','events','shots','goals','source_xg','xg_events','passes','completed_passes','carries','pressures','duels','interceptions','ball_recoveries','clearances','blocks','assists','key_passes','substitution_events','first_minute','last_minute','evidence_scope'];
  download('ufi-player-event-profile-'+profile.match_id+'.csv',csv([fields,...profile.rows.map(p=>fields.map(k=>p[k]??''))]),'text/csv');
 });
 
