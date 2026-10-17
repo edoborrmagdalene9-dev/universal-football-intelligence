@@ -74,3 +74,4 @@ The app is static and can be hosted with GitHub Pages. In the repository, open *
 ## Responsible use
 
 This is a football research and evaluation tool, not a promise of betting profit. Verify source data, record uncertainty, protect private information and never treat an output as a sure bet.
+- **Approximate player exposure audit:** player-match profiles now preserve lineup-derived appearance status and clearly labelled estimated minutes where the loaded lineup and substitution events support a rough estimate. These are not official minutes and are not forecast features; validate against an authoritative source before any per-90 calculation.
