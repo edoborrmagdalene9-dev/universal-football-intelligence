@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#07120e"><meta name="description" content="Universal Football Intelligence: real match data, tactical evidence, scenario modelling and honest backtesting.">
-<title>Universal Football Intelligence</title><link rel="stylesheet" href="styles.css">
+<title>Universal Football Intelligence</title><link rel="stylesheet" href="styles.css?v=3d82e54">
 </head>
 <body>
 <header class="topbar"><a class="brand" href="#" aria-label="UFI home"><span class="brand-mark">U</span><span>UNIVERSAL <b>FOOTBALL</b> INTELLIGENCE<small>RESEARCH WORKSTATION · BUILD 2</small></span></a><div class="top-actions"><span id="netState" class="pill">Local-first</span><button id="exportAll" class="button ghost">Export workspace</button><label class="button ghost file-button">Import workspace<input id="importAll" type="file" accept=".json,application/json" hidden></label></div></header>
@@ -94,7 +94,26 @@
 </main></div>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<script src="app.js"></script>
-<script src="audit-intelligence.js"></script>
-<script src="ai-council.js"></script>
+<script src="app.js?v=3d82e54"></script>
+<script src="audit-intelligence.js?v=3d82e54"></script>
+<script src="ai-council.js?v=3d82e54"></script>
+<script>
+/* Navigation safety net: keep page switching available even if another app module fails. */
+document.querySelectorAll('.nav-item').forEach(function(button){
+  button.addEventListener('click',function(){
+    var target='view-'+button.dataset.view;
+    document.querySelectorAll('.view').forEach(function(view){view.classList.toggle('active',view.id===target);});
+    document.querySelectorAll('.nav-item').forEach(function(item){item.classList.toggle('active',item===button);});
+    window.scrollTo(0,0);
+  });
+});
+document.querySelectorAll('[data-go]').forEach(function(button){
+  button.addEventListener('click',function(){
+    var target='view-'+button.dataset.go;
+    document.querySelectorAll('.view').forEach(function(view){view.classList.toggle('active',view.id===target);});
+    document.querySelectorAll('.nav-item').forEach(function(item){item.classList.toggle('active',item.dataset.view===button.dataset.go);});
+    window.scrollTo(0,0);
+  });
+});
+</script>
 </body></html>
