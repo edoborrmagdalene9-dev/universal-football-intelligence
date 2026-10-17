@@ -97,3 +97,10 @@ The Strict Slip Auditor now queries the public GDELT DOC 2.0 article-search API 
 - AI results are advisory and attached to the latest risk-audit JSON. They cannot override deterministic CUT/HOLD gates, claim missing facts, or qualify a replacement.
 - `research/ufi-model-brain.md` preserves the supplied research URLs and rules for provenance, physics, pitch control, Dixon-Coles, EV, backtesting, risk gates and replacement qualification.
 - UFI still does not have a calibrated, verified live SportyBet market feed or enough tracking data for a real physics/pitch-control prediction. Do not treat AI output as a guaranteed edge.
+
+
+## UFI 400-signal audit registry (v1)
+
+The slip audit now attaches a 400-signal registry to every selection across 20 domains: slip integrity, probability mathematics, value/pricing, goal markets, BTTS, corners, shots/player props, cards/fouls, team form, squad availability, biomechanics, tactics/styles, schedule/motivation, venue/environment, goalkeeper/defence, live/market mechanics, accumulator exposure, provenance, model validation, and decision/reporting.
+
+**Important distinction:** these are 400 named audit signals/checks, not 400 trained prediction models or 400 live data feeds. Signals are explicitly marked `ASSESSED`, `NEEDS_DATA`, or `FAIL`. The current release only assesses a subset from fields already available in UFI; many signals correctly remain `NEEDS_DATA` until verified sources, player/lineup data, market odds, and validated datasets are connected. The registry must never be interpreted as a 400-factor prediction with 400 facts independently verified. A `SURVIVOR CANDIDATE` is not a guarantee, and a missing signal alone does not prove a selection is a trap.
