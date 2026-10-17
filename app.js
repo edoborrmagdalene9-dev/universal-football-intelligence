@@ -186,7 +186,7 @@ function resolveSlipFixture(row){
  return {status:(S.liveFixtures.length||S.matches.length)?'not-found-in-loaded-list':'no-fixtures-loaded',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:(S.liveFixtures.length||S.matches.length)?'No matching fixture found in the current feed or loaded historical list.':'Load current fixtures before fixture matching.'};
 }
 function runSlipFixtureMatching(){
- const rows=S.manualSelections.map(row=>({...row,fixtureResolution:resolveSlipFixture(row)}));
+ const rows=S.manualSelections.map(row=>{const fixtureResolution=resolveSlipFixture(row);const sameFixture=String(row.fixtureResolution?.matchId||'')===String(fixtureResolution.matchId||'')&&row.fixtureResolution?.status===fixtureResolution.status;return {...row,fixtureResolution,marketEstimate:sameFixture?row.marketEstimate:null};});
  S.manualSelections=rows;
  renderManualSelections();
  const counts={};rows.forEach(r=>{const k=r.fixtureResolution.status;counts[k]=(counts[k]||0)+1});
@@ -422,7 +422,7 @@ async function runStrictSlipAudit(){
    notice('strictAuditOutput','Searching recent news and scoring leg '+(i+1)+' of '+S.manualSelections.length+'…');
    const news=await fetchLiveFixtureNews(fixture);
    row.liveNews=news;
-   const estimate=row.marketEstimate||((S.scenario&&fixture.source!=='live-fixture-feed'&&String(S.scenario.matchId||'')===String(fixture.matchId||''))?estimateSlipMarket(row,S.scenario):null);
+   const estimate=(row.marketEstimate&&String(row.marketEstimate.fixtureId||'')===String(fixture.matchId||''))?row.marketEstimate:((S.scenario&&fixture.source!=='live-fixture-feed'&&String(S.scenario.matchId||'')===String(fixture.matchId||''))?{...estimateSlipMarket(row,S.scenario),fixtureId:String(fixture.matchId||''),modelSource:'experimental-scoreline-scenario'}:null);
    row.marketEstimate=estimate;
    row.riskAudit=scoreSlipLeg(row,news);
    rows.push({...row,audit:{index:i,fixture,estimate,news,...row.riskAudit}});
@@ -437,12 +437,13 @@ async function runStrictSlipAudit(){
   S.riskAudits.unshift(S.lastRiskAudit);S.riskAudits=S.riskAudits.slice(0,100);persist();
   const listNews=r=>r.audit.news?.articles?.length?'<ul>'+r.audit.news.articles.slice(0,4).map(a=>'<li><a target="_blank" rel="noopener noreferrer" href="'+esc(a.url)+'">'+esc(a.title)+'</a> <small>'+esc(a.domain)+' · '+esc(a.seenDate||'date unavailable')+'</small>'+(a.terms.length?' <b>Signals: '+esc(a.terms.join(', '))+'</b>':'')+'</li>').join('')+'</ul>':'<small>'+esc(r.audit.news?.message||'No news status')+'</small>';
   const table=rows.length?'<div class="table-wrap"><table><thead><tr><th>Selection</th><th>Risk / 100</th><th>Decision</th><th>Model P / EV</th><th>Reasons & live source headlines</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.label)+'<br><small>'+esc(r.audit.fixture.homeTeam&&r.audit.fixture.awayTeam?r.audit.fixture.homeTeam+' vs '+r.audit.fixture.awayTeam:'Unmatched fixture')+'</small></td><td>'+r.audit.riskScore+'</td><td><b>'+esc(r.audit.status)+'</b></td><td>'+(r.audit.probability==null?'—':pct(r.audit.probability))+'<br>'+(r.audit.ev==null?'EV —':(r.audit.ev*100).toFixed(1)+'% EV')+'</td><td>'+(r.audit.reasons.length?'<b>Cut reasons</b><ul>'+r.audit.reasons.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+(r.audit.warnings.length?'<b>Warnings</b><ul>'+r.audit.warnings.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+listNews(r)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No selections to audit.</p>';
-  const shortlist='<h3>Survivors-only shortlist</h3><ol>'+picks.map(p=>'<li><b>'+esc(p.label)+'</b>: '+(p.row?esc(p.row.label)+' · '+pct(p.row.audit.probability)+' estimated probability · odds '+Number(p.row.odd).toFixed(2):'<span class="amber">NO QUALIFIED CANDIDATE — do not fill this slot without separate fixture, odds and evidence</span>')+'</li>').join('')+'</ol>';
+  const traps='<h3>❌ TRAPS REMOVED</h3>'+(cut.length?'<ul>'+cut.map(r=>'<li><b>'+esc(r.label)+'</b> — '+esc(r.audit.reasons.join('; ')||'Hard-stop validation failed')+'</li>').join('')+'</ul>':'<p>No hard-stop cuts were proven by the current evidence. This does NOT mean every leg is safe.</p>')+'<h3>🟠 HOLD — DO NOT TREAT AS CLEARED</h3>'+(hold.length?'<ul>'+hold.map(r=>'<li><b>'+esc(r.label)+'</b> — '+esc(r.audit.warnings.join('; ')||r.audit.reasons.join('; '))+'</li>').join('')+'</ul>':'<p>No holds.</p>');
+  const shortlist='<h3>✅ FINAL 3-GAME SECURE SLIP — QUALIFIED CANDIDATES ONLY</h3><p class="amber">“Secure” is a requested format, not a guarantee. A slot stays empty unless it passes the same fixture, market, price and evidence checks.</p><ol>'+picks.map(p=>'<li><b>'+esc(p.label)+'</b>: '+(p.row?esc(p.row.label)+' · '+pct(p.row.audit.probability)+' experimental estimated probability · odds '+Number(p.row.odd).toFixed(2)+' · EV '+(p.row.audit.ev==null?'not established':(p.row.audit.ev*100).toFixed(1)+'%'):'<span class="amber">NO QUALIFIED CANDIDATE — no evidence-backed replacement is currently available</span>')+'</li>').join('')+'</ol>';
   const cutButton=cut.length?'<button id="removeCutLegsNow" class="button danger">Remove '+cut.length+' CUT leg(s) from current slip</button>':'';
-  $('strictAuditOutput').innerHTML='<p><b>Live risk audit completed:</b> '+esc(S.lastRiskAudit.date)+' · news search window: 7 days · '+rows.length+' legs checked · <b>'+cut.length+' CUT</b> · '+hold.length+' HOLD · '+survivors.length+' survivor candidates.</p>'+shortlist+cutButton+table+'<p class="amber">News is discovered by GDELT article search and may be incomplete, duplicated, late or wrong. Headlines are risk signals, not verified injury reports. Open the original article. Scenario probabilities come from the app’s current experimental score model, not a proven edge. A leg is only a survivor candidate—not a guarantee.</p>';
+  $('strictAuditOutput').innerHTML='<p><b>Live risk audit completed:</b> '+esc(S.lastRiskAudit.date)+' · news search window: 7 days · '+rows.length+' legs checked · <b>'+cut.length+' CUT</b> · '+hold.length+' HOLD · '+survivors.length+' survivor candidates.</p>'+traps+shortlist+cutButton+table+'<p class="amber">News is discovered by GDELT article search and may be incomplete, duplicated, late or wrong. Headlines are risk signals, not verified injury reports. Open the original article. Scenario probabilities come from the app’s current experimental score model, not a proven edge. A leg is only a survivor candidate—not a guarantee.</p>';
   $('removeCutLegsNow')?.addEventListener('click',()=>{
-   const removed=new Set(rows.filter(r=>r.audit.status==='CUT').map(r=>r.id||r.label));
-   S.manualSelections=S.manualSelections.filter(r=>!removed.has(r.id||r.label));
+   const removedIndexes=new Set(rows.filter(r=>r.audit.status==='CUT').map(r=>r.audit.index));
+   S.manualSelections=S.manualSelections.filter((r,i)=>!removedIndexes.has(i));
    renderManualSelections();notice('strictAuditOutput','Removed '+cut.length+' CUT leg(s) from the current slip. Re-run fixture matching, scenario bridge and risk audit after adding replacements.','good');
    addActivity('Removed '+cut.length+' CUT legs from slip after risk audit');
   });
