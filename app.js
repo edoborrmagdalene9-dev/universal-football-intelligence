@@ -479,11 +479,12 @@ function renderAICouncilRiskBridge(result){
  const flags=(result.models||[]).flatMap(m=>(m.parsed?.traps||[]).map(t=>({provider:m.provider,selection:t.selection||'Unspecified leg',concern:t.concern||'Concern not specified',evidenceLevel:t.evidence_level||'unknown',action:t.action||'HOLD'}))).slice(0,24);
  S.lastRiskAudit.aiCouncil={status:result.status,successfulModels:result.successfulModels,generatedAt:result.generatedAt,models:(result.models||[]).map(m=>({provider:m.provider,model:m.model,status:m.status,error:m.error||null,assessment:m.parsed?.summary||null,traps:(m.parsed?.traps||[]).slice(0,8),missingEvidence:(m.parsed?.missing_evidence||[]).slice(0,10)}))};
  S.lastRiskAudit.aiReviewFlags=flags;
+ const groups={};flags.forEach(f=>{const k=String(f.selection||'Unspecified leg').trim().toLowerCase();(groups[k]||(groups[k]={label:f.selection,providers:new Set(),concerns:[]})).providers.add(f.provider);groups[k].concerns.push(f.concern)});const repeated=Object.values(groups).filter(g=>g.providers.size>=2);
  const out=$('strictAuditOutput');
  if(out){
   out.querySelector('#aiCouncilRiskBridge')?.remove();
   const box=document.createElement('div');box.id='aiCouncilRiskBridge';box.className='notice warning';
-  box.innerHTML='<h3>🤖 AI COUNCIL CROSS-CHECK — ADVISORY ONLY</h3><p>'+esc(result.status)+' · '+Number(result.successfulModels||0)+' model(s) responded. These flags do not change deterministic CUT/HOLD decisions.</p>'+(flags.length?'<ul>'+flags.map(f=>'<li><b>'+esc(f.selection)+'</b> — '+esc(f.concern)+' <small>['+esc(f.provider)+'; '+esc(f.evidenceLevel)+']</small></li>').join('')+'</ul>':'<p>No structured AI trap flags were parsed. This is not evidence that selections are safe.</p>')+'<p class="muted">Verify every AI claim against source evidence. Unverified flags remain questions, not facts.</p>';
+  box.innerHTML='<h3>🤖 AI COUNCIL CROSS-CHECK — ADVISORY ONLY</h3><p>'+esc(result.status)+' · '+Number(result.successfulModels||0)+' model(s) responded. These flags do not change deterministic CUT/HOLD decisions.</p>'+(repeated.length?'<h4>Repeated concerns across models</h4><ul>'+repeated.map(g=>'<li><b>'+esc(g.label)+'</b> — flagged by '+esc([...g.providers].join(', '))+'; '+esc([...new Set(g.concerns)].join('; '))+'</li>').join('')+'</ul>':'<p>No exact selection concern was repeated across two or more models. This is not evidence that selections are safe; review single-model flags and disagreements.</p>')+(flags.length?'<h4>All advisory flags</h4><ul>'+flags.map(f=>'<li><b>'+esc(f.selection)+'</b> — '+esc(f.concern)+' <small>['+esc(f.provider)+'; '+esc(f.evidenceLevel)+']</small></li>').join('')+'</ul>':'<p>No structured AI trap flags were parsed. This is not evidence that selections are safe.</p>')+'<p class="muted">Verify every AI claim against source evidence. Unverified flags remain questions, not facts.</p>';
   out.appendChild(box);
  }
 }
@@ -514,8 +515,8 @@ window.UFI_AI_CONTEXT = () => {
 window.UFI_ATTACH_AI_COUNCIL = result => {
  S.aiCouncilLast=result;
  if(S.lastRiskAudit) renderAICouncilRiskBridge(result);
+ addActivity('AI council review: '+(result?.successfulModels||0)+' models responded; status '+(result?.status||'unknown')); 
  persist();
- addActivity('AI council review: '+(result?.successfulModels||0)+' models responded; status '+(result?.status||'unknown'));
 };
 
 renderAllSaved();renderManualSelections();
