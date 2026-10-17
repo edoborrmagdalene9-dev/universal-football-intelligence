@@ -277,7 +277,31 @@ $('analyzeSlip').onclick=()=>{
   toast('Slip text parsed. Verify every selection and price.');
 };
 $('slipPhotos').addEventListener('change',e=>{const files=[...(e.target.files||[])];$('slipPhotoPreview').innerHTML=files.length?files.map((f,i)=>'<div>'+esc((i+1)+'. '+f.name)+' · '+Math.round(f.size/1024)+' KB</div>').join(''):'No slip photos selected yet.';notice('ocrStatus',files.length?'Selected '+files.length+' image(s). Run OCR, then carefully verify the extracted text.':'Choose one or more slip images.');});
-$('ocrSlipPhotos').onclick=async()=>{const files=[...($('slipPhotos').files||[])];if(!files.length)return notice('ocrStatus','Choose at least one bet-slip photo first.','warning');if(!window.Tesseract)return notice('ocrStatus','OCR engine could not load. Check internet access, then refresh and try again.','error');const button=$('ocrSlipPhotos');button.disabled=true;let output=[];try{for(let i=0;i<files.length;i++){notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+'…');const result=await Tesseract.recognize(files[i],'eng',{logger:m=>{if(m.status==='recognizing text')notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+'… '+Math.round((m.progress||0)*100)+'%')}});output.push('--- PHOTO '+(i+1)+': '+files[i].name+' ---\n'+(result.data.text||''));}const extracted=output.join('\n\n');$('slipInput').value=$('slipInput').value.trim()?$('slipInput').value.trim()+'\n\n'+extracted:extracted;notice('ocrStatus','OCR finished for '+files.length+' image(s). Check team names, markets, odds, separators and any cut-off text before clicking Analyze slip. OCR text is a draft, not verified booking data.','good');addActivity('Extracted text from '+files.length+' slip photo(s)');}catch(err){notice('ocrStatus','OCR failed: '+(err?.message||'unknown error')+'. Try clearer screenshots or paste the text manually.','error')}finally{button.disabled=false;}};
+function ocrTextByVisualRows(data){
+ const words=(data?.words||[]).filter(w=>String(w.text||'').trim()&&w.bbox&&Number.isFinite(w.bbox.y0)&&Number.isFinite(w.bbox.y1));
+ if(words.length<4){
+  const lines=(data?.lines||[]).map(x=>String(x.text||'').trim()).filter(Boolean);
+  return lines.length?lines.join('\n'):String(data?.text||'').trim();
+ }
+ const heights=words.map(w=>Math.max(1,w.bbox.y1-w.bbox.y0)).sort((a,b)=>a-b);
+ const median=heights[Math.floor(heights.length/2)]||16;
+ const tolerance=Math.max(7,Math.min(18,median*.62));
+ const sorted=words.map(w=>({...w,cy:(w.bbox.y0+w.bbox.y1)/2})).sort((a,b)=>a.cy-b.cy||a.bbox.x0-b.bbox.x0);
+ const rows=[];
+ for(const w of sorted){
+  let best=null,bestDistance=Infinity;
+  for(const row of rows){
+   const distance=Math.abs(w.cy-row.cy);
+   if(distance<=tolerance&&distance<bestDistance){best=row;bestDistance=distance;}
+  }
+  if(!best){best={cy:w.cy,words:[]};rows.push(best);}
+  best.words.push(w);
+  best.cy=best.words.reduce((sum,x)=>sum+x.cy,0)/best.words.length;
+ }
+ const lines=rows.sort((a,b)=>a.cy-b.cy).map(row=>row.words.sort((a,b)=>a.bbox.x0-b.bbox.x0).map(w=>w.text).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean);
+ return lines.length?lines.join('\n'):String(data?.text||'').trim();
+}
+$('ocrSlipPhotos').onclick=async()=>{const files=[...($('slipPhotos').files||[])];if(!files.length)return notice('ocrStatus','Choose at least one bet-slip photo first.','warning');if(!window.Tesseract)return notice('ocrStatus','OCR engine could not load. Check internet access, then refresh and try again.','error');const button=$('ocrSlipPhotos');button.disabled=true;let output=[];try{for(let i=0;i<files.length;i++){notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+'…');const result=await Tesseract.recognize(files[i],'eng',{logger:m=>{if(m.status==='recognizing text')notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+'… '+Math.round((m.progress||0)*100)+'%')}});output.push('--- PHOTO '+(i+1)+': '+files[i].name+' ---\n'+(ocrTextByVisualRows(result.data)));}const extracted=output.join('\n\n');$('slipInput').value=$('slipInput').value.trim()?$('slipInput').value.trim()+'\n\n'+extracted:extracted;notice('ocrStatus','OCR finished for '+files.length+' image(s). Check team names, markets, odds, separators and any cut-off text before clicking Analyze slip. OCR text is a draft, not verified booking data.','good');addActivity('Extracted text from '+files.length+' slip photo(s)');}catch(err){notice('ocrStatus','OCR failed: '+(err?.message||'unknown error')+'. Try clearer screenshots or paste the text manually.','error')}finally{button.disabled=false;}};
 $('addManualSelection').onclick=()=>{const label=$('manualSelection').value.trim(),odd=Number($('manualOdds').value),prob=$('manualProb').value===''?null:Number($('manualProb').value)/100;if(!label||!Number.isFinite(odd)||odd<=1)return toast('Enter a selection label and decimal odds above 1.');if(prob!==null&&(prob<0||prob>1))return toast('Independent probability must be 0–100%.');S.manualSelections.push({label,odd,p:1/odd,estimate:prob,group:$('manualGroup').value.trim()});renderManualSelections();['manualSelection','manualOdds','manualProb','manualGroup'].forEach(id=>$(id).value='')};
 function renderManualSelections(){
  const rows=S.manualSelections;
@@ -308,7 +332,7 @@ async function fetchSportyBetUpcoming(){
  if(!rows.length)throw Error('SportyBet returned no usable football fixtures.');
  return rows;
 }
-async async function loadLiveFixtures(){
+async function loadLiveFixtures(){
  const button=$('loadLiveFixtures');if(button){button.disabled=true;button.textContent='Loading current fixtures…'}
  notice('liveFixtureOutput','Connecting to SportyBet fixture/market feed first, then using ESPN as a fallback. Browser access to SportyBet may be blocked by CORS.','');
  try{
