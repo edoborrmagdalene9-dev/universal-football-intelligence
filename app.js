@@ -1,5 +1,27 @@
 (() => {
 'use strict';
+// UFI diagnostic guard: surface JavaScript startup failures instead of silent dead buttons.
+window.addEventListener('error',function(ev){
+ try{
+  const msg='UFI JavaScript error: '+(ev.message||'unknown error')+(ev.filename?' ('+ev.filename.split('/').pop()+':'+(ev.lineno||'?')+')':'');
+  ['ocrStatus','slipOutput'].forEach(id=>{const el=document.getElementById(id);if(el){el.textContent=msg;el.className='notice error';}});
+  console.error(msg,ev.error||'');
+ }catch(_){}
+});
+window.addEventListener('unhandledrejection',function(ev){
+ try{
+  const reason=ev.reason&&ev.reason.message?ev.reason.message:String(ev.reason||'unknown rejection');
+  const el=document.getElementById('ocrStatus');if(el){el.textContent='UFI background task failed: '+reason;el.className='notice error';}
+  console.error('UFI unhandled rejection:',ev.reason);
+ }catch(_){}
+});
+document.addEventListener('click',function(ev){
+ const btn=ev.target&&ev.target.closest?ev.target.closest('#ocrSlipPhotos,#analyzeSlip'):null;
+ if(!btn)return;
+ const status=document.getElementById(btn.id==='ocrSlipPhotos'?'ocrStatus':'slipOutput');
+ if(!btn.onclick&&status){status.textContent='UFI diagnostic: this button has no active click handler. The main app script likely stopped during startup. Refresh once; if this message remains, report it.';status.className='notice error';}
+},true);
+
 const BASE='https://raw.githubusercontent.com/statsbomb/open-data/master/data/';
 const $=id=>document.getElementById(id);
 const STORE='ufi_workspace_v2';
