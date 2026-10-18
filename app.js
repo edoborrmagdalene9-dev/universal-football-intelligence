@@ -272,9 +272,7 @@ function parseSlipLines(text){
  const flush=()=>{if(!pending.length)return;const raw=pending.join(' | ');const parsed=parseSlipLine(raw,rows.length);if(parsed.odd!==null||parsed.marketType!=='Unclassified — verify'||parseFixtureText(raw))rows.push(parsed);pending=[];};
  for(const line of source){
   if(isHeader(line))continue;
-  const parsedLine=parseSlipLine(line,0);
-  const needsPrice=!hasOdds(line)&&(isFixtureOnly(line)||parsedLine.marketType!=='Unclassified — verify');
-  if(needsPrice){
+  if(isFixtureOnly(line)){
    flush();pending=[line];continue;
   }
   if(pending.length){
@@ -283,6 +281,9 @@ function parseSlipLines(text){
    if(pending.length>=4){flush();}
    continue;
   }
+  const parsedLine=parseSlipLine(line,0);
+  const needsPrice=!hasOdds(line)&&parsedLine.marketType!=='Unclassified — verify';
+  if(needsPrice){pending=[line];continue;}
   const parsed=parseSlipLine(line,rows.length);
   if(parsed.odd!==null||parsed.marketType!=='Unclassified — verify'||parseFixtureText(line))rows.push(parsed);
  }
