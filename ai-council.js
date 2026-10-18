@@ -76,6 +76,21 @@ function render(result) {
  if($('aiCouncilOutput')) $('aiCouncilOutput').innerHTML=html;
  if($('aiCouncilScenarioOutput')) $('aiCouncilScenarioOutput').innerHTML=html;
 }
+async function testConfiguredProviders(){
+ const status=$('aiCouncilStatus'),button=$('testAiProviders');
+ const configured=providers();
+ if(!configured.length){if(status)status.textContent='No provider is configured. Get a key from an official provider console, paste it into the matching key field, and check the model ID.';return;}
+ if(button){button.disabled=true;button.textContent='Testing providers…';}
+ if(status)status.textContent='Testing configured API keys with a short request. No bet will be changed.';
+ const probe='Return exactly this JSON and nothing else: {"status":"ok","purpose":"UFI provider connection test"}.';
+ const results=await Promise.all(configured.map(async p=>{
+  try{const text=await p.run(p,probe);const parsed=parseModel(text);return {id:p.id,model:p.model,ok:true,detail:parsed.overall_status||parsed.status||'valid response'};}
+  catch(e){return {id:p.id,model:p.model,ok:false,detail:String(e?.message||e).slice(0,220)};}
+ }));
+ const lines=results.map(r=>(r.ok?'✓ ':'✗ ')+r.id+' ('+r.model+'): '+(r.ok?'API responded':'FAILED — '+r.detail));
+ if(status)status.textContent=lines.join(' | ');
+ if(button){button.disabled=false;button.textContent='Test configured API keys';}
+}
 async function runCouncil() {
  const status=$('aiCouncilStatus');
  const buttons=[$('runAiCouncil'),$('runAiCouncilScenario')].filter(Boolean);
@@ -107,6 +122,7 @@ async function runCouncil() {
  buttons.forEach(b=>{b.disabled=false;b.textContent=b.id==='runAiCouncilScenario'?'Run AI council on current prediction':'Run 3-model evidence challenge'});
 }
 $('discoverOpenRouterFree')?.addEventListener('click',async()=>{const b=$('discoverOpenRouterFree');b.disabled=true;b.textContent='Checking model list…';try{const res=await fetch('https://openrouter.ai/api/v1/models');if(!res.ok)throw new Error('Model catalogue HTTP '+res.status);const d=await res.json();const free=(d.data||[]).filter(m=>String(m.id||'').endsWith(':free')&&Number(m.pricing?.prompt)===0&&Number(m.pricing?.completion)===0);const prefer=free.find(m=>/qwen|llama|gpt-oss|deepseek/i.test(m.id))||free[0];if(!prefer)throw new Error('No free text model found in public catalogue.');$('aiOpenRouterModel').value=prefer.id;if($('aiCouncilStatus'))$('aiCouncilStatus').textContent='OpenRouter catalogue selected '+prefer.id+'. Confirm availability when running the council.';}catch(e){if($('aiCouncilStatus'))$('aiCouncilStatus').textContent='Could not discover a free OpenRouter model automatically: '+String(e?.message||e)+'. Edit the model ID manually.';}finally{b.disabled=false;b.textContent='Find current free model';}});
+$('testAiProviders')?.addEventListener('click',testConfiguredProviders);
 $('runAiCouncil')?.addEventListener('click',runCouncil);
 $('runAiCouncilScenario')?.addEventListener('click',runCouncil);
 $('clearAiKeys')?.addEventListener('click',()=>{['aiGeminiKey','aiGroqKey','aiOpenRouterKey','aiHfKey'].forEach(id=>{if($(id))$(id).value=''});if($('aiCouncilStatus'))$('aiCouncilStatus').textContent='Provider keys cleared from this page.';});
