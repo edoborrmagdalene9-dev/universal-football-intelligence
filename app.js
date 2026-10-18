@@ -262,52 +262,41 @@ function shuffleSlipRows(rows){
  for(let i=out.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[out[i],out[j]]=[out[j],out[i]];}
  return out;
 }
-$('analyzeSlip').onclick=()=>{
-  const lines=$('slipInput').value.split(/\n/).map(x=>x.trim()).filter(Boolean);
-  const rows=[];
-  for(const line of lines){
-    if(/^---\s*PHOTO\b/i.test(line)||/^page\s+\d+\s*$/i.test(line))continue;
-    const parsed=parseSlipLine(line,rows.length);
-    // Avoid treating headings or long OCR fragments with no price as selections.
-    if(parsed.odd!==null||line.toLowerCase().includes('odds')||line.toLowerCase().includes('price')||parsed.marketType!=='Unclassified — verify'||parseFixtureText(line))rows.push(parsed);
+function parseSlipLines(text){
+ const source=String(text||'').split(/\n/).map(x=>x.trim()).filter(Boolean);
+ const rows=[];let pending=[];
+ const isHeader=line=>/^---\s*PHOTO\b/i.test(line)||/^page\s+\d+\s*$/i.test(line)||/^(sportybet|my bets|bet slip|booking code|share bet|total odds|potential win|stake|cashout|cash out|selections?)\s*[:#]?$/i.test(line);
+ const hasOdds=line=>parseSlipLine(line,0).odd!==null;
+ const isFixtureOnly=line=>!!parseFixtureText(line)&&!hasOdds(line)&&classifySlipMarket(line)==='Unclassified — verify';
+ const flush=()=>{if(!pending.length)return;const raw=pending.join(' | ');const parsed=parseSlipLine(raw,rows.length);if(parsed.odd!==null||parsed.marketType!=='Unclassified — verify'||parseFixtureText(raw))rows.push(parsed);pending=[];};
+ for(const line of source){
+  if(isHeader(line))continue;
+  if(isFixtureOnly(line)){
+   flush();pending=[line];continue;
   }
-  S.manualSelections=shuffleSlipRows(rows.map(x=>({...x})));
-  renderManualSelections();
-  const valid=rows.filter(x=>x.odd!==null);
-  const combined=valid.reduce((a,x)=>a*x.odd,1),stake=Math.max(0,Number($('slipStake').value)||0);
-  S.lastSlip={rows,combined:valid.length?combined:null,stake,date:now()};
-  const table=rows.length?'<div class="table-wrap"><table><thead><tr><th>Line / selection</th><th>Market guess</th><th>Odds read</th><th>Confidence</th><th>Review note</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+esc(x.marketType)+'</td><td>'+(x.odd===null?'Not read':x.odd.toFixed(2))+'</td><td>'+esc(x.confidence)+'</td><td>'+esc(x.warning)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No clear priced selection lines found. Check OCR text and add one selection per line where possible.';
-  $('slipOutput').innerHTML=rows.length?'<p>Parsed '+rows.length+' possible selection line(s); '+valid.length+' have a readable decimal price. Every row still needs human verification.</p><div class="outcome-grid"><div><span>Priced rows</span><b>'+valid.length+'</b></div><div><span>Unpriced rows</span><b>'+(rows.length-valid.length)+'</b></div><div><span>Combined odds of priced rows only</span><b>'+(valid.length?combined.toFixed(2):'—')+'</b></div><div><span>Stake entered</span><b>₦'+stake.toLocaleString()+'</b></div><div><span>Return if all priced rows win</span><b>'+(valid.length?'₦'+(stake*combined).toLocaleString(undefined,{maximumFractionDigits:2}):'—')+'</b></div></div>'+table+'<p class="amber">OCR is not verification. Market labels and fixture names are best-effort text classification, not confirmed bookmaker market IDs. Combined odds and implied chance do not account for correlations, margin or true probabilities. Do not use the rows for modelling until the labels and prices are checked.</p>':'<p>No priced selection lines found. Try clearer screenshots, one selection per line, or paste the text manually.</p>';
-  addActivity('Parsed '+rows.length+' slip text lines; '+valid.length+' had readable decimal odds');
-  toast('Slip text parsed. Verify every selection and price.');
-};
-$('slipPhotos').addEventListener('change',e=>{const files=[...(e.target.files||[])];$('slipPhotoPreview').innerHTML=files.length?files.map((f,i)=>'<div>'+esc((i+1)+'. '+f.name)+' · '+Math.round(f.size/1024)+' KB</div>').join(''):'No slip photos selected yet.';notice('ocrStatus',files.length?'Selected '+files.length+' image(s). Run OCR, then carefully verify the extracted text.':'Choose one or more slip images.');});
-function ocrTextByVisualRows(data){
- const words=(data?.words||[]).filter(w=>String(w.text||'').trim()&&w.bbox&&Number.isFinite(w.bbox.y0)&&Number.isFinite(w.bbox.y1));
- if(words.length<4){
-  const lines=(data?.lines||[]).map(x=>String(x.text||'').trim()).filter(Boolean);
-  return lines.length?lines.join('\n'):String(data?.text||'').trim();
- }
- const heights=words.map(w=>Math.max(1,w.bbox.y1-w.bbox.y0)).sort((a,b)=>a-b);
- const median=heights[Math.floor(heights.length/2)]||16;
- const tolerance=Math.max(7,Math.min(18,median*.62));
- const sorted=words.map(w=>({...w,cy:(w.bbox.y0+w.bbox.y1)/2})).sort((a,b)=>a.cy-b.cy||a.bbox.x0-b.bbox.x0);
- const rows=[];
- for(const w of sorted){
-  let best=null,bestDistance=Infinity;
-  for(const row of rows){
-   const distance=Math.abs(w.cy-row.cy);
-   if(distance<=tolerance&&distance<bestDistance){best=row;bestDistance=distance;}
+  if(pending.length){
+   pending.push(line);
+   if(hasOdds(line)){flush();continue;}
+   if(pending.length>=4){flush();}
+   continue;
   }
-  if(!best){best={cy:w.cy,words:[]};rows.push(best);}
-  best.words.push(w);
-  best.cy=best.words.reduce((sum,x)=>sum+x.cy,0)/best.words.length;
+  const parsed=parseSlipLine(line,rows.length);
+  if(parsed.odd!==null||parsed.marketType!=='Unclassified — verify'||parseFixtureText(line))rows.push(parsed);
  }
- const lines=rows.sort((a,b)=>a.cy-b.cy).map(row=>row.words.sort((a,b)=>a.bbox.x0-b.bbox.x0).map(w=>w.text).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean);
- return lines.length?lines.join('\n'):String(data?.text||'').trim();
+ flush();
+ return rows;
 }
-$('ocrSlipPhotos').onclick=async()=>{const files=[...($('slipPhotos').files||[])];if(!files.length)return notice('ocrStatus','Choose at least one bet-slip photo first.','warning');if(!window.Tesseract)return notice('ocrStatus','OCR engine could not load. Check internet access, then refresh and try again.','error');const button=$('ocrSlipPhotos');button.disabled=true;let output=[];try{for(let i=0;i<files.length;i++){notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+'…');const result=await Tesseract.recognize(files[i],'eng',{logger:m=>{if(m.status==='recognizing text')notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+'… '+Math.round((m.progress||0)*100)+'%')}});output.push('--- PHOTO '+(i+1)+': '+files[i].name+' ---\n'+(ocrTextByVisualRows(result.data)));}const extracted=output.join('\n\n');$('slipInput').value=$('slipInput').value.trim()?$('slipInput').value.trim()+'\n\n'+extracted:extracted;notice('ocrStatus','OCR finished for '+files.length+' image(s). Check team names, markets, odds, separators and any cut-off text before clicking Analyze slip. OCR text is a draft, not verified booking data.','good');addActivity('Extracted text from '+files.length+' slip photo(s)');}catch(err){notice('ocrStatus','OCR failed: '+(err?.message||'unknown error')+'. Try clearer screenshots or paste the text manually.','error')}finally{button.disabled=false;}};
-$('shuffleSlipSelections')?.addEventListener('click',()=>{if(!S.manualSelections.length)return toast('Analyze or add selections first.');S.manualSelections=shuffleSlipRows(S.manualSelections);renderManualSelections();notice('slipOutput','Selection order randomized. Every selection, market and odds value remains attached to its original row.','good');addActivity('Randomized current slip selection order');});
+$('analyzeSlip').onclick=()=>{
+ const rows=parseSlipLines($('slipInput').value);
+ S.manualSelections=shuffleSlipRows(rows.map(x=>({...x})));
+ renderManualSelections();
+ const valid=rows.filter(x=>x.odd!==null);
+ const combined=valid.reduce((a,x)=>a*x.odd,1),stake=Math.max(0,Number($('slipStake').value)||0);
+ S.lastSlip={rows:S.manualSelections,combined:valid.length?combined:null,stake,date:now()};
+ const table=S.manualSelections.length?'<div class="table-wrap"><table><thead><tr><th>Line / selection</th><th>Market guess</th><th>Odds read</th><th>Confidence</th><th>Review note</th></tr></thead><tbody>'+S.manualSelections.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+esc(x.marketType)+'</td><td>'+(x.odd===null?'Not read':x.odd.toFixed(2))+'</td><td>'+esc(x.confidence)+'</td><td>'+esc(x.warning)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No clear selection blocks found. Check the OCR text; add one selection per line or use the manual-selection form.</p>';
+ $('slipOutput').innerHTML=S.manualSelections.length?'<p>Parsed '+S.manualSelections.length+' possible selection block(s); '+valid.length+' have a readable decimal price. Fixture rows and nearby market/price lines were grouped where possible, then randomized. Verify every team, market and price.</p>'+table+'<div class="outcome-grid"><div><span>Priced rows</span><b>'+valid.length+'</b></div><div><span>Unpriced rows</span><b>'+(S.manualSelections.length-valid.length)+'</b></div><div><span>Combined odds of priced rows only</span><b>'+(valid.length?combined.toFixed(2):'—')+'</b></div><div><span>Stake entered</span><b>₦'+stake.toLocaleString()+'</b></div></div>':'<p>No clear priced selection lines found. Check OCR text and add one selection per line where possible.';
+ addActivity('Parsed and randomized '+S.manualSelections.length+' possible slip selection blocks');
+};
 $('addManualSelection').onclick=()=>{const label=$('manualSelection').value.trim(),odd=Number($('manualOdds').value),prob=$('manualProb').value===''?null:Number($('manualProb').value)/100;if(!label||!Number.isFinite(odd)||odd<=1)return toast('Enter a selection label and decimal odds above 1.');if(prob!==null&&(prob<0||prob>1))return toast('Independent probability must be 0–100%.');S.manualSelections.push({label,odd,p:1/odd,estimate:prob,group:$('manualGroup').value.trim()});renderManualSelections();['manualSelection','manualOdds','manualProb','manualGroup'].forEach(id=>$(id).value='')};
 function renderManualSelections(){
  const rows=S.manualSelections;
