@@ -448,6 +448,14 @@ function collectStoredMoodMatches(row){
    }
   }
  }
+ for(const context of (S.contexts||[])){
+  const team=normalizeTeamName(context.team||context.teamName||'');
+  const evidence=String(context.evidence||context.notes||'');
+  const tags=moodTagsFromText(evidence);
+  if(team&&currentTeams.includes(team)&&(tags.length||/mood|spoiler|game.?killer|trap/i.test(evidence))){
+   add({kind:'saved team context',match:context.team||context.teamName||'Saved team',label:'Saved team context',date:context.date||'',status:'USER-SAVED CONTEXT',mood:tags.join(', ')||'user-defined team mood',reason:evidence.slice(0,260),weight:1});
+  }
+ }
  for(const note of (S.notes||[])){
   const text=[note.title,note.type,note.body].filter(Boolean).join(' ');
   const noteTeams=currentTeams.filter(t=>normalizeTeamName(text).includes(t));
@@ -457,7 +465,7 @@ function collectStoredMoodMatches(row){
    add({kind:noteTeams.length?'saved mood note for this team':'saved general mood note',match:noteTeams.length?noteTeams.join(' / '):'Research note',label:note.title||'Saved research note',date:note.date||'',status:'USER-SAVED NOTE',mood:tags.join(', ')||'user-defined mood',reason:String(note.body||'').slice(0,260),weight:noteTeams.length?1:0});
   }
  }
- const teamHits=hits.filter(x=>x.kind==='same-team history'||x.kind==='saved mood note for this team');
+ const teamHits=hits.filter(x=>x.kind==='same-team history'||x.kind==='saved mood note for this team'||x.kind==='saved team context');
  const patterns=hits.filter(x=>x.kind==='similar historical pattern'||x.kind==='saved general mood note');
  return {matched:hits.length>0,teamMatchCount:teamHits.length,patternMatchCount:patterns.length,hits:hits.sort((a,b)=>b.weight-a.weight).slice(0,8),moodLabels:[...new Set(hits.flatMap(x=>String(x.mood||'').split(', ').filter(Boolean)))].slice(0,10)};
 }
@@ -584,6 +592,17 @@ async function runStrictSlipAudit(){
  finally{button.disabled=false;button.textContent='Fetch live news + run strict risk audit';}
 }
 $('runStrictAudit').onclick=runStrictSlipAudit;
+$('removeMoodSpoilers')?.addEventListener('click',()=>{
+ const matches=S.manualSelections.filter(row=>(row.riskAudit?.moodAudit?.hits||[]).some(hit=>hit.kind==='same-team history'&&hit.status==='CUT'));
+ if(!matches.length){toast('No active selection matched a saved same-team CUT record. Run the audit first.');return;}
+ if(!confirm('Remove '+matches.length+' selection(s) that matched saved same-team CUT mood records from the active slip? This does not delete saved workspace history.'))return;
+ const ids=new Set(matches.map(row=>row.id||row.label+'|'+row.rawLine));
+ S.manualSelections=S.manualSelections.filter(row=>!ids.has(row.id||row.label+'|'+row.rawLine));
+ if(S.lastRiskAudit){S.lastRiskAudit.userRemovedMoodSpoilers=[...(S.lastRiskAudit.userRemovedMoodSpoilers||[]),...matches.map(row=>({label:row.label,fixture:row.fixtureResolution||null,reason:'Matched a previously saved same-team CUT record',removedAt:now()}))];}
+ renderManualSelections();persist();addActivity('Removed '+matches.length+' active selection(s) matching saved same-team CUT mood records');
+ notice('slipOutput','Removed '+matches.length+' active leg(s) matching saved same-team CUT mood records. Saved research history remains intact. Re-run the audit on the remaining slip.','good');
+});
+
 $('exportStrictAudit').onclick=()=>{if(!S.lastRiskAudit)return toast('Run the live risk audit first.');download('ufi-live-strict-slip-audit.json',JSON.stringify(S.lastRiskAudit,null,2),'application/json');};
 $('markReplacement').onclick=()=>{const n=Number($('replacementIndex').value);if(!Number.isInteger(n)||n<0||n>=S.manualSelections.length)return toast('Enter a valid row number from 0.');S.manualSelections[n].source='replacement';renderManualSelections();toast('Marked as replacement candidate. Re-run market bridge and audit.');};
 
