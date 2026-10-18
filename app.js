@@ -244,7 +244,8 @@ function classifySlipMarket(line){
 function parseSlipLine(line,index){
   const tokens=[...line.matchAll(/(?<![\w.])(\d{1,3}\.\d{1,4})(?!\d)/g)];
   const valid=tokens.filter(m=>{const n=Number(m[1]);return n>1&&n<=1000});
-  const last=valid[valid.length-1];
+  const goalLineOnly=/\b(?:over|under)\s*\d+(?:\.\d+)?\b/i.test(line)&&valid.length===1;
+  const last=goalLineOnly?null:valid[valid.length-1];
   const endsWithOdd=!!last&&line.trim().endsWith(last[1]);
   const odd=last?Number(last[1]):null;
   let confidence='low',warning='No confident decimal odds found; enter the odds manually.';
@@ -271,7 +272,9 @@ function parseSlipLines(text){
  const flush=()=>{if(!pending.length)return;const raw=pending.join(' | ');const parsed=parseSlipLine(raw,rows.length);if(parsed.odd!==null||parsed.marketType!=='Unclassified — verify'||parseFixtureText(raw))rows.push(parsed);pending=[];};
  for(const line of source){
   if(isHeader(line))continue;
-  if(isFixtureOnly(line)){
+  const parsedLine=parseSlipLine(line,0);
+  const needsPrice=!hasOdds(line)&&(isFixtureOnly(line)||parsedLine.marketType!=='Unclassified — verify');
+  if(needsPrice){
    flush();pending=[line];continue;
   }
   if(pending.length){
