@@ -290,16 +290,97 @@ function parseSlipLines(text){
  flush();
  return rows;
 }
+
+/* Resilient slip-photo OCR: the original page exposed controls but had no OCR click handler. */
+const slipPhotoInput=$('slipPhotos');
+if(slipPhotoInput){
+ slipPhotoInput.addEventListener('change',()=>{
+  const files=[...(slipPhotoInput.files||[])];
+  $('slipPhotoPreview').textContent=files.length
+   ? files.length+' image(s) selected: '+files.map(f=>f.name).join(', ')+'. Tap “Read text from photos (OCR)”.'
+   : 'No slip photos selected yet. Upload clear, full screenshots; OCR may misread small text or unusual odds formats.';
+  notice('ocrStatus',files.length?'Ready to read '+files.length+' image(s).':'Choose one or more slip photos first.',files.length?'good':'');
+ });
+}
+async function ensureTesseract(){
+ if(window.Tesseract&&typeof window.Tesseract.recognize==='function')return window.Tesseract;
+ const urls=[
+  'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
+  'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js'
+ ];
+ let lastError='OCR engine could not be loaded.';
+ for(const src of urls){
+  try{
+   await new Promise((resolve,reject)=>{
+    const script=document.createElement('script');script.src=src;script.async=true;
+    const timer=setTimeout(()=>{script.remove();reject(new Error('Timed out loading OCR engine'));},18000);
+    script.onload=()=>{clearTimeout(timer);resolve();};
+    script.onerror=()=>{clearTimeout(timer);script.remove();reject(new Error('Could not load '+new URL(src).hostname));};
+    document.head.appendChild(script);
+   });
+   if(window.Tesseract&&typeof window.Tesseract.recognize==='function')return window.Tesseract;
+   lastError='OCR script loaded but did not expose the Tesseract API.';
+  }catch(e){lastError=e.message||String(e);}
+ }
+ throw new Error(lastError+' Check internet access, content blockers, or try again later.');
+}
+$('ocrSlipPhotos').onclick=async()=>{
+ const button=$('ocrSlipPhotos'),files=[...(slipPhotoInput?.files||[])];
+ if(!files.length){notice('ocrStatus','Choose one or more slip photos first.','warning');return;}
+ button.disabled=true;button.textContent='Reading photos…';
+ let engine;
+ try{
+  notice('ocrStatus','Loading OCR engine. Keep this page open; first load may take a little time…');
+  engine=await ensureTesseract();
+  const extracted=[];
+  for(let i=0;i<files.length;i++){
+   const file=files[i];
+   if(!file.type.startsWith('image/')){extracted.push('--- PHOTO '+(i+1)+' ---\n[Skipped: file is not an image]');continue;}
+   notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+': '+file.name+'…');
+   try{
+    const result=await engine.recognize(file,'eng',{logger:m=>{
+     if(m&&m.status==='recognizing text'&&Number.isFinite(m.progress)){
+      notice('ocrStatus','Reading photo '+(i+1)+' of '+files.length+': '+Math.round(m.progress*100)+'%');
+     }
+    }});
+    const text=String(result?.data?.text||'').trim();
+    extracted.push('--- PHOTO '+(i+1)+': '+file.name+' ---\n'+(text||'[No readable text detected]'));
+   }catch(e){extracted.push('--- PHOTO '+(i+1)+': '+file.name+' ---\n[OCR failed: '+(e.message||String(e))+']');}
+  }
+  const combined=extracted.join('\n\n');
+  $('slipInput').value=[$('slipInput').value.trim(),combined].filter(Boolean).join('\n\n');
+  const successful=extracted.filter(x=>!x.includes('[OCR failed:')&&!x.includes('[Skipped:')&&!x.includes('[No readable text detected]')).length;
+  notice('ocrStatus','OCR finished: '+successful+'/'+files.length+' photo(s) produced text. Check and correct every team, market and odd before analyzing.',successful?'good':'warning');
+  if(!successful)notice('ocrStatus','No readable text extracted. Try a sharper full screenshot with larger text, or paste the text manually. '+combined.split('\n').filter(x=>x.startsWith('[OCR failed:')).join(' '),'warning');
+  if(successful)addActivity('Read text from '+successful+' slip photo(s) using OCR');
+ }catch(e){
+  notice('ocrStatus','Photo OCR could not start: '+(e.message||String(e))+'. Workaround: paste the slip text into the text box below; analysis does not require OCR.','error');
+ }finally{button.disabled=false;button.textContent='Read text from photos (OCR)';}
+};
+
 $('analyzeSlip').onclick=()=>{
- const rows=parseSlipLines($('slipInput').value);
- S.manualSelections=shuffleSlipRows(rows.map(x=>({...x})));
- renderManualSelections();
- const valid=rows.filter(x=>x.odd!==null);
- const combined=valid.reduce((a,x)=>a*x.odd,1),stake=Math.max(0,Number($('slipStake').value)||0);
- S.lastSlip={rows:S.manualSelections,combined:valid.length?combined:null,stake,date:now()};
- const table=S.manualSelections.length?'<div class="table-wrap"><table><thead><tr><th>Line / selection</th><th>Market guess</th><th>Odds read</th><th>Confidence</th><th>Review note</th></tr></thead><tbody>'+S.manualSelections.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+esc(x.marketType)+'</td><td>'+(x.odd===null?'Not read':x.odd.toFixed(2))+'</td><td>'+esc(x.confidence)+'</td><td>'+esc(x.warning)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No clear selection blocks found. Check the OCR text; add one selection per line or use the manual-selection form.</p>';
- $('slipOutput').innerHTML=S.manualSelections.length?'<p>Parsed '+S.manualSelections.length+' possible selection block(s); '+valid.length+' have a readable decimal price. Fixture rows and nearby market/price lines were grouped where possible, then randomized. Verify every team, market and price.</p>'+table+'<div class="outcome-grid"><div><span>Priced rows</span><b>'+valid.length+'</b></div><div><span>Unpriced rows</span><b>'+(S.manualSelections.length-valid.length)+'</b></div><div><span>Combined odds of priced rows only</span><b>'+(valid.length?combined.toFixed(2):'—')+'</b></div><div><span>Stake entered</span><b>₦'+stake.toLocaleString()+'</b></div></div>':'<p>No clear priced selection lines found. Check OCR text and add one selection per line where possible.';
- addActivity('Parsed and randomized '+S.manualSelections.length+' possible slip selection blocks');
+ try{
+  const text=$('slipInput').value||'';
+  let rows=parseSlipLines(text);
+  /* Recovery path: preserve recognizable lines even if the grouped OCR parser finds none. */
+  if(!rows.length&&text.trim()){
+   rows=text.split(/\r?\n/).map(x=>x.trim()).filter(x=>x&&!/^---\s*PHOTO\b/i.test(x)&&!/^page\s+\d+\s*$/i.test(x))
+    .map((line,i)=>parseSlipLine(line,i))
+    .filter(x=>x.odd!==null||x.marketType!=='Unclassified — verify'||parseFixtureText(x.rawLine));
+  }
+  S.manualSelections=shuffleSlipRows(rows.map(x=>({...x})));
+  renderManualSelections();
+  const valid=S.manualSelections.filter(x=>Number.isFinite(Number(x.odd))&&Number(x.odd)>1);
+  const combined=valid.reduce((a,x)=>a*Number(x.odd),1),stake=Math.max(0,Number($('slipStake').value)||0);
+  S.lastSlip={rows:S.manualSelections,combined:valid.length?combined:null,stake,date:now()};
+  const table=S.manualSelections.length?'<div class="table-wrap"><table><thead><tr><th>Line / selection</th><th>Market guess</th><th>Odds read</th><th>Confidence</th><th>Review note</th></tr></thead><tbody>'+S.manualSelections.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+esc(x.marketType)+'</td><td>'+(Number.isFinite(Number(x.odd))&&Number(x.odd)>1?Number(x.odd).toFixed(2):'Not read')+'</td><td>'+esc(x.confidence||'manual')+'</td><td>'+esc(x.warning||'Verify selection and price against the original slip.')+'</td></tr>').join('')+'</tbody></table></div>':'<p>No selection rows could be recognized. Paste one selection per line (for example: Arsenal win 1.80) or add selections using the manual form. The text was not deleted.</p>';
+  $('slipOutput').innerHTML=S.manualSelections.length?'<p>Parsed '+S.manualSelections.length+' possible selection block(s); '+valid.length+' have a readable decimal price. OCR and market guesses are not verified facts. Confirm each team, market and price against the original slip.</p>'+table+'<div class="outcome-grid"><div><span>Priced rows</span><b>'+valid.length+'</b></div><div><span>Unpriced rows</span><b>'+(S.manualSelections.length-valid.length)+'</b></div><div><span>Combined odds of priced rows only</span><b>'+(valid.length?combined.toFixed(2):'—')+'</b></div><div><span>Stake entered</span><b>₦'+stake.toLocaleString()+'</b></div></div>':table;
+  addActivity('Parsed and randomized '+S.manualSelections.length+' possible slip selection blocks');
+  if(!S.manualSelections.length)notice('ocrStatus','Analysis ran, but no selections were recognized. Check text and try one selection per line, or use the manual form.','warning');
+ }catch(e){
+  console.error('UFI slip analysis failed',e);
+  notice('slipOutput','Slip analysis hit an error: '+(e.message||String(e))+'. Your pasted text has been kept. Try again or use the manual-selection form.','error');
+ }
 };
 $('addManualSelection').onclick=()=>{const label=$('manualSelection').value.trim(),odd=Number($('manualOdds').value),prob=$('manualProb').value===''?null:Number($('manualProb').value)/100;if(!label||!Number.isFinite(odd)||odd<=1)return toast('Enter a selection label and decimal odds above 1.');if(prob!==null&&(prob<0||prob>1))return toast('Independent probability must be 0–100%.');S.manualSelections.push({label,odd,p:1/odd,estimate:prob,group:$('manualGroup').value.trim()});renderManualSelections();['manualSelection','manualOdds','manualProb','manualGroup'].forEach(id=>$(id).value='')};
 function renderManualSelections(){
