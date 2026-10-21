@@ -126,4 +126,24 @@ def penalty_event_ev(conversion_probability: float, position: str,
         raise ValueError("conversion_probability must be between 0 and 1")
     if not 0 <= opponent_penalty_save_probability <= 1:
         raise ValueError("opponent_penalty_save_probability must be between 0 and 1")
-    # Treat conversion_probability as a baseline against an average keeper; the\n    # opponent save rate is a matchup adjustment, not a separate subtraction.\n    effective_conversion = conversion_probability * (1 - opponent_penalty_save_probability)\n    scored = goal_points(position, rules) + rules.shot_on_target\n    return effective_conversion * scored + (1 - effective_conversion) * rules.penalty_missed\n\ndef penalty_matchup_ev(conversion_probability: float, opponent_penalty_save_probability: float,\n                       position: str = "forward", rules: FantasyFiRules = RULES) -> dict:\n    """Expected taker and goalkeeper points for one penalty attempt.\n\n    The keeper save rate is treated as an incremental matchup adjustment to a\n    baseline taker conversion rate; use carefully if taker rates already account\n    for this keeper, to avoid double-counting.\n    """\n    if not 0 <= conversion_probability <= 1 or not 0 <= opponent_penalty_save_probability <= 1:\n        raise ValueError("Probabilities must be between 0 and 1")\n    effective = conversion_probability * (1 - opponent_penalty_save_probability)\n    taker_ev = effective * (goal_points(position, rules) + rules.shot_on_target) + (1-effective) * rules.penalty_missed\n    return {"effective_conversion_probability": effective,\n            "taker_expected_points": taker_ev,\n            "goalkeeper_expected_penalty_save_points": opponent_penalty_save_probability * rules.penalty_saved}\n
+    # Treat conversion_probability as a baseline against an average keeper; the
+    # opponent save rate is a matchup adjustment, not a separate subtraction.
+    effective_conversion = conversion_probability * (1 - opponent_penalty_save_probability)
+    scored = goal_points(position, rules) + rules.shot_on_target
+    return effective_conversion * scored + (1 - effective_conversion) * rules.penalty_missed
+
+def penalty_matchup_ev(conversion_probability: float, opponent_penalty_save_probability: float,
+                       position: str = "forward", rules: FantasyFiRules = RULES) -> dict:
+    """Expected taker and goalkeeper points for one penalty attempt.
+
+    The keeper save rate is treated as an incremental matchup adjustment to a
+    baseline taker conversion rate; use carefully if taker rates already account
+    for this keeper, to avoid double-counting.
+    """
+    if not 0 <= conversion_probability <= 1 or not 0 <= opponent_penalty_save_probability <= 1:
+        raise ValueError("Probabilities must be between 0 and 1")
+    effective = conversion_probability * (1 - opponent_penalty_save_probability)
+    taker_ev = effective * (goal_points(position, rules) + rules.shot_on_target) + (1-effective) * rules.penalty_missed
+    return {"effective_conversion_probability": effective,
+            "taker_expected_points": taker_ev,
+            "goalkeeper_expected_penalty_save_points": opponent_penalty_save_probability * rules.penalty_saved}
