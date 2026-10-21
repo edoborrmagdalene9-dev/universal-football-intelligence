@@ -1,0 +1,13 @@
+source,topic,implemented_workaround,status,limitations
+https://arxiv.org/abs/1604.01455,Hunter et al. top-heavy portfolio optimization,Monte Carlo portfolio win/top-percentile evaluation with shared player outcomes,partially implemented,"Transparent approximation; not exact Gaussian pairwise objective or full integer formulation"
+https://arxiv.org/abs/2411.11012,DFS linear programming methods,Existing PuLP lineup ILP and diversified portfolio,methodological reference,"Paper is baseball-focused; adapt only general optimization principles"
+https://pubsonline.informs.org/doi/pdf/10.1287/mnsc.2019.3528,Opponent modeling and Dirichlet-multinomial choices,Smoothed player ownership plus observed opponent-field evaluation,partially implemented,"No fitted Dirichlet regression; requires representative contest entries"
+https://rss.onlinelibrary.wiley.com/doi/pdf/10.1111/1467-9876.00065,Dixon-Coles score model and time weighting,Time-decay weighted likelihood and low-score tau correction,implemented with tests,"Requires adequate historical results and chronological calibration"
+https://predictionengine.app/learn/dixon-coles-soccer-model,Dixon-Coles engineering explainer,Model concepts recorded in docs,reviewed conceptually,"No claim of full text or outbound-link recursive ingestion"
+https://optionallybayes.com/posts/intprog_dfs/,Integer programming tutorial,PuLP salary/position/team constraints,methodology applied,"Contest-specific roster rules must be supplied"
+https://rotogrinders.com/articles/dfs-strategy-predicting-ownership-1360237,DFS ownership strategy,Ownership and leverage helpers,methodology applied,"No trained ownership model without contest entry data"
+https://github.com/hubertsid/football-data-scraper,Player and match data ingestion,Source catalogued only,not integrated,"Review repository license and provider terms before use"
+https://github.com/sahil-gidwani/football-data-webscraping,Football data scraping,Source catalogued only,not integrated,"No unapproved scraping; use permitted provider feeds"
+https://benalexkeen.com/linear-programming-with-python-and-pulp-part-2/,PuLP optimization,Existing PuLP solver,methodology applied,"Solver availability and API deprecations need monitoring"
+https://gist.github.com/hungson175/b804219579b3c3f6deb53dd0421d071a,Unified ingestion architecture,Provider-neutral CSV and StatsBomb historical adapter,partially implemented,"Not a universal live-feed connector"
+https://github.com/hudl/open-data,Historical event and lineup data,Opt-in downloader and player-stat adapter,implemented with synthetic tests,"Selected historical coverage; non-commercial/research terms and attribution apply"

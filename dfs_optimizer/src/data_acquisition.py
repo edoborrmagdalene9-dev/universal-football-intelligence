@@ -87,12 +87,56 @@ def download_season(competition_id, season_id, output_dir="data/external/statsbo
     return {"directory": str(out), "manifest": manifest}
 
 
+
+def download_season_with_events(competition_id, season_id, output_dir="data/external/statsbomb",
+                                delay=0.15, max_matches=None):
+    """Add historical event/lineup downloads without changing the original results-only API."""
+    if max_matches is not None and max_matches < 1:
+        raise ValueError("max_matches must be >= 1 when supplied")
+    result = download_season(competition_id, season_id, output_dir)
+    out = Path(result["directory"])
+    matches = json.loads((out / "matches.json").read_text(encoding="utf-8"))
+    selected = matches[:max_matches] if max_matches else matches
+    event_dir, lineup_dir = out / "events", out / "lineups"
+    event_dir.mkdir(parents=True, exist_ok=True)
+    lineup_dir.mkdir(parents=True, exist_ok=True)
+    event_downloads, lineup_downloads, errors = 0, 0, []
+    for match in selected:
+        match_id = match.get("match_id")
+        if match_id is None:
+            errors.append({"match_id": None, "reason": "match record missing match_id"})
+            continue
+        for kind, target_dir in (("events", event_dir), ("lineups", lineup_dir)):
+            target = target_dir / f"{match_id}.json"
+            if target.exists():
+                if kind == "events": event_downloads += 1
+                else: lineup_downloads += 1
+                continue
+            try:
+                data = fetch_json(f"{BASE}/{kind}/{match_id}.json")
+                target.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                if kind == "events": event_downloads += 1
+                else: lineup_downloads += 1
+            except Exception as exc:
+                errors.append({"match_id": match_id, "kind": kind, "reason": str(exc)})
+            time.sleep(max(0.0, delay))
+    manifest_path = out / "source_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.update({"event_files_downloaded": event_downloads,
+                     "lineup_files_downloaded": lineup_downloads,
+                     "event_download_errors": errors})
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    result["manifest"] = manifest
+    return result
+
 def main():
     parser = argparse.ArgumentParser(description="Opt-in downloader for selected StatsBomb Open Data")
     parser.add_argument("--list", action="store_true", help="List available competition-season IDs")
     parser.add_argument("--competition-id")
     parser.add_argument("--season-id")
     parser.add_argument("--output-dir", default="data/external/statsbomb")
+    parser.add_argument("--include-events", action="store_true", help="Also download historical event and lineup JSON files")
+    parser.add_argument("--max-matches", type=int, help="Limit event/lineup download count for bandwidth control")
     args = parser.parse_args()
     if args.list:
         for item in list_competitions():
@@ -100,6 +144,9 @@ def main():
         return
     if not args.competition_id or not args.season_id:
         parser.error("supply --list or both --competition-id and --season-id")
+    if args.include_events:
+        print(json.dumps(download_season_with_events(args.competition_id, args.season_id, args.output_dir, max_matches=args.max_matches), indent=2))
+        return
     print(json.dumps(download_season(args.competition_id, args.season_id, args.output_dir), indent=2))
 
 
