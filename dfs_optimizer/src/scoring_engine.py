@@ -37,13 +37,13 @@ RULES = FantasyFiRules()
 
 def goal_points(position: str, rules: FantasyFiRules = RULES) -> float:
     p = position.strip().lower()
-    if p in {"f", "fw", "forward", "striker", "st"}:
+    if p in {"f", "fw", "fwd", "forward", "striker", "st"}:
         return rules.forward_goal
     if p in {"m", "mf", "midfielder", "mid"}:
         return rules.midfielder_goal
     if p in {"gk", "goalkeeper", "keeper"}:
         return rules.goalkeeper_goal
-    if p in {"d", "df", "defender", "cb", "fb", "wb"}:
+    if p in {"d", "df", "def", "defender", "cb", "fb", "wb"}:
         return rules.defender_goal
     raise ValueError(f"Unknown position: {position!r}")
 
@@ -63,7 +63,7 @@ def score_actual(stats: Mapping, position: str, rules: FantasyFiRules = RULES) -
     points += floor(max(0, float(stats.get("completed_passes", 0) or 0)) / rules.passes_per_point)
     points += float(stats.get("interceptions_won", 0) or 0) * rules.interception_won
     # Tackles are deliberately ignored: platform scoring assigns zero.
-    if position.strip().lower() in {"gk", "goalkeeper", "keeper", "d", "df", "defender", "cb", "fb", "wb"}:
+    if position.strip().lower() in {"gk", "goalkeeper", "keeper", "d", "df", "def", "defender", "cb", "fb", "wb"}:
         if minutes >= rules.clean_sheet_min_minutes and float(stats.get("goals_conceded", 0) or 0) == 0:
             points += rules.clean_sheet
         points += float(stats.get("goals_conceded", 0) or 0) * rules.goal_conceded
