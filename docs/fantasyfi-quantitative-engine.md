@@ -53,3 +53,35 @@ python -m dfs_optimizer.src.automation.main --players players.csv --roster-size 
 ```
 
 The values above are examples only; replace them with the actual FantasyFi contest configuration. Tests have not been represented as passing until executed in a connected runtime.
+
+
+## Functional workarounds added after the initial draft
+
+### 1. Repeatable test gate
+The repository's GitHub Actions test workflow runs `python -m pytest dfs_optimizer/tests -q` on pushes to feature branches and pull requests. A configured workflow is not proof of a pass: check the Actions run associated with the latest commit and inspect logs if it fails. The code was not marked production-validated until a green run is visible.
+
+### 2. Official lineup readiness gate
+`dfs_optimizer/src/lineup_gate.py` validates a user/provider-supplied official lineup snapshot. It requires a timezone-aware kickoff and confirmation timestamp, status marked confirmed/official, unique player IDs, exactly 11 starters per team, a fresh confirmation timestamp, and kickoff 45–75 minutes away. The dashboard blocks optimization by default unless this gate passes. This is the fail-closed workaround while no authorized live-lineup API is configured; it never fabricates confirmed XIs.
+
+### 3. Historical player event data
+`dfs_optimizer/src/data_acquisition.py --include-events --max-matches 3` optionally downloads selected historical StatsBomb Open Data match events and lineups in addition to results. Then run:
+```bash
+python -m dfs_optimizer.src.statsbomb_player_stats --data-root data/external/statsbomb --output data/external/statsbomb/player_match_stats.csv
+```
+Upload the resulting CSV in the dashboard. StatsBomb coverage is selected, not complete, and its open-data terms are intended for research; cite StatsBomb and check current terms before publishing. The adapter currently approximates on-field minutes and goals conceded from match events/scores. Aerial metrics unavailable in event records remain unpopulated rather than invented.
+
+### 4. Player-level feature and distribution estimates
+`dfs_optimizer/src/player_data.py` ingests canonical per-player/per-match CSV data and estimates recent per-90 rates for passes, interceptions, cards, goals, assists, chances created, saves, aerial-win rate and set-piece shots. It uses Beta(1,1) smoothing for penalty conversion/save rates and retains sample counts. Include zero-minute player-fixture rows whenever available; otherwise appearance probabilities are selection-biased. The historical goal rate is a proxy, not true xG. Pass-count PMFs are used only when expected minutes match the observed profile minutes; otherwise the model uses its documented linear approximation.
+
+### 5. Top-heavy portfolio objective
+`dfs_optimizer/src/portfolio_simulation.py` evaluates portfolio score distributions by Monte Carlo using shared simulated player outcomes across lineups, and optionally compares them with a supplied opponent field. It reports 50th/95th/99th percentile best-entry scores and field-relative win/top-percentile estimates only when opponent entries are provided. This is a transparent practical workaround, not an exact reproduction of Hunter et al.'s Gaussian pairwise approximation or Hall et al.'s full opponent-choice model. Player score standard deviations and opponent entries must be representative; otherwise the output is a scenario, not a calibrated chance of winning.
+
+### Safe operating sequence
+1. Run tests and require a green CI run.
+2. Download a small historical StatsBomb sample with `--include-events --max-matches 3` and inspect the manifest/skipped records.
+3. Convert it to player-match CSV; manually review a few known matches against source event pages.
+4. Upload historical player stats and a current salary/position slate to the FantasyFi optimizer page.
+5. Upload an official confirmed lineup CSV with current timestamps; the app fails closed if the snapshot is stale or outside the configured lock window.
+6. Compare single-lineup projections and multi-entry simulations to a simple baseline on held-out historical slates before using entries.
+
+StatsBomb source: https://github.com/hudl/open-data and specification: https://github.com/hudl/open-data/tree/master/doc. Dixon–Coles source: https://rss.onlinelibrary.wiley.com/doi/pdf/10.1111/1467-9876.00065. Hunter et al.: https://arxiv.org/abs/1604.01455. Hall et al.: https://pubsonline.informs.org/doi/pdf/10.1287/mnsc.2019.3528.
