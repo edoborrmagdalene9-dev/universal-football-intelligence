@@ -52,7 +52,7 @@ python -m pytest dfs_optimizer/tests -q
 python -m dfs_optimizer.src.automation.main --players players.csv --roster-size 9 --salary-cap 100 --positions-json '{"GK":1,"DEF":3,"MID":3,"FWD":2}'
 ```
 
-The values above are examples only; replace them with the actual FantasyFi contest configuration. Tests have not been represented as passing until executed in a connected runtime.
+The values above are examples only; replace them with the actual FantasyFi contest configuration. GitHub Actions run 39685486625 on commit 80e66ce42b1a2e711db05f9830b30426d9087c41 passed Python compilation and all 30 tests (6 dependency deprecation warnings). Later source changes must be revalidated by the next CI run.
 
 
 ## Functional workarounds added after the initial draft
