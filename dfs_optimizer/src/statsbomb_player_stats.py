@@ -143,7 +143,10 @@ def events_to_player_rows(events, lineups, match):
                   "tackles_won","goals_conceded","saves","penalties_saved","yellow_cards","red_cards",
                   "own_goals","penalties_missed","penalty_attempts","penalties_scored"):
             row[k]=int(stats[pid][k])
-        row.update({"aerial_wins":int(stats[pid]["aerial_wins"]),\n                    "aerial_duels":int(stats[pid]["aerial_duels"]),\n                    "set_piece_shots":int(stats[pid]["set_piece_shots"]),\n                    "penalties_faced":int(stats[pid]["penalties_faced"])})
+        row.update({"aerial_wins":int(stats[pid]["aerial_wins"]),
+                    "aerial_duels":int(stats[pid]["aerial_duels"]),
+                    "set_piece_shots":int(stats[pid]["set_piece_shots"]),
+                    "penalties_faced":int(stats[pid]["penalties_faced"])})
         rows.append(row)
     return rows
 
