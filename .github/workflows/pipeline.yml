@@ -68,7 +68,7 @@ jobs:
           fi
 
   optional-lineup-build:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && hashFiles('dfs_optimizer/datasets/players.csv') != '' && hashFiles('dfs_optimizer/datasets/confirmed_lineups.csv') != '')
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     needs: validate-and-test
     runs-on: ubuntu-latest
     steps:
@@ -103,15 +103,26 @@ jobs:
             echo "require_confirmed=${{ inputs.require_confirmed_lineups }}" >> "$GITHUB_OUTPUT"
           fi
       - name: Validate required files
+        id: input_check
         env:
+          EVENT_NAME: ${{ github.event_name }}
           PLAYERS: ${{ steps.cfg.outputs.players }}
           LINEUPS: ${{ steps.cfg.outputs.lineups }}
+          REQUIRE_CONFIRMED: ${{ steps.cfg.outputs.require_confirmed }}
         run: |
-          test -f "$PLAYERS" || { echo "Player CSV not found: $PLAYERS"; exit 1; }
-          if [ "${{ steps.cfg.outputs.require_confirmed }}" = "true" ]; then
-            test -f "$LINEUPS" || { echo "Confirmed lineup CSV not found: $LINEUPS"; exit 1; }
+          if [ ! -f "$PLAYERS" ] || { [ "$REQUIRE_CONFIRMED" = "true" ] && [ ! -f "$LINEUPS" ]; }; then
+            if [ "$EVENT_NAME" = "schedule" ]; then
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              echo "No current slate/confirmed-lineup inputs. Skipping entry generation; no data will be invented."
+            else
+              echo "Required input CSV missing. Check repository-relative workflow inputs."
+              exit 1
+            fi
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Build gated entry CSV
+        if: steps.input_check.outputs.ready == 'true'
         env:
           PLAYERS: ${{ steps.cfg.outputs.players }}
           LINEUPS: ${{ steps.cfg.outputs.lineups }}
@@ -126,6 +137,7 @@ jobs:
             python -m dfs_optimizer.src.automation.main --players "$PLAYERS" --output fantasyfi_entries.csv --roster-size "$ROSTER_SIZE" --salary-cap "$SALARY_CAP" --positions-json "$POSITIONS"
           fi
       - uses: actions/upload-artifact@v4
+        if: steps.input_check.outputs.ready == 'true'
         with:
           name: fantasyfi-entry-csv
           path: fantasyfi_entries.csv
