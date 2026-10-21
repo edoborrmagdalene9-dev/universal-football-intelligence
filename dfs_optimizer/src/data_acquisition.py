@@ -60,6 +60,30 @@ def download_season(competition_id, season_id, output_dir="data/external/statsbo
     out = Path(output_dir) / f"competition_{competition_id}_season_{season_id}"
     out.mkdir(parents=True, exist_ok=True)
     (out / "matches.json").write_text(json.dumps(matches, indent=2), encoding="utf-8")
+    event_downloads, lineup_downloads, event_errors = 0, 0, []
+    if include_events:
+        selected = matches[:max_matches] if max_matches and max_matches > 0 else matches
+        (out / "events").mkdir(parents=True, exist_ok=True)
+        (out / "lineups").mkdir(parents=True, exist_ok=True)
+        for match in selected:
+            match_id = match.get("match_id")
+            if match_id is None:
+                event_errors.append({"match_id": None, "reason": "match record missing match_id"})
+                continue
+            for kind in ("events", "lineups"):
+                target = out / kind / f"{match_id}.json"
+                if target.exists():
+                    if kind == "events": event_downloads += 1
+                    else: lineup_downloads += 1
+                    continue
+                try:
+                    data = fetch_json(f"{BASE}/{kind}/{match_id}.json")
+                    target.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                    if kind == "events": event_downloads += 1
+                    else: lineup_downloads += 1
+                except Exception as exc:
+                    event_errors.append({"match_id": match_id, "kind": kind, "reason": str(exc)})
+                time.sleep(max(0.0, delay))
     rows, issues = [], []
     for item in matches:
         try:
@@ -93,6 +117,8 @@ def main():
     parser.add_argument("--competition-id")
     parser.add_argument("--season-id")
     parser.add_argument("--output-dir", default="data/external/statsbomb")
+    parser.add_argument("--include-events", action="store_true", help="Also download historical event and lineup JSON files")
+    parser.add_argument("--max-matches", type=int, help="Limit event/lineup download count for testing or bandwidth control")
     args = parser.parse_args()
     if args.list:
         for item in list_competitions():
