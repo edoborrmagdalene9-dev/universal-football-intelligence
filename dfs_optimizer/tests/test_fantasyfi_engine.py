@@ -1,5 +1,5 @@
 import pytest
-from dfs_optimizer.src.scoring_engine import score_actual, expected_points, penalty_event_ev
+from dfs_optimizer.src.scoring_engine import score_actual, expected_points, penalty_event_ev, penalty_matchup_ev
 from dfs_optimizer.src.ownership_engine import dirichlet_multinomial_ownership, leverage_index, meets_contrarian_rules
 
 def test_exact_scoring_pass_floor_and_tackles_ignored():
@@ -30,3 +30,11 @@ def test_bayesian_ownership_and_leverage():
     lev=leverage_index({"b":.8},own)
     assert lev["b"] > 1
     assert meets_contrarian_rules(["b","c"],{"b":.05,"c":.08},.2)
+
+
+def test_penalty_matchup_adjusts_taker_and_keeps_keeper_bonus_separate():
+    base=penalty_event_ev(.7,"forward")
+    matchup=penalty_matchup_ev(.7,.25,"forward")
+    assert matchup["effective_conversion_probability"] == pytest.approx(.525)
+    assert matchup["taker_expected_points"] < base
+    assert matchup["goalkeeper_expected_penalty_save_points"] == pytest.approx(12.5)
