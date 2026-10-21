@@ -70,12 +70,22 @@ def events_to_player_rows(events, lineups, match):
             if not (e.get("pass") or {}).get("outcome"): stat(pid,"completed_passes")
             if (e.get("pass") or {}).get("shot_assist"): stat(pid,"chances_created")
         elif typ=="Interception" and pid: stat(pid,"interceptions_won")
-        elif typ=="Duel" and pid and _name((e.get("duel") or {}).get("type"))=="Tackle":
-            stat(pid,"tackles_won")
+        elif typ=="Duel" and pid:
+            duel = e.get("duel") or {}
+            duel_type = _name(duel.get("type")) or ""
+            duel_outcome = _name(duel.get("outcome")) or ""
+            if "Aerial" in duel_type:
+                stat(pid,"aerial_duels")
+                if "Won" in duel_type or duel_outcome == "Won":
+                    stat(pid,"aerial_wins")
+            if duel_type == "Tackle" and duel_outcome == "Won":
+                stat(pid,"tackles_won")
         elif typ=="Shot" and pid:
             shot=e.get("shot") or {}; outcome=_name(shot.get("outcome")); shot_type=_name(shot.get("type"))
             is_goal=outcome=="Goal" and shot_type!="Own Goal"
             if outcome in ON_TARGET: stat(pid,"shots_on_target")
+            pattern = _name(e.get("play_pattern")) or ""
+            if pattern in {"From Corner", "From Free Kick"}: stat(pid,"set_piece_shots")
             if is_goal: stat(pid,"goals")
             if shot_type=="Penalty":
                 stat(pid,"penalty_attempts")
