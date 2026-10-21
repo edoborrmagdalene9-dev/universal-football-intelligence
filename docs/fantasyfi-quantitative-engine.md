@@ -26,7 +26,7 @@ A defender goal plus a shot on target gives +66 event points before appearance, 
 
 The scoring engine expects canonical event/stat fields; provider-specific event feeds need an explicit mapping. The Dixon-Coles model needs dated match results and enough representative fixtures; it does not itself estimate player xG, player role, pressing, aerial target density, or confirmed starting XI. The ownership model needs historical contest entries or trustworthy projections; without those, leverage is a scenario rather than a learned fact. Set-piece/aerial and goalkeeper penalty-save features are not fabricated where data is absent.
 
-The optimizer's captain multiplier is optional and only correct for a platform that actually has captain/MVP rules. Positional slot labels, salary caps, roster size, team caps, ownership cap and minimum leverage plays must match the active contest. Portfolio constraints can make later lineups infeasible; this is reported rather than silently weakening constraints.
+The optimizer's captain multiplier is optional and only correct for a platform that actually has captain/MVP rules. Positional slot labels, salary caps, roster size, team caps, ownership cap and minimum leverage plays must match the active contest. Portfolio constraints can make later lineups infeasible; this is reported rather than silently weakening constraints. The current sequential portfolio implementation maximizes projected points while enforcing minimum roster Hamming distance; it is not a full implementation of Hunter et al.'s probabilistic top-heavy payout/correlation objective, and it does not simulate opponent outcomes or prize structures.
 
 ## Research catalog (queued for documented review, not claimed recursively ingested)
 
@@ -42,7 +42,7 @@ The optimizer's captain multiplier is optional and only correct for a platform t
 - PuLP guide: https://benalexkeen.com/linear-programming-with-python-and-pulp-part-2/
 - Unified ingestion architecture: https://gist.github.com/hungson175/b804219579b3c3f6deb53dd0421d071a
 
-No recursive hyperlink traversal is claimed. Source terms, licensing, data availability, citations, and reproducibility must be reviewed before any source is integrated. Do not scrape sites or use datasets for commercial model training unless permitted.
+An initial high-level review of Hunter et al.'s paper confirms its central portfolio idea is to approximate the probability that at least one entry wins using joint entry-score relationships, then optimize expected score subject to variance/correlation controls; the current Hamming-distance portfolio solver is a simpler baseline, not a reproduction of that method. The Dixon-Coles correction applies tau only to 0-0, 0-1, 1-0 and 1-1, and weights historical log-likelihood contributions by exponential recency weights. Grody et al. concerns daily fantasy baseball and is a methodological reference, not evidence that the same objective wins in soccer. No recursive hyperlink traversal or exhaustive source ingestion is claimed. Source terms, licensing, data availability, citations, and reproducibility must be reviewed before any source is integrated. Do not scrape sites or use datasets for commercial model training unless permitted.
 
 ## Local commands
 
