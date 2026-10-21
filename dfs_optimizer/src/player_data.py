@@ -8,6 +8,8 @@ from __future__ import annotations
 import csv
 import io
 import math
+from statistics import pstdev
+from .scoring_engine import score_actual
 from collections import defaultdict, Counter
 from statistics import median
 from typing import Iterable, Mapping
@@ -17,7 +19,7 @@ NUMERIC_FIELDS = (
     "chances_created", "completed_passes", "interceptions_won", "tackles_won",
     "goals_conceded", "saves", "penalties_saved", "yellow_cards", "red_cards",
     "own_goals", "penalties_missed", "aerial_wins", "aerial_duels",
-    "set_piece_shots", "penalty_attempts", "penalties_scored",
+    "set_piece_shots", "penalty_attempts", "penalties_scored", "penalties_faced",
 )
 REQUIRED = {"player_id", "player_name", "team", "position", "match_date", "minutes"}
 
@@ -125,10 +127,11 @@ def build_player_projections(rows: Iterable[Mapping], recent_matches: int = 10,
             "expected_saves": rate90("saves") * scale,
             "probability_penalty_saved": keeper_pen_save * min(1.0, pens_faced / max(1,len(appeared))),
         }
+        observed_points = [score_actual(r, str(identity["position"])) for r in appeared]
         profile = {
             "player_id": pid, "player_name": identity["player_name"], "team": identity["team"],
             "position": identity["position"], "sample_matches": len(recent),
-            "sample_appearances": len(appeared), "expected_minutes": expected_minutes,
+            "sample_appearances": len(appeared), "expected_minutes": expected_minutes,\n            "historical_points_mean": sum(observed_points)/len(observed_points) if observed_points else 0.0,\n            "historical_points_sd": pstdev(observed_points) if len(observed_points)>1 else 0.0,
             "interceptions_per90": rate90("interceptions_won"),
             "completed_passes_per90": rate90("completed_passes"),
             "pass_count_pmf": pass_pmf,
@@ -166,7 +169,7 @@ def merge_projections_with_slate(profiles: Iterable[Mapping], slate_rows: Iterab
                     "expected_own_goals","expected_penalties_missed","expected_saves"):
             inputs[key] = float(inputs.get(key,0))*scale
         # Use historical pass-count PMF scaled only when expected minutes are close to sample minutes.
-        projection = float(slate.get("projection") or expected_points_fn(inputs, str(slate["position"]), pass_count_pmf=p["pass_count_pmf"] or None))
+        pass_pmf = p["pass_count_pmf"] if abs(minutes-p["expected_minutes"]) <= 1 else None\n        projection = float(slate.get("projection") or expected_points_fn(inputs, str(slate["position"]), pass_count_pmf=pass_pmf or None))
         row = dict(slate); row["id"] = pid; row["projection"] = projection
         row["ownership"] = float(slate.get("ownership") or 0)
         row["historical_interceptions_per90"] = p["interceptions_per90"]
