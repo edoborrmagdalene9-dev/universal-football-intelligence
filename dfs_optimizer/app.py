@@ -15,7 +15,10 @@ st.set_page_config(page_title="Universal Football Intelligence", page_icon="⚽"
 st.title("⚽ Universal Football Intelligence")
 st.caption("Local-first football research dashboard · validate before predicting")
 st.warning("Research software only. No guaranteed winnings. Demo assumptions are synthetic; do not confuse them with real fixtures.")
-page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "FantasyFi optimizer", "Data standards"])
+page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "Data standards"])
+extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer"])
+if extension_page == "FantasyFi optimizer":
+    page = "FantasyFi optimizer"
 if page == "Overview":
     st.header("Research control centre")
     st.markdown("Validate licensed match data, run chronological baselines, inspect contest ownership, simulate player events and explore score-state scenarios.")
