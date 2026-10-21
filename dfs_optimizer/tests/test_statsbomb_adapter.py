@@ -11,6 +11,9 @@ def test_event_adapter_counts_passes_interceptions_and_shots():
       {"id":"p1","type":{"name":"Pass"},"player":{"id":1,"name":"H1"},"team":{"name":"Home"},"pass":{"shot_assist":True}},
       {"id":"i1","type":{"name":"Interception"},"player":{"id":1,"name":"H1"},"team":{"name":"Home"}},
       {"id":"sh1","type":{"name":"Shot"},"player":{"id":1,"name":"H1"},"team":{"name":"Home"},"shot":{"outcome":{"name":"Goal"},"type":{"name":"Open Play"}}},
+      {"id":"du1","type":{"name":"Duel"},"player":{"id":1,"name":"H1"},"team":{"name":"Home"},"duel":{"type":{"name":"Aerial"},"outcome":{"name":"Won"}}},
+      {"id":"psh1","type":{"name":"Shot"},"player":{"id":1,"name":"H1"},"team":{"name":"Home"},"shot":{"outcome":{"name":"Saved"},"type":{"name":"Penalty"}}},
+      {"id":"gk1","type":{"name":"Goal Keeper"},"player":{"id":2,"name":"A1"},"team":{"name":"Away"},"goalkeeper":{"type":{"name":"Shot Saved"}},"related_events":["psh1"]},
       {"id":"sub1","type":{"name":"Half End"},"minute":90,"second":0},
     ]
     match={"match_id":10,"match_date":"2026-01-01","home_score":1,"away_score":0,
@@ -22,3 +25,9 @@ def test_event_adapter_counts_passes_interceptions_and_shots():
     assert h["goals"]==1
     assert h["shots_on_target"]==1
     assert h["chances_created"]==1
+
+    assert h["aerial_wins"] == 1
+    assert h["aerial_duels"] == 1
+    gk=next(r for r in rows if r["player_id"]=="2")
+    assert gk["penalties_faced"] == 1
+    assert gk["penalties_saved"] == 1
