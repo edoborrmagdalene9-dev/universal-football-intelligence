@@ -7,7 +7,7 @@ from src.event_simulator import simulate_event_points
 from src.continuous_time_states import simulate_score_path
 from src.player_data import read_player_stats_csv, build_player_projections, merge_projections_with_slate
 from src.lineup_gate import validate_confirmed_lineup
-from src.scoring_engine import expected_points
+from src.scoring_engine import expected_points, penalty_matchup_ev
 from src.optimizer.pulp_optimizer import optimize_lineup, optimize_portfolio
 from src.portfolio_simulation import evaluate_portfolio
 
@@ -97,6 +97,26 @@ elif page == "FantasyFi optimizer":
     st.header("FantasyFi player-data and lineup optimizer")
     st.markdown("Use historical player-match statistics to build transparent empirical profiles, optionally verify an official lineup snapshot, then optimize a roster. Inputs remain local to this dashboard session.")
     st.warning("A live lineup provider is not configured. Upload a confirmed lineup from an official source; the gate rejects stale, malformed or out-of-window data rather than guessing.")
+    with st.expander("FantasyFi rulebook edge calculator", expanded=False):
+        st.caption("Use this to sanity-check the zero-tackle / high-interception asymmetry and the five-pass step function.")
+        c1,c2,c3 = st.columns(3)
+        completed_passes = c1.number_input("Completed passes", min_value=0, max_value=200, value=90, step=1)
+        interceptions_90 = c2.number_input("Interceptions per 90", min_value=0.0, max_value=15.0, value=3.0, step=0.5)
+        yellow_rate = c3.number_input("Expected yellow cards", min_value=0.0, max_value=2.0, value=0.2, step=0.1)
+        d1,d2,d3 = st.columns(3)
+        conversion = d1.number_input("Baseline penalty conversion", min_value=0.0, max_value=1.0, value=0.70, step=0.05)
+        keeper_save = d2.number_input("Opponent GK penalty-save rate", min_value=0.0, max_value=1.0, value=0.25, step=0.05)
+        penalty_position = d3.selectbox("Penalty taker position", ["forward","midfielder","defender","goalkeeper"])
+        e1,e2 = st.columns(2)
+        e1.metric("Actual pass points", int(completed_passes)//5)
+        e2.metric("Expected interception points/90", f"{interceptions_90*4:.1f}")
+        st.metric("Net interception minus expected yellow-card penalty", f"{interceptions_90*4-yellow_rate*4:.1f} points", help="Tackles contribute exactly zero points. Red cards and other events are not included in this small calculator.")
+        matchup = penalty_matchup_ev(float(conversion), float(keeper_save), penalty_position)
+        p1,p2,p3 = st.columns(3)
+        p1.metric("Matchup-adjusted conversion", f'{matchup["effective_conversion_probability"]:.1%}')
+        p2.metric("Taker penalty-event EV", f'{matchup["taker_expected_points"]:.2f}')
+        p3.metric("Keeper penalty-save EV", f'{matchup["goalkeeper_expected_penalty_save_points"]:.2f}')
+        st.caption("Penalty matchup adjustment treats the keeper save rate as incremental to the baseline conversion rate. Avoid double-counting if the taker rate is already opponent-adjusted.")
     with st.expander("Required input formats", expanded=False):
         st.markdown("**Historical player stats:** use `dfs_optimizer/datasets/player_stats_template.csv`, one row per player per match. Include zero-minute squad rows whenever possible. **Current slate:** use `dfs_optimizer/datasets/slate_template.csv` with player_id, team, position and salary. Optional projection/ownership columns may be provided. **Confirmed lineup:** use `dfs_optimizer/datasets/confirmed_lineups_template.csv`; timestamps must include a timezone, and each team must have exactly 11 starters marked true.")
     hist_file = st.file_uploader("1. Upload historical player-match stats CSV", type=["csv"], key="fantasyfi_history")
