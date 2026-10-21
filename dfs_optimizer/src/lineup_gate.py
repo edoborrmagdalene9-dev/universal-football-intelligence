@@ -43,7 +43,7 @@ def validate_confirmed_lineup(rows, now=None, max_age_minutes=90,
         minutes = (kickoff-now.astimezone(timezone.utc)).total_seconds()/60
         if minutes < min_minutes_to_kickoff or minutes > max_minutes_to_kickoff:
             errors.append(f"Kickoff is {minutes:.1f} minutes away; accepted window is {min_minutes_to_kickoff}-{max_minutes_to_kickoff} minutes")
-    age = (now.astimezone(timezone.utc)-max(confirmed_times)).total_seconds()/60
+    age = (now.astimezone(timezone.utc)-min(confirmed_times)).total_seconds()/60
     if age < -5 or age > max_age_minutes:
         errors.append(f"Lineup confirmation timestamp is not fresh (age {age:.1f} minutes; max {max_age_minutes})")
     if any(str(r["status"]).strip().lower() not in {"confirmed","official"} for r in rows):
