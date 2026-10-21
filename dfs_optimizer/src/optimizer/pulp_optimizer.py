@@ -28,8 +28,13 @@ def optimize_lineup(players: Sequence[Mapping], roster_size: int, salary_cap: fl
                        for i in ids)
     prob += pulp.lpSum(x.values()) == roster_size
     prob += pulp.lpSum(float(byid[i]["salary"])*x[i] for i in ids) <= salary_cap
+    exact_positions = sum(int(v) for v in positional_slots.values()) == roster_size
+    configured_positions = {str(pos).lower() for pos in positional_slots}
     for pos, count in positional_slots.items():
-        prob += pulp.lpSum(x[i] for i in ids if str(byid[i]["position"]).lower() == pos.lower()) >= int(count)
+        expr = pulp.lpSum(x[i] for i in ids if str(byid[i]["position"]).lower() == str(pos).lower())
+        prob += expr == int(count) if exact_positions else expr >= int(count)
+    if exact_positions:
+        prob += pulp.lpSum(x[i] for i in ids if str(byid[i]["position"]).lower() not in configured_positions) == 0
     if team_cap is not None:
         for team in {str(p["team"]) for p in players}:
             prob += pulp.lpSum(x[i] for i in ids if str(byid[i]["team"]) == team) <= int(team_cap)
@@ -64,8 +69,13 @@ def optimize_portfolio(players: Sequence[Mapping], lineup_count: int, roster_siz
         prob += pulp.lpSum(float(byid[i]["projection"])*x[i] for i in ids)
         prob += pulp.lpSum(x.values()) == roster_size
         prob += pulp.lpSum(float(byid[i]["salary"])*x[i] for i in ids) <= salary_cap
+        exact_positions = sum(int(v) for v in positional_slots.values()) == roster_size
+        configured_positions = {str(pos).lower() for pos in positional_slots}
         for pos,count in positional_slots.items():
-            prob += pulp.lpSum(x[i] for i in ids if str(byid[i]["position"]).lower()==pos.lower()) >= int(count)
+            expr = pulp.lpSum(x[i] for i in ids if str(byid[i]["position"]).lower()==str(pos).lower())
+            prob += expr == int(count) if exact_positions else expr >= int(count)
+        if exact_positions:
+            prob += pulp.lpSum(x[i] for i in ids if str(byid[i]["position"]).lower() not in configured_positions) == 0
         if team_cap is not None:
             for team in {str(p["team"]) for p in players}:
                 prob += pulp.lpSum(x[i] for i in ids if str(byid[i]["team"])==team) <= team_cap
