@@ -91,9 +91,12 @@ def events_to_player_rows(events, lineups, match):
                 stat(pid,"penalty_attempts")
                 if is_goal: stat(pid,"penalties_scored")
                 else: stat(pid,"penalties_missed")
-                if outcome in {"Saved","Saved to Post"}:
-                    keeper=e.get("goalkeeper")
-                    # Keeper save is normally a separate Goal Keeper event; match it by related IDs below.
+                home_name = match.get("home_team",{}).get("home_team_name") or match.get("home_team",{}).get("name")
+                away_name = match.get("away_team",{}).get("away_team_name") or match.get("away_team",{}).get("name")
+                opponent_team = away_name if team == home_name else home_name
+                keeper_id = next((k for k,v in players.items()
+                                  if v.get("team") == opponent_team and "goalkeeper" in str(v.get("position","")).lower()), None)
+                if keeper_id: stat(keeper_id,"penalties_faced")
             key_id=shot.get("key_pass_id")
             if key_id and str(key_id) in by_event_id:
                 assist_event=by_event_id[str(key_id)]
@@ -140,7 +143,7 @@ def events_to_player_rows(events, lineups, match):
                   "tackles_won","goals_conceded","saves","penalties_saved","yellow_cards","red_cards",
                   "own_goals","penalties_missed","penalty_attempts","penalties_scored"):
             row[k]=int(stats[pid][k])
-        row.update({"aerial_wins":0,"aerial_duels":0,"set_piece_shots":0,"penalties_faced":0})
+        row.update({"aerial_wins":int(stats[pid]["aerial_wins"]),\n                    "aerial_duels":int(stats[pid]["aerial_duels"]),\n                    "set_piece_shots":int(stats[pid]["set_piece_shots"]),\n                    "penalties_faced":int(stats[pid]["penalties_faced"])})
         rows.append(row)
     return rows
 
