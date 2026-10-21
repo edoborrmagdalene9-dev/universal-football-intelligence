@@ -46,7 +46,7 @@ def list_competitions(cache_dir="data/remote_cache"):
     return data
 
 
-def download_season(competition_id, season_id, output_dir="data/external/statsbomb", delay=0.15):
+def download_season(competition_id, season_id, output_dir="data/external/statsbomb", delay=0.15, include_events=False, max_matches=None):
     competitions = list_competitions()
     found = [c for c in competitions if str(c.get("competition_id")) == str(competition_id)
              and str(c.get("season_id")) == str(season_id)]
@@ -82,7 +82,7 @@ def download_season(competition_id, season_id, output_dir="data/external/statsbo
     manifest = {"source": "StatsBomb Open Data", "source_url": url, "competition": comp.get("competition_name"),
                 "competition_id": competition_id, "season_id": season_id, "retrieved_at_unix": int(time.time()),
                 "records_received": len(matches), "csv_rows_validated_for_required_fields": len(rows),
-                "records_skipped": issues, "terms_reminder": "Check current StatsBomb user agreement; attribution and publication conditions apply."}
+                "records_skipped": issues, "event_files_downloaded": event_downloads, "lineup_files_downloaded": lineup_downloads, "event_download_errors": event_errors, "terms_reminder": "Check current StatsBomb user agreement; attribution and publication conditions apply."}
     (out / "source_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return {"directory": str(out), "manifest": manifest}
 
@@ -100,7 +100,7 @@ def main():
         return
     if not args.competition_id or not args.season_id:
         parser.error("supply --list or both --competition-id and --season-id")
-    print(json.dumps(download_season(args.competition_id, args.season_id, args.output_dir), indent=2))
+    print(json.dumps(download_season(args.competition_id, args.season_id, args.output_dir, include_events=args.include_events, max_matches=args.max_matches), indent=2))
 
 
 if __name__ == "__main__":
