@@ -171,7 +171,8 @@ def merge_projections_with_slate(profiles: Iterable[Mapping], slate_rows: Iterab
                     "expected_own_goals","expected_penalties_missed","expected_saves"):
             inputs[key] = float(inputs.get(key,0))*scale
         # Use historical pass-count PMF scaled only when expected minutes are close to sample minutes.
-        pass_pmf = p["pass_count_pmf"] if abs(minutes-p["expected_minutes"]) <= 1 else None\n        projection = float(slate.get("projection") or expected_points_fn(inputs, str(slate["position"]), pass_count_pmf=pass_pmf or None))
+        pass_pmf = p["pass_count_pmf"] if abs(minutes-p["expected_minutes"]) <= 1 else None
+        projection = float(slate.get("projection") or expected_points_fn(inputs, str(slate["position"]), pass_count_pmf=pass_pmf or None))
         row = dict(slate); row["id"] = pid; row["projection"] = projection
         row["ownership"] = float(slate.get("ownership") or 0)
         row["historical_interceptions_per90"] = p["interceptions_per90"]
