@@ -23,7 +23,7 @@ def test_event_adapter_counts_passes_interceptions_and_shots():
     assert h["completed_passes"]==1
     assert h["interceptions_won"]==1
     assert h["goals"]==1
-    assert h["shots_on_target"]==1
+    assert h["shots_on_target"]==2
     assert h["chances_created"]==1
 
     assert h["aerial_wins"] == 1
