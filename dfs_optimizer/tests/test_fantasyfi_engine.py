@@ -16,11 +16,13 @@ def test_penalty_ev_break_even_and_seventy_percent():
     assert penalty_event_ev(20/66,"forward") == pytest.approx(0)
     assert penalty_event_ev(.7,"forward") == pytest.approx(26.2)
 
-def test_pass_distribution_uses_discrete_thresholds():
+def test_expected_pass_points_linear_approximation_and_actual_step_function():
     stats={"appearance_probability":0,"xg":0,"xa":0,"x_sot":0,"x_chances_created":0,
            "x_interceptions":0}
     assert expected_points({**stats,"x_passes":49},"midfielder") == pytest.approx(9.8)
     assert expected_points({**stats,"x_passes":50},"midfielder") == pytest.approx(10)
+    assert score_actual({"minutes":90,"started":True,"completed_passes":49},"midfielder") == 13
+    assert score_actual({"minutes":90,"started":True,"completed_passes":50},"midfielder") == 14
 
 def test_bayesian_ownership_and_leverage():
     own=dirichlet_multinomial_ownership([["a","b"],["a","c"]],["a","b","c"],prior_strength=1)
