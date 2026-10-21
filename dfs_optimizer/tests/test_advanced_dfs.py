@@ -11,7 +11,7 @@ from dfs_optimizer.src.scoring import expected_points, score_realized_events
 def test_covariance_and_portfolio_variance():
     cov = covariance_from_std_corr([2, 3], [[1, 0.5], [0.5, 1]])
     assert cov[0, 1] == pytest.approx(3.0)
-    assert portfolio_variance(cov, [0, 1]) == pytest.approx(16.0)
+    assert portfolio_variance(cov, [0, 1]) == pytest.approx(19.0)
 
 
 def test_invalid_non_psd_correlation_rejected():
