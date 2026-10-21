@@ -5,12 +5,17 @@ import pandas as pd
 from src.pipeline import load_matches_csv, chronological_backtest, validate_contest_entries_csv
 from src.event_simulator import simulate_event_points
 from src.continuous_time_states import simulate_score_path
+from src.player_data import read_player_stats_csv, build_player_projections, merge_projections_with_slate
+from src.lineup_gate import validate_confirmed_lineup
+from src.scoring_engine import expected_points
+from src.optimizer.pulp_optimizer import optimize_lineup, optimize_portfolio
+from src.portfolio_simulation import evaluate_portfolio
 
 st.set_page_config(page_title="Universal Football Intelligence", page_icon="⚽", layout="wide")
 st.title("⚽ Universal Football Intelligence")
 st.caption("Local-first football research dashboard · validate before predicting")
 st.warning("Research software only. No guaranteed winnings. Demo assumptions are synthetic; do not confuse them with real fixtures.")
-page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "Data standards"])
+page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "FantasyFi optimizer", "Data standards"])
 if page == "Overview":
     st.header("Research control centre")
     st.markdown("Validate licensed match data, run chronological baselines, inspect contest ownership, simulate player events and explore score-state scenarios.")
@@ -87,6 +92,120 @@ elif page == "Game-state lab":
         st.metric("Final score",f'{result["home_goals"]} - {result["away_goals"]}')
         st.dataframe(pd.DataFrame(result["timeline"]),use_container_width=True)
         st.caption("Illustrative state multipliers, not fitted. Goal rates are assumed per 90-minute match.")
+
+elif page == "FantasyFi optimizer":
+    st.header("FantasyFi player-data and lineup optimizer")
+    st.markdown("Use historical player-match statistics to build transparent empirical profiles, optionally verify an official lineup snapshot, then optimize a roster. Inputs remain local to this dashboard session.")
+    st.warning("A live lineup provider is not configured. Upload a confirmed lineup from an official source; the gate rejects stale, malformed or out-of-window data rather than guessing.")
+    with st.expander("Required input formats", expanded=False):
+        st.markdown("**Historical player stats:** use `dfs_optimizer/datasets/player_stats_template.csv`, one row per player per match. Include zero-minute squad rows whenever possible. **Current slate:** use `dfs_optimizer/datasets/slate_template.csv` with player_id, team, position and salary. Optional projection/ownership columns may be provided. **Confirmed lineup:** use `dfs_optimizer/datasets/confirmed_lineups_template.csv`; timestamps must include a timezone, and each team must have exactly 11 starters marked true.")
+    hist_file = st.file_uploader("1. Upload historical player-match stats CSV", type=["csv"], key="fantasyfi_history")
+    slate_file = st.file_uploader("2. Upload current contest slate CSV", type=["csv"], key="fantasyfi_slate")
+    lineup_file = st.file_uploader("3. Optional official confirmed lineup CSV", type=["csv"], key="fantasyfi_lineup")
+    require_confirmed = st.checkbox("Require a fresh confirmed lineup before optimizing", value=True)
+    recent_n = st.slider("Recent player-match rows used per player", 3, 30, 10)
+    parsed_history = None
+    profiles = []
+    if hist_file:
+        try:
+            parsed_history = read_player_stats_csv(io.StringIO(hist_file.getvalue().decode("utf-8-sig")))
+            a,b,c = st.columns(3)
+            a.metric("Valid player-match rows", parsed_history["rows_valid"])
+            b.metric("Rejected rows", parsed_history["rows_rejected"])
+            c.metric("Players", len(set(r["player_id"] for r in parsed_history["rows"])))
+            if parsed_history["issues"]:
+                st.dataframe(pd.DataFrame(parsed_history["issues"]), use_container_width=True)
+            profile_result = build_player_projections(parsed_history["rows"], recent_matches=int(recent_n))
+            profiles = profile_result["profiles"]
+            st.caption(profile_result["warning"])
+            if profiles:
+                display_profiles = [{k:v for k,v in p.items() if k not in {"projection_inputs","pass_count_pmf"}} for p in profiles]
+                st.subheader("Historical player feature profiles")
+                st.dataframe(pd.DataFrame(display_profiles), use_container_width=True)
+                st.download_button("Download player feature profiles CSV", pd.DataFrame(display_profiles).to_csv(index=False).encode(), "ufi_player_feature_profiles.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Historical player data rejected: {exc}")
+            parsed_history = None
+    lineup_result = None
+    if lineup_file:
+        try:
+            lineup_rows = list(__import__("csv").DictReader(io.StringIO(lineup_file.getvalue().decode("utf-8-sig"))))
+            lineup_result = validate_confirmed_lineup(lineup_rows)
+            if lineup_result["ready"]:
+                st.success(f"Confirmed lineup gate passed for fixture {lineup_result['fixture_id']}; kickoff {lineup_result['kickoff_utc']}.")
+                st.caption(f"Latest confirmation age: {lineup_result['confirmation_age_minutes']} minutes.")
+            else:
+                st.error("Confirmed lineup gate blocked export.")
+                for issue in lineup_result["errors"]:
+                    st.write("• " + issue)
+        except Exception as exc:
+            st.error(f"Could not validate lineup file: {exc}")
+    if hist_file and slate_file and parsed_history and profiles:
+        try:
+            slate_rows = list(__import__("csv").DictReader(io.StringIO(slate_file.getvalue().decode("utf-8-sig"))))
+            needed = {"player_id","team","position","salary"}
+            if not slate_rows or not needed.issubset(set(slate_rows[0])):
+                raise ValueError("Slate CSV must contain player_id, team, position and salary.")
+            joined = merge_projections_with_slate(profiles, slate_rows, expected_points)
+            if require_confirmed:
+                if not lineup_result or not lineup_result.get("ready"):
+                    st.info("Optimization is locked until a fresh official lineup CSV passes the confirmation gate.")
+                    joined = []
+                else:
+                    confirmed_ids = {str(r["player_id"]) for r in lineup_result["rows"]}
+                    joined = [r for r in joined if str(r["id"]) in confirmed_ids]
+            if joined:
+                st.subheader("Optimizer configuration")
+                ca,cb,cc = st.columns(3)
+                roster_size = int(ca.number_input("Roster size", min_value=1, max_value=30, value=9))
+                salary_cap = float(cb.number_input("Salary cap", min_value=1.0, value=100.0, step=5.0))
+                team_cap = int(cc.number_input("Maximum players per team (0 = off)", min_value=0, max_value=30, value=4))
+                positions_json = st.text_input("Exact positional slots JSON", '{"GK":1,"DEF":3,"MID":3,"FWD":2}')
+                if st.button("Optimize best single lineup", type="primary"):
+                    try:
+                        slots = json.loads(positions_json)
+                        result = optimize_lineup(joined, roster_size, salary_cap, slots, team_cap=team_cap if team_cap else None)
+                        lookup = {str(p["id"]):p for p in joined}
+                        selected = [lookup[i] for i in result["players"]]
+                        st.metric("Projected FantasyFi points", f'{result["projected_points"]:.2f}')
+                        st.metric("Salary used", f'{result["salary"]:.2f} / {salary_cap:.2f}')
+                        st.dataframe(pd.DataFrame(selected), use_container_width=True)
+                        export = pd.DataFrame([{"entry_id":"lineup_1","player_id":p["id"],"team":p["team"],"position":p["position"],"salary":p["salary"],"projection":p["projection"]} for p in selected])
+                        st.download_button("Download ready-to-review entry CSV", export.to_csv(index=False).encode(), "fantasyfi_entry.csv", "text/csv")
+                    except Exception as exc:
+                        st.error(f"Lineup optimization failed: {exc}")
+                with st.expander("Multi-entry portfolio and Monte Carlo evaluation"):
+                    count = int(st.number_input("Number of lineups", min_value=2, max_value=50, value=5))
+                    distance = int(st.number_input("Minimum Hamming distance", min_value=1, max_value=18, value=2))
+                    sims = int(st.select_slider("Monte Carlo simulations", [1000,5000,10000,25000], value=10000))
+                    opponent_file = st.file_uploader("Optional opponent field CSV (entry_id,players; IDs separated by |)", type=["csv"], key="fantasyfi_opponents")
+                    if st.button("Build portfolio and evaluate"):
+                        try:
+                            slots = json.loads(positions_json)
+                            portfolio = optimize_portfolio(joined, count, roster_size, salary_cap, slots, min_hamming_distance=distance, team_cap=team_cap if team_cap else None)
+                            st.dataframe(pd.DataFrame([{"entry_id":i+1,**r} for i,r in enumerate(portfolio)]), use_container_width=True)
+                            opponent_lineups = []
+                            if opponent_file:
+                                opponent_rows = __import__("csv").DictReader(io.StringIO(opponent_file.getvalue().decode("utf-8-sig")))
+                                for row in opponent_rows:
+                                    opponent_lineups.append([p.strip() for p in row.get("players","").split("|") if p.strip()])
+                            means = {str(p["id"]):float(p["projection"]) for p in joined}
+                            profile_by_id = {str(p["player_id"]):p for p in profiles}
+                            sds = {str(p["id"]):max(1.0,float(profile_by_id.get(str(p["id"]),{}).get("historical_points_sd",0))) for p in joined}
+                            sim = evaluate_portfolio([r["players"] for r in portfolio], means, sds, opponent_lineups or None, simulations=sims)
+                            st.subheader("Monte Carlo portfolio report")
+                            st.json(sim)
+                            st.caption("Without opponent entries, this reports score distributions only; it cannot estimate probability of winning the contest.")
+                        except Exception as exc:
+                            st.error(f"Portfolio evaluation failed: {exc}")
+            elif not require_confirmed:
+                st.warning("No current-slate players matched the historical player IDs.")
+        except Exception as exc:
+            st.error(f"Could not build projections or slate: {exc}")
+    st.divider()
+    st.markdown("**Operational workaround:** when no authorized live-lineup API is configured, obtain the official XI from the club/league/platform and upload it here. The gate only unlocks a fixture with a fresh confirmation timestamp inside the 45–75 minute pre-kickoff window. GitHub automation can test the code and run scheduled checks, but it cannot discover an official XI from thin air.")
+    st.markdown("**Feature limits:** aerial win rate and set-piece shot rate are only as reliable as the uploaded provider stats. Empirical goal rate is not true xG; penalty conversion and goalkeeper penalty-save rates are Beta-smoothed and should be interpreted alongside sample counts.")
+
 else:
     st.header("Data standards & sources")
     st.markdown("""
