@@ -3,3 +3,4 @@ scipy>=1.10
 pandas>=2.0
 PuLP>=2.7
 pytest>=7.0
+streamlit>=1.35
