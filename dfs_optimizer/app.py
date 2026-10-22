@@ -20,13 +20,15 @@ st.title("⚽ Universal Football Intelligence")
 st.caption("Local-first football research dashboard · validate before predicting")
 st.warning("Research software only. No guaranteed winnings. Demo assumptions are synthetic; do not confuse them with real fixtures.")
 page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "Data standards"])
-extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer", "Microbehavioral & Monte Carlo lab", "God-Mode DFS Research Lab"])
+extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer", "Microbehavioral & Monte Carlo lab", "God-Mode DFS Research Lab", "Data Sources & Calibration Lab"])
 if extension_page == "FantasyFi optimizer":
     page = "FantasyFi optimizer"
 elif extension_page == "Microbehavioral & Monte Carlo lab":
     page = "Microbehavioral & Monte Carlo lab"
 elif extension_page == "God-Mode DFS Research Lab":
     page = "God-Mode DFS Research Lab"
+elif extension_page == "Data Sources & Calibration Lab":
+    page = "Data Sources & Calibration Lab"
 if page == "Overview":
     st.header("Research control centre")
     st.markdown("Validate licensed match data, run chronological baselines, inspect contest ownership, simulate player events and explore score-state scenarios.")
@@ -325,7 +327,7 @@ elif page == "God-Mode DFS Research Lab":
     st.header("God-Mode DFS Research Lab")
     st.caption("Evidence-first spatial, 300-metric, Dixon-Coles and pre-lock tools. No missing values are fabricated.")
     from src.metric_registry import metric_registry, audit_metric_data
-    from src.spatial_kinematics import pitch_geometry, derive_player_kinematics
+    from src.spatial_kinematics import pitch_geometry, derive_player_kinematics, wingback_penetration_index
     from src.prelock_pipeline import validate_prelock_lineups, filter_confirmed_starters
     from src.predictive_models.dixon_coles import fit_dixon_coles, score_grid, match_probabilities
 
@@ -352,6 +354,18 @@ elif page == "God-Mode DFS Research Lab":
                 st.download_button("Download kinematics CSV", kinematics.to_csv(index=False).encode(), "ufi_observed_kinematics.csv", "text/csv")
             except Exception as exc:
                 st.error(f"Kinematics failed: {exc}")
+
+    st.subheader("2b. Wing-back spatial penetration index")
+    st.caption("Requires timestamped event coordinates and a declared attacking direction. This measures observed final-third entry frequency, not guaranteed assists/shots.")
+    wb_file = st.file_uploader("Wing-back/event CSV: player_id, timestamp, x_m", type=["csv"], key="wingback_events_csv")
+    attacking_direction = st.selectbox("Attacking direction", [1, -1], format_func=lambda v: "Increasing x" if v == 1 else "Decreasing x", key="wingback_attacking_direction")
+    if wb_file and st.button("Calculate observed penetration index", key="calculate_wingback_spi"):
+        try:
+            wb = wingback_penetration_index(pd.read_csv(wb_file), pitch_length, attacking_direction)
+            st.dataframe(wb, use_container_width=True)
+            st.download_button("Download wing-back penetration metrics", wb.to_csv(index=False).encode(), "ufi_wingback_penetration.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Wing-back index failed: {exc}")
 
     st.divider()
     st.subheader("3. Dixon-Coles scoreline model")
@@ -399,6 +413,216 @@ elif page == "God-Mode DFS Research Lab":
                 st.error(f"Lineup validation failed: {exc}")
 
 
+
+elif page == "Data Sources & Calibration Lab":
+    st.header("Data Sources & Calibration Lab")
+    st.caption("Sourced connectors, source coverage, historical ownership, chronological calibration and joint captain/vice optimization.")
+    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_statsbomb_matches, fetch_statsbomb_events, statsbomb_matches_to_dixon_coles, aggregate_statsbomb_player_events, fetch_openfootball_results, fetch_open_meteo, fetch_api_sports_1x2_odds
+    from src.probability_calibration import ChronologicalIsotonicCalibrator, MulticlassIsotonicCalibrator, chronological_split
+    from src.ownership_model import estimate_historical_ownership
+    from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
+
+    st.subheader("1. Source plan for all 300 metrics")
+    catalog = metric_source_catalog()
+    st.write("Each registered metric is mapped to a source family and status. A mapped source is not the same as an observed value.")
+    st.dataframe(catalog, use_container_width=True, height=420)
+    st.download_button("Download 300-metric source catalog", catalog.to_csv(index=False).encode(), "ufi_300_metric_sources.csv", "text/csv")
+    source_data = st.file_uploader("Optional observations CSV for source coverage audit", type=["csv"], key="source_audit_csv")
+    if source_data:
+        try:
+            audit = audit_source_coverage(pd.read_csv(source_data))
+            st.dataframe(audit, use_container_width=True)
+            st.download_button("Download coverage audit", audit.to_csv(index=False).encode(), "ufi_source_coverage_audit.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Source audit failed: {exc}")
+
+    st.divider()
+    st.subheader("2. Public StatsBomb data index")
+    st.caption("Public selected competitions only; events are not optical tracking. Use the source license/attribution and check competition coverage.")
+    if st.button("Fetch StatsBomb Open Data competition index", key="fetch_sb_index"):
+        try:
+            competitions = fetch_statsbomb_competitions()
+            st.dataframe(competitions, use_container_width=True)
+            st.download_button("Download competition index", competitions.to_csv(index=False).encode(), "statsbomb_open_data_competitions.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"StatsBomb index fetch failed: {exc}")
+
+    st.subheader("2a. OpenFootball historical results CSV")
+    st.caption("Paste a raw.githubusercontent.com/openfootball/... CSV URL. The connector normalizes score rows for Dixon-Coles.")
+    openfootball_url = st.text_input("OpenFootball raw CSV URL", value="", key="openfootball_raw_url", placeholder="https://raw.githubusercontent.com/openfootball/...")
+    if st.button("Fetch and normalize OpenFootball results", key="fetch_openfootball") and openfootball_url:
+        try:
+            openfootball_results = fetch_openfootball_results(openfootball_url)
+            st.dataframe(openfootball_results, use_container_width=True)
+            st.download_button("Download Dixon-Coles-ready OpenFootball results", openfootball_results.to_csv(index=False).encode(), "openfootball_dixon_coles_results.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"OpenFootball import failed: {exc}")
+
+    st.subheader("2b. Pull historical match results and player events")
+    sb1, sb2 = st.columns(2)
+    comp_id = int(sb1.number_input("StatsBomb competition ID", min_value=1, value=2, key="source_sb_comp"))
+    season_id = int(sb2.number_input("StatsBomb season ID", min_value=1, value=27, key="source_sb_season"))
+    if st.button("Fetch selected competition/season matches", key="fetch_sb_matches"):
+        try:
+            sb_matches = fetch_statsbomb_matches(comp_id, season_id)
+            normalized = statsbomb_matches_to_dixon_coles(sb_matches)
+            st.write(f"Fetched {len(sb_matches)} raw match records; {len(normalized)} normalized historical results.")
+            st.dataframe(normalized, use_container_width=True)
+            st.download_button("Download Dixon-Coles-ready results CSV", normalized.to_csv(index=False).encode(), "statsbomb_dixon_coles_results.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Historical match fetch failed: {exc}")
+    sb_match_id = int(st.number_input("StatsBomb match ID for event aggregation", min_value=1, value=22912, key="source_sb_match"))
+    if st.button("Fetch and aggregate player events", key="fetch_sb_events"):
+        try:
+            ev = fetch_statsbomb_events(sb_match_id)
+            agg = aggregate_statsbomb_player_events(ev)
+            st.dataframe(agg, use_container_width=True)
+            st.download_button("Download event-derived player metrics", agg.to_csv(index=False).encode(), "statsbomb_player_event_metrics.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Player event fetch failed: {exc}")
+
+    st.divider()
+    st.subheader("3. Weather around kickoff")
+    wc1, wc2 = st.columns(2)
+    lat = wc1.number_input("Venue latitude", min_value=-90.0, max_value=90.0, value=6.5244, format="%.5f", key="weather_lat")
+    lon = wc2.number_input("Venue longitude", min_value=-180.0, max_value=180.0, value=3.3792, format="%.5f", key="weather_lon")
+    kickoff_weather = st.text_input("Kickoff with timezone (ISO 8601)", value="2026-10-22T18:00:00Z", key="weather_kickoff")
+    if st.button("Fetch Open-Meteo weather", key="fetch_weather"):
+        try:
+            weather = fetch_open_meteo(lat, lon, kickoff_weather)
+            st.json(weather)
+            st.download_button("Download weather JSON", json.dumps(weather, indent=2).encode(), "ufi_kickoff_weather.json", "application/json")
+        except Exception as exc:
+            st.error(f"Weather fetch failed: {exc}")
+
+    st.divider()
+    st.subheader("3b. Current bookmaker odds snapshot")
+    st.caption("Optional API-Sports endpoint. Set UFI_LINEUP_API_TOKEN in the local runtime environment. This returns current available 1X2 prices, not historical closing odds.")
+    odds_fixture_id = int(st.number_input("Fixture ID for current odds", min_value=1, value=1, key="odds_fixture_id"))
+    if st.button("Fetch current 1X2 odds and remove overround", key="fetch_ufi_odds"):
+        try:
+            odds = fetch_api_sports_1x2_odds(odds_fixture_id)
+            if odds.empty:
+                st.warning("No supported 1X2 bookmaker market was returned for this fixture/plan.")
+            else:
+                st.dataframe(odds, use_container_width=True)
+                st.download_button("Download current odds snapshot", odds.to_csv(index=False).encode(), "ufi_current_odds_snapshot.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Odds fetch failed: {exc}")
+
+    st.divider()
+    st.subheader("4. Isotonic probability calibration")
+    st.caption("CSV columns: date, probability, outcome (0/1). Data is sorted chronologically; the calibrator is fitted on the older training window and evaluated on the untouched later holdout.")
+    calibration_file = st.file_uploader("Historical forecast/outcome CSV", type=["csv"], key="calibration_csv")
+    train_fraction = st.slider("Training fraction", min_value=0.60, max_value=0.85, value=0.75, step=0.05, key="cal_train_fraction")
+    if calibration_file and st.button("Fit and evaluate calibration", key="fit_calibration"):
+        try:
+            raw = pd.read_csv(calibration_file)
+            needed = {"date", "probability", "outcome"}
+            if not needed.issubset(raw.columns):
+                st.error("Missing columns: " + ", ".join(sorted(needed-set(raw.columns))))
+            else:
+                train, hold = chronological_split(raw, "date", train_fraction)
+                calibrator = ChronologicalIsotonicCalibrator(min_train=100).fit(train.probability, train.outcome, train.date)
+                metrics = calibrator.evaluate(hold.probability, hold.outcome)
+                st.json({k:v for k,v in metrics.items() if k != "bins"})
+                st.dataframe(pd.DataFrame(metrics["bins"]), use_container_width=True)
+                hold["calibrated_probability"] = calibrator.predict(hold.probability)
+                st.download_button("Download holdout calibrated probabilities", hold.to_csv(index=False).encode(), "ufi_calibrated_holdout.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Calibration failed: {exc}")
+
+    st.subheader("4b. Dixon-Coles 1X2 probability calibration")
+    st.caption("CSV columns: date, p_home, p_draw, p_away, outcome (H/D/A). Use predictions generated before each match; never calibrate with same-match or future information.")
+    one_x_two_file = st.file_uploader("Historical 1X2 forecast CSV", type=["csv"], key="one_x_two_calibration_csv")
+    if one_x_two_file and st.button("Fit and evaluate 1X2 isotonic calibration", key="fit_one_x_two_calibration"):
+        try:
+            raw_1x2 = pd.read_csv(one_x_two_file)
+            needed_1x2 = {"date", "p_home", "p_draw", "p_away", "outcome"}
+            if not needed_1x2.issubset(raw_1x2.columns):
+                st.error("Missing columns: " + ", ".join(sorted(needed_1x2-set(raw_1x2.columns))))
+            else:
+                train_1x2, hold_1x2 = chronological_split(raw_1x2, "date", train_fraction)
+                calibrator_1x2 = MulticlassIsotonicCalibrator(min_train=300, min_class_outcomes=20).fit(
+                    train_1x2[["p_home", "p_draw", "p_away"]].to_numpy(float), train_1x2.outcome, train_1x2.date)
+                hold_probs = hold_1x2[["p_home", "p_draw", "p_away"]].to_numpy(float)
+                metrics_1x2 = calibrator_1x2.evaluate(hold_probs, hold_1x2.outcome)
+                st.json(metrics_1x2)
+                calibrated_1x2 = calibrator_1x2.predict(hold_probs)
+                hold_1x2["calibrated_p_home"] = calibrated_1x2[:, 0]
+                hold_1x2["calibrated_p_draw"] = calibrated_1x2[:, 1]
+                hold_1x2["calibrated_p_away"] = calibrated_1x2[:, 2]
+                st.download_button("Download calibrated 1X2 holdout", hold_1x2.to_csv(index=False).encode(), "ufi_calibrated_1x2_holdout.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"1X2 calibration failed: {exc}")
+
+    st.divider()
+    st.subheader("5. Historical contest ownership posterior")
+    st.caption("CSV must contain one row per selected player per entry, with entry_id and player_id. Only use contest exports you are authorized to process.")
+    ownership_file = st.file_uploader("Contest entry-player CSV", type=["csv"], key="ownership_posterior_csv")
+    if ownership_file and st.button("Estimate ownership and credible intervals", key="estimate_ownership"):
+        try:
+            ownership = estimate_historical_ownership(pd.read_csv(ownership_file))
+            st.dataframe(ownership, use_container_width=True)
+            st.download_button("Download ownership posterior", ownership.to_csv(index=False).encode(), "ufi_ownership_posterior.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Ownership estimation failed: {exc}")
+
+    st.divider()
+    st.subheader("6. Joint captain / vice / lineup optimization")
+    st.caption("Upload a player slate CSV and a second CSV of jointly simulated scores. The simulation file must have one column per player_id and at least 100 shared scenario rows.")
+    slate_file = st.file_uploader("Slate CSV: player_id, position, salary, team_id", type=["csv"], key="captain_slate_csv")
+    scenario_file = st.file_uploader("Joint scenario matrix CSV (columns named by player_id)", type=["csv"], key="captain_scenarios_csv")
+    oc1, oc2, oc3 = st.columns(3)
+    budget = oc1.number_input("Salary budget", min_value=1.0, value=100.0, key="captain_budget")
+    roster_size = int(oc2.number_input("Roster size", min_value=1, max_value=30, value=11, key="captain_roster_size"))
+    max_team = int(oc3.number_input("Maximum players per team", min_value=1, max_value=30, value=7, key="captain_max_team"))
+    if slate_file and scenario_file and st.button("Optimize roster + captain + vice", key="run_joint_captain"):
+        try:
+            slate = pd.read_csv(slate_file)
+            scenarios = pd.read_csv(scenario_file)
+            if not set(slate.player_id.astype(str)).issubset(set(scenarios.columns.astype(str))):
+                st.error("Scenario CSV needs one column matching every player_id in the slate.")
+            else:
+                sim = scenarios.loc[:, slate.player_id.astype(str).tolist()].to_numpy(float)
+                roster, report = optimize_captain_vice_lineup(slate, sim, budget=budget, roster_size=roster_size, max_per_team=max_team)
+                st.json(report)
+                st.dataframe(roster, use_container_width=True)
+                st.download_button("Download optimized lineup", roster.to_csv(index=False).encode(), "ufi_captain_vice_lineup.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Captain/vice optimization failed: {exc}")
+
+
+
+    st.divider()
+    st.subheader("7. Multi-entry portfolio with covariance constraints")
+    st.caption("Uses shared simulation rows to estimate dependence. This is a MILP with linearized pairwise products; reduce the candidate pool before using large covariance constraints.")
+    portfolio_slate = st.file_uploader("Portfolio slate CSV", type=["csv"], key="portfolio_slate_csv")
+    portfolio_scenarios = st.file_uploader("Portfolio shared scenario matrix CSV", type=["csv"], key="portfolio_scenarios_csv")
+    pc1, pc2, pc3 = st.columns(3)
+    entry_count = int(pc1.number_input("Portfolio entries", min_value=2, max_value=20, value=3, key="portfolio_entry_count"))
+    overlap_cap = int(pc2.number_input("Maximum shared players", min_value=0, max_value=30, value=roster_size-2 if roster_size>2 else 0, key="portfolio_overlap_cap"))
+    exposure_cap = pc3.slider("Max player exposure", min_value=0.34, max_value=1.0, value=0.67, step=0.01, key="portfolio_exposure")
+    use_covariance_cap = st.checkbox("Enforce empirical pairwise covariance cap", value=False, key="portfolio_use_cov_cap")
+    covariance_cap = st.number_input("Maximum covariance (points squared)", value=10000.0, min_value=-1000000.0, max_value=1000000.0, key="portfolio_cov_cap")
+    if portfolio_slate and portfolio_scenarios and st.button("Optimize multi-entry portfolio", key="run_stochastic_portfolio"):
+        try:
+            ps = pd.read_csv(io.BytesIO(portfolio_slate.getvalue()))
+            sm = pd.read_csv(io.BytesIO(portfolio_scenarios.getvalue()))
+            if not set(ps.player_id.astype(str)).issubset(set(sm.columns.astype(str))):
+                st.error("Scenario CSV needs a column matching every player_id in the portfolio slate.")
+            else:
+                matrix = sm.loc[:, ps.player_id.astype(str).tolist()].to_numpy(float)
+                portfolio, risk = optimize_stochastic_portfolio(ps, matrix, budget=budget, roster_size=roster_size,
+                    lineup_count=entry_count, max_per_team=max_team, max_player_exposure=exposure_cap,
+                    max_overlap=overlap_cap, max_pairwise_covariance=covariance_cap if use_covariance_cap else None)
+                st.json(risk)
+                st.dataframe(portfolio, use_container_width=True)
+                st.download_button("Download optimized portfolio", portfolio.to_csv(index=False).encode(), "ufi_stochastic_portfolio.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Portfolio optimization failed: {exc}")
+
+
 else:
     st.header("Data standards & sources")
     st.markdown("""
@@ -406,11 +630,11 @@ else:
 
 **Contest entries:** CSV columns entry_id, players; player IDs separated by |. Keep contests and slates separate, with platform, salaries, scoring and payout metadata.
 
-**StatsBomb Open Data:** https://github.com/hudl/open-data contains selected competitions/seasons and event, lineup and match JSON. Coverage is selective. Follow the current terms; attribution is required and publication may require additional steps.
+**StatsBomb Open Data:** https://github.com/statsbomb/open-data contains selected competitions/seasons and event, lineup and match JSON. Coverage is selective. Follow the current terms; attribution is required and publication may require additional steps.
 
 **Football-Data.co.uk:** https://www.football-data.co.uk/ provides historical match results and some additional statistics/odds. Check the current terms and column documentation.
 
-No real dataset is bundled or claimed as validated. Historical paid DFS contest entries are not included by default in these football match sources. Obtain them only from a source whose terms permit the intended use.
+The Data Sources & Calibration Lab includes public StatsBomb event connectors, Open-Meteo weather, a 300-field source audit, empirical ownership posterior, chronological isotonic calibration and joint captain/vice optimization. See docs/ufi-source-integration-plan.md for provider setup. No real dataset is bundled or claimed as validated. Historical paid DFS contest entries are not included by default in these football match sources. Obtain them only from a source whose terms permit the intended use.
 
 **Not yet production-ready:** live-data connectors, player tracking/biomechanics, a fitted copula, trained ownership model, exact platform scoring adapters, scalable MIQP, and validated full-field payout optimization. Existing modules remain available; this dashboard is the first integrated control surface, not a final scientific model.
 """)

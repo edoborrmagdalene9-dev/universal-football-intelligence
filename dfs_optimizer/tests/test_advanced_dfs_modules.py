@@ -18,8 +18,8 @@ def test_spatial_kinematics_derived_from_observed_coordinates():
 def test_prelock_only_retains_fresh_confirmed_starters():
  now=pd.Timestamp('2026-10-22T12:00:00Z').to_pydatetime()
  d=pd.DataFrame({'player_id':['a','b'],'team_id':['x','x'],'status':['starter','bench'],'source_timestamp':['2026-10-22T11:59:00Z']*2,'source_url':['https://example.org/lineups']*2})
- valid,report=validate_prelock_lineups(d,'2026-10-22T13:00:00Z',now_utc=now); players=pd.DataFrame({'player_id':['a','b','c'],'projected_points':[10,9,8]})
- assert filter_confirmed_starters(players,valid).player_id.tolist()==['a']; assert report['lock_window_active']; assert report['source_authority_verified'] is False
+ valid,report=validate_prelock_lineups(d,'2026-10-22T13:00:00Z',now_utc=now,trusted_source_hosts=['example.org']); players=pd.DataFrame({'player_id':['a','b','c'],'projected_points':[10,9,8]})
+ assert filter_confirmed_starters(players,valid).player_id.tolist()==['a']; assert report['lock_window_active']; assert report['source_authority_verified'] is True
 
 def test_hamming_and_multiplier_helpers():
  assert hamming_distance(['a','b'],['b','c'])==2

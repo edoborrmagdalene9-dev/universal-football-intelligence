@@ -3,7 +3,7 @@ on:
   pull_request:
     paths: ['dfs_optimizer/**', 'docs/god-mode-dfs-engine.md', '.github/workflows/dfs-research-ci.yml']
   push:
-    branches: ['feature/fantasyfi-microbehavioral-engine']
+    branches: ['feature/fantasyfi-microbehavioral-engine', 'feature/ufi-source-integrations']
     paths: ['dfs_optimizer/**', 'docs/god-mode-dfs-engine.md', '.github/workflows/dfs-research-ci.yml']
   workflow_dispatch:
 permissions:
@@ -18,7 +18,7 @@ jobs:
           python-version: '3.11'
           cache: pip
           cache-dependency-path: dfs_optimizer/requirements.txt
-      - run: python -m pip install --upgrade pip && pip install -r dfs_optimizer/requirements.txt scikit-learn
+      - run: python -m pip install --upgrade pip && pip install -r dfs_optimizer/requirements.txt
       - run: python -m compileall -q dfs_optimizer
       - run: pytest -q dfs_optimizer/tests
         env:
