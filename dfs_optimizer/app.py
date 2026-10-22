@@ -10,15 +10,20 @@ from src.lineup_gate import validate_confirmed_lineup
 from src.scoring_engine import expected_points, penalty_matchup_ev
 from src.optimizer.pulp_optimizer import optimize_lineup, optimize_portfolio
 from src.portfolio_simulation import evaluate_portfolio
+from src.fantasyfi_monte_carlo import run_fantasyfi_monte_carlo
+from src.microbehavioral_engine import fingerprint_player_roles, apply_tactical_multipliers, step_boundary_report
+from src.fantasyfi_portfolio_optimizer import optimize_fantasyfi_portfolio
 
 st.set_page_config(page_title="Universal Football Intelligence", page_icon="⚽", layout="wide")
 st.title("⚽ Universal Football Intelligence")
 st.caption("Local-first football research dashboard · validate before predicting")
 st.warning("Research software only. No guaranteed winnings. Demo assumptions are synthetic; do not confuse them with real fixtures.")
 page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "Data standards"])
-extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer"])
+extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer", "Microbehavioral & Monte Carlo lab"])
 if extension_page == "FantasyFi optimizer":
     page = "FantasyFi optimizer"
+elif extension_page == "Microbehavioral & Monte Carlo lab":
+    page = "Microbehavioral & Monte Carlo lab"
 if page == "Overview":
     st.header("Research control centre")
     st.markdown("Validate licensed match data, run chronological baselines, inspect contest ownership, simulate player events and explore score-state scenarios.")
@@ -228,6 +233,83 @@ elif page == "FantasyFi optimizer":
     st.divider()
     st.markdown("**Operational workaround:** when no authorized live-lineup API is configured, obtain the official XI from the club/league/platform and upload it here. The gate only unlocks a fixture with a fresh confirmation timestamp inside the 45–75 minute pre-kickoff window. GitHub automation can test the code and run scheduled checks, but it cannot discover an official XI from thin air.")
     st.markdown("**Feature limits:** aerial win rate and set-piece shot rate are only as reliable as the uploaded provider stats. Empirical goal rate is not true xG; penalty conversion and goalkeeper penalty-save rates are Beta-smoothed and should be interpreted alongside sample counts.")
+
+
+elif page == "Microbehavioral & Monte Carlo lab":
+    st.header("FantasyFi micro-behavioral & Monte Carlo lab")
+    st.caption("Add-on workspace: existing UFI and FantasyFi pages remain unchanged.")
+    st.markdown("Upload player-match projections. The lab adds transparent role fingerprints, optional matchup multipliers, pass-step boundary diagnostics, a 10,000-run default event simulation and optional diversified lineup optimization.")
+    st.info("Use real, permitted source data. Missing referee, weather, fatigue, tracking and ownership inputs are not invented; uncalibrated multipliers are scenario assumptions.")
+    telemetry = st.file_uploader("Player projection CSV", type=["csv"], key="microbehavioral_projection_csv")
+    sims = int(st.select_slider("Monte Carlo simulations", [1000, 5000, 10000, 25000], value=10000, key="micro_sims"))
+    seed = int(st.number_input("Random seed (reproducibility)", min_value=0, max_value=2147483647, value=42, key="micro_seed"))
+    if telemetry:
+        try:
+            raw = pd.read_csv(io.BytesIO(telemetry.getvalue()))
+            st.subheader("Input preview")
+            st.dataframe(raw.head(25), use_container_width=True)
+            required = {"player_name", "position", "start_probability", "mean_passes", "mean_interceptions", "mean_shots_on_target", "mean_goals", "mean_assists", "clean_sheet_prob", "mean_yellow_cards", "mean_red_cards"}
+            missing = sorted(required - set(raw.columns))
+            if missing:
+                st.error("Missing required Monte Carlo columns: " + ", ".join(missing))
+            else:
+                with st.expander("Optional tactical multipliers", expanded=False):
+                    st.caption("Add optional columns such as pass_volume_multiplier, interception_multiplier, shot_on_target_multiplier, goal_multiplier, assist_multiplier, clean_sheet_multiplier and save_multiplier. Missing multipliers are neutral (1.0).")
+                    use_multipliers = st.checkbox("Apply supplied multiplier columns", value=False)
+                if st.button("Fingerprint players and run Monte Carlo", type="primary"):
+                    try:
+                        profiled = fingerprint_player_roles(raw)
+                        adjusted = apply_tactical_multipliers(profiled) if use_multipliers else profiled
+                        summary, score_matrix = run_fantasyfi_monte_carlo(adjusted, num_sims=sims, seed=seed)
+                        st.subheader("Player behavioral fingerprints")
+                        display_cols = [c for c in ["player_name", "position", "behavioral_fingerprint", "fingerprint_data_completeness"] if c in adjusted.columns]
+                        st.dataframe(adjusted[display_cols], use_container_width=True)
+                        st.subheader("Simulated point distributions")
+                        st.dataframe(summary, use_container_width=True)
+                        st.download_button("Download Monte Carlo summary CSV", summary.to_csv(index=False).encode(), "fantasyfi_monte_carlo_summary.csv", "text/csv")
+                        st.session_state["ufi_micro_mc_matrix"] = score_matrix.tolist()
+                        st.session_state["ufi_micro_mc_names"] = adjusted["player_name"].astype(str).tolist()
+                        st.session_state["ufi_micro_mc_source"] = adjusted.to_dict(orient="records")
+                        st.success(f"Completed {sims:,} simulations for {len(adjusted)} players.")
+                    except Exception as exc:
+                        st.error(f"Simulation failed: {exc}")
+                if "projected_completed_passes" in raw.columns:
+                    st.subheader("Pass step-function boundary report")
+                    player_options = raw["player_name"].astype(str).tolist()
+                    selected_pass_player = st.selectbox("Player to inspect", player_options, key="pass_boundary_player")
+                    pass_row = raw.loc[raw["player_name"].astype(str) == selected_pass_player].iloc[0]
+                    st.json(step_boundary_report(float(pass_row["projected_completed_passes"])))
+                st.divider()
+                st.subheader("Optional multi-entry lineup optimizer")
+                st.caption("Requires salary and an official contest roster configuration. This optimizer uses MILP; it does not claim a quadratic MIQP solution.")
+                if "salary" not in raw.columns:
+                    st.warning("Add a salary column to the uploaded CSV to enable lineup optimization.")
+                elif "ufi_micro_mc_matrix" not in st.session_state or st.session_state.get("ufi_micro_mc_names") != raw["player_name"].astype(str).tolist():
+                    st.caption("Run the Monte Carlo simulation above first, then the optimizer can use its score matrix.")
+                else:
+                    budget = float(st.number_input("Salary cap", min_value=1.0, value=100.0, step=1.0, key="micro_budget"))
+                    roster = int(st.number_input("Roster size", min_value=1, max_value=max(1, len(raw)), value=min(11, len(raw)), key="micro_roster"))
+                    entries = int(st.number_input("Number of entries", min_value=1, max_value=20, value=3, key="micro_entries"))
+                    max_overlap = int(st.number_input("Maximum players shared by any two entries", min_value=0, max_value=max(0, roster-1), value=min(8, max(0, roster-1)), key="micro_overlap"))
+                    own_col = st.selectbox("Ownership column", ["None"] + [c for c in raw.columns if "ownership" in c.lower()], key="micro_ownership_col")
+                    if st.button("Optimize multi-entry portfolio"):
+                        try:
+                            score_matrix = np.asarray(st.session_state["ufi_micro_mc_matrix"], dtype=float)
+                            own = None if own_col == "None" else pd.to_numeric(raw[own_col], errors="raise").to_numpy(float)
+                            if own is not None and np.nanmax(own) > 1:
+                                own = own / 100.0
+                            portfolio, report = optimize_fantasyfi_portfolio(
+                                raw, score_matrix, ownership=own, budget=budget, roster_size=roster,
+                                lineup_count=entries, max_overlap=max_overlap if entries > 1 else None,
+                                min_positions={}, max_positions={}
+                            )
+                            st.dataframe(portfolio, use_container_width=True)
+                            st.json(report)
+                            st.download_button("Download portfolio CSV", portfolio.to_csv(index=False).encode(), "fantasyfi_microbehavioral_portfolio.csv", "text/csv")
+                        except Exception as exc:
+                            st.error(f"Portfolio optimization failed: {exc}")
+        except Exception as exc:
+            st.error(f"Could not read player CSV: {exc}")
 
 else:
     st.header("Data standards & sources")
