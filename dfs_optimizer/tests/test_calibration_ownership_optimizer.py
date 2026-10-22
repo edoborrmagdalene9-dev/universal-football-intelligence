@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-from dfs_optimizer.src.probability_calibration import ChronologicalIsotonicCalibrator, chronological_split
+from dfs_optimizer.src.probability_calibration import ChronologicalIsotonicCalibrator, MulticlassIsotonicCalibrator, chronological_split
 from dfs_optimizer.src.ownership_model import estimate_historical_ownership
 from dfs_optimizer.src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
 
@@ -39,3 +39,11 @@ def test_stochastic_portfolio_uses_shared_scenarios_and_diversity_constraints():
     portfolio,report=optimize_stochastic_portfolio(players,sims,budget=40,roster_size=3,lineup_count=2,max_per_team=3,max_player_exposure=1.0,max_overlap=2,max_pairwise_covariance=1e6)
     assert len(portfolio)==6 and report['lineups']==2 and report['scenario_count']==250
     assert report['covariance'][0][1] <= 1e6
+
+def test_multiclass_isotonic_calibration_keeps_probabilities_normalized():
+    rng=np.random.default_rng(13); p=rng.dirichlet([4,2,4],size=450); y=np.array(['H','D','A']*150); dates=pd.date_range('2023-01-01',periods=450,tz='UTC')
+    train,hold=chronological_split(pd.DataFrame({'date':dates,'ph':p[:,0],'pd':p[:,1],'pa':p[:,2],'outcome':y}), 'date', .75)
+    cal=MulticlassIsotonicCalibrator(min_train=200,min_class_outcomes=10).fit(train[['ph','pd','pa']].to_numpy(),train.outcome,train.date)
+    calibrated=cal.predict(hold[['ph','pd','pa']].to_numpy())
+    assert np.allclose(calibrated.sum(axis=1),1.0) and np.all((calibrated>=0)&(calibrated<=1))
+    assert cal.evaluate(hold[['ph','pd','pa']].to_numpy(),hold.outcome)['n']==len(hold)
