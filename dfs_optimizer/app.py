@@ -568,11 +568,11 @@ else:
 
 **Contest entries:** CSV columns entry_id, players; player IDs separated by |. Keep contests and slates separate, with platform, salaries, scoring and payout metadata.
 
-**StatsBomb Open Data:** https://github.com/hudl/open-data contains selected competitions/seasons and event, lineup and match JSON. Coverage is selective. Follow the current terms; attribution is required and publication may require additional steps.
+**StatsBomb Open Data:** https://github.com/statsbomb/open-data contains selected competitions/seasons and event, lineup and match JSON. Coverage is selective. Follow the current terms; attribution is required and publication may require additional steps.
 
 **Football-Data.co.uk:** https://www.football-data.co.uk/ provides historical match results and some additional statistics/odds. Check the current terms and column documentation.
 
-No real dataset is bundled or claimed as validated. Historical paid DFS contest entries are not included by default in these football match sources. Obtain them only from a source whose terms permit the intended use.
+The Data Sources & Calibration Lab includes public StatsBomb event connectors, Open-Meteo weather, a 300-field source audit, empirical ownership posterior, chronological isotonic calibration and joint captain/vice optimization. See docs/ufi-source-integration-plan.md for provider setup. No real dataset is bundled or claimed as validated. Historical paid DFS contest entries are not included by default in these football match sources. Obtain them only from a source whose terms permit the intended use.
 
 **Not yet production-ready:** live-data connectors, player tracking/biomechanics, a fitted copula, trained ownership model, exact platform scoring adapters, scalable MIQP, and validated full-field payout optimization. Existing modules remain available; this dashboard is the first integrated control surface, not a final scientific model.
 """)
