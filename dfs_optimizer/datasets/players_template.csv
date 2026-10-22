@@ -1,0 +1,5 @@
+id,team,position,salary,projection,ownership
+player_001,TEAM_A,GK,10,12.5,0.08
+player_002,TEAM_A,DEF,9,18.2,0.12
+player_003,TEAM_B,MID,11,20.1,0.25
+player_004,TEAM_C,FWD,12,24.3,0.32

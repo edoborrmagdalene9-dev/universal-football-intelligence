@@ -1,0 +1,146 @@
+name: FantasyFi Quantitative Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      players_csv:
+        description: "Repository-relative current-slate CSV with id, team, position, salary, projection"
+        required: true
+        default: "dfs_optimizer/datasets/players.csv"
+      confirmed_lineups_csv:
+        description: "Repository-relative official lineup CSV"
+        required: true
+        default: "dfs_optimizer/datasets/confirmed_lineups.csv"
+      roster_size:
+        description: "Contest roster size (must match platform)"
+        required: true
+        default: "9"
+      salary_cap:
+        description: "Contest salary cap (must match platform)"
+        required: true
+        default: "100"
+      positions_json:
+        description: 'Positional slots JSON (must match platform)'
+        required: true
+        default: '{"GK":1,"DEF":3,"MID":3,"FWD":2}'
+      require_confirmed_lineups:
+        description: "Block entry generation unless official lineups pass freshness and kickoff checks"
+        type: boolean
+        required: true
+        default: true
+  schedule:
+    # UTC cron runs can be delayed. This is a periodic readiness check, not a guarantee
+    # that official lineups will be fetched exactly 60 minutes before kickoff.
+    - cron: "*/15 * * * *"
+  push:
+    branches:
+      - "feature/fantasyfi-quantitative-engine"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
+      - run: python -m pip install -r dfs_optimizer/requirements.txt
+      - name: Compile all Python modules
+        run: python -m compileall -q dfs_optimizer
+      - name: Run complete existing and new test suite
+        run: python -m pytest dfs_optimizer/tests -q
+
+  scheduled-readiness:
+    if: github.event_name == 'schedule'
+    needs: validate-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Explain missing operator-supplied slate inputs
+        run: |
+          if [ ! -f dfs_optimizer/datasets/players.csv ] || [ ! -f dfs_optimizer/datasets/confirmed_lineups.csv ]; then
+            echo "No current slate or official confirmed lineup CSV is committed. No entry was generated."
+            echo "For privacy and accuracy, add a current provider-sourced slate and fresh official lineup CSV before this scheduled job can export."
+          else
+            echo "Slate and lineup input files exist; the gated export job will validate their timestamps and roster configuration."
+          fi
+
+  optional-lineup-build:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs: validate-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: python -m pip install -r dfs_optimizer/requirements.txt
+      - name: Select input paths and contest settings
+        id: cfg
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PLAYERS: ${{ inputs.players_csv }}
+          INPUT_LINEUPS: ${{ inputs.confirmed_lineups_csv }}
+          INPUT_ROSTER_SIZE: ${{ inputs.roster_size }}
+          INPUT_SALARY_CAP: ${{ inputs.salary_cap }}
+          INPUT_POSITIONS: ${{ inputs.positions_json }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            echo "players=dfs_optimizer/datasets/players.csv" >> "$GITHUB_OUTPUT"
+            echo "lineups=dfs_optimizer/datasets/confirmed_lineups.csv" >> "$GITHUB_OUTPUT"
+            echo "roster_size=9" >> "$GITHUB_OUTPUT"
+            echo "salary_cap=100" >> "$GITHUB_OUTPUT"
+            echo 'positions={"GK":1,"DEF":3,"MID":3,"FWD":2}' >> "$GITHUB_OUTPUT"
+            echo "require_confirmed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "players=$INPUT_PLAYERS" >> "$GITHUB_OUTPUT"
+            echo "lineups=$INPUT_LINEUPS" >> "$GITHUB_OUTPUT"
+            echo "roster_size=$INPUT_ROSTER_SIZE" >> "$GITHUB_OUTPUT"
+            echo "salary_cap=$INPUT_SALARY_CAP" >> "$GITHUB_OUTPUT"
+            echo "positions=$INPUT_POSITIONS" >> "$GITHUB_OUTPUT"
+            echo "require_confirmed=${{ inputs.require_confirmed_lineups }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Validate required files
+        id: input_check
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PLAYERS: ${{ steps.cfg.outputs.players }}
+          LINEUPS: ${{ steps.cfg.outputs.lineups }}
+          REQUIRE_CONFIRMED: ${{ steps.cfg.outputs.require_confirmed }}
+        run: |
+          if [ ! -f "$PLAYERS" ] || { [ "$REQUIRE_CONFIRMED" = "true" ] && [ ! -f "$LINEUPS" ]; }; then
+            if [ "$EVENT_NAME" = "schedule" ]; then
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              echo "No current slate/confirmed-lineup inputs. Skipping entry generation; no data will be invented."
+            else
+              echo "Required input CSV missing. Check repository-relative workflow inputs."
+              exit 1
+            fi
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build gated entry CSV
+        if: steps.input_check.outputs.ready == 'true'
+        env:
+          PLAYERS: ${{ steps.cfg.outputs.players }}
+          LINEUPS: ${{ steps.cfg.outputs.lineups }}
+          ROSTER_SIZE: ${{ steps.cfg.outputs.roster_size }}
+          SALARY_CAP: ${{ steps.cfg.outputs.salary_cap }}
+          POSITIONS: ${{ steps.cfg.outputs.positions }}
+          REQUIRE_CONFIRMED: ${{ steps.cfg.outputs.require_confirmed }}
+        run: |
+          if [ "$REQUIRE_CONFIRMED" = "true" ]; then
+            python -m dfs_optimizer.src.automation.main --players "$PLAYERS" --confirmed-lineups "$LINEUPS" --require-confirmed-lineups --output fantasyfi_entries.csv --roster-size "$ROSTER_SIZE" --salary-cap "$SALARY_CAP" --positions-json "$POSITIONS"
+          else
+            python -m dfs_optimizer.src.automation.main --players "$PLAYERS" --output fantasyfi_entries.csv --roster-size "$ROSTER_SIZE" --salary-cap "$SALARY_CAP" --positions-json "$POSITIONS"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: steps.input_check.outputs.ready == 'true'
+        with:
+          name: fantasyfi-entry-csv
+          path: fantasyfi_entries.csv
+          if-no-files-found: error
