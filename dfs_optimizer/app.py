@@ -405,7 +405,7 @@ elif page == "God-Mode DFS Research Lab":
 elif page == "Data Sources & Calibration Lab":
     st.header("Data Sources & Calibration Lab")
     st.caption("Sourced connectors, source coverage, historical ownership, chronological calibration and joint captain/vice optimization.")
-    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_statsbomb_matches, fetch_statsbomb_events, statsbomb_matches_to_dixon_coles, aggregate_statsbomb_player_events, fetch_openfootball_results, fetch_open_meteo
+    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_statsbomb_matches, fetch_statsbomb_events, statsbomb_matches_to_dixon_coles, aggregate_statsbomb_player_events, fetch_openfootball_results, fetch_open_meteo, fetch_api_sports_1x2_odds
     from src.probability_calibration import ChronologicalIsotonicCalibrator, MulticlassIsotonicCalibrator, chronological_split
     from src.ownership_model import estimate_historical_ownership
     from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
@@ -482,6 +482,21 @@ elif page == "Data Sources & Calibration Lab":
             st.download_button("Download weather JSON", json.dumps(weather, indent=2).encode(), "ufi_kickoff_weather.json", "application/json")
         except Exception as exc:
             st.error(f"Weather fetch failed: {exc}")
+
+    st.divider()
+    st.subheader("3b. Current bookmaker odds snapshot")
+    st.caption("Optional API-Sports endpoint. Set UFI_LINEUP_API_TOKEN in the local runtime environment. This returns current available 1X2 prices, not historical closing odds.")
+    odds_fixture_id = int(st.number_input("Fixture ID for current odds", min_value=1, value=1, key="odds_fixture_id"))
+    if st.button("Fetch current 1X2 odds and remove overround", key="fetch_ufi_odds"):
+        try:
+            odds = fetch_api_sports_1x2_odds(odds_fixture_id)
+            if odds.empty:
+                st.warning("No supported 1X2 bookmaker market was returned for this fixture/plan.")
+            else:
+                st.dataframe(odds, use_container_width=True)
+                st.download_button("Download current odds snapshot", odds.to_csv(index=False).encode(), "ufi_current_odds_snapshot.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Odds fetch failed: {exc}")
 
     st.divider()
     st.subheader("4. Isotonic probability calibration")
