@@ -2,6 +2,7 @@
 import io, json
 import streamlit as st
 import pandas as pd
+import numpy as np
 from src.pipeline import load_matches_csv, chronological_backtest, validate_contest_entries_csv
 from src.event_simulator import simulate_event_points
 from src.continuous_time_states import simulate_score_path
