@@ -86,3 +86,72 @@ def scenario_risk_report(simulation_matrix, lineups, alpha=0.10):
                         "lower_tail_5pct_mean":float(outcomes[:,i][outcomes[:,i]<=np.quantile(outcomes[:,i],.05)].mean())})
     return {"lineups":len(metrics),"scenario_count":int(len(sims)),"covariance":np.cov(outcomes,rowvar=False).reshape(len(metrics),len(metrics)).tolist(),"correlation":np.corrcoef(outcomes,rowvar=False).reshape(len(metrics),len(metrics)).tolist(),"lineup_metrics":metrics,
             "warning":"Scenario-based dependence is valid only if each row is one joint outcome draw, not independently sampled player marginals."}
+
+
+def optimize_stochastic_portfolio(players, simulation_matrix, budget, roster_size, lineup_count,
+        min_positions=None, max_positions=None, max_per_team=None, max_player_exposure=1.0,
+        max_overlap=None, max_pairwise_covariance=None, ceiling_weight=0.4,
+        ownership=None, ownership_penalty=0.0):
+    """Multi-entry MILP with exposure/overlap constraints and empirical covariance caps.
+
+    Covariance constraints use pairwise binary-product linearization. For large pools,
+    use candidate-pool pruning before enabling the quadratic-size covariance constraints.
+    """
+    required={"player_id","position","salary","team_id"}
+    if not required.issubset(players.columns): raise ValueError("players requires "+", ".join(sorted(required)))
+    df=players.reset_index(drop=True).copy(); n=len(df); sims=np.asarray(simulation_matrix,float)
+    if sims.ndim!=2 or sims.shape[1]!=n or sims.shape[0]<100 or not np.isfinite(sims).all(): raise ValueError("simulation_matrix must be finite [>=100 simulations, players]")
+    if df.player_id.astype(str).duplicated().any(): raise ValueError("player_id must be unique")
+    if budget<=0 or not 1<=roster_size<=n or lineup_count<1 or not 0<max_player_exposure<=1: raise ValueError("Invalid budget, roster or exposure")
+    salary=pd.to_numeric(df.salary,errors="raise").to_numpy(float); pos=df.position.astype(str).str.upper().to_numpy(); team=df.team_id.astype(str).to_numpy()
+    if np.any(~np.isfinite(salary)) or np.any(salary<0): raise ValueError("Invalid salaries")
+    own=np.zeros(n) if ownership is None else np.asarray(ownership,float)
+    if own.shape!=(n,) or np.any(~np.isfinite(own)) or np.any((own<0)|(own>1)): raise ValueError("ownership must align and be in [0,1]")
+    means=sims.mean(axis=0); p95=np.percentile(sims,95,axis=0); values=means+ceiling_weight*(p95-means)-ownership_penalty*own*100
+    mins={str(k).upper():int(v) for k,v in (min_positions or {}).items()}; maxs={str(k).upper():int(v) for k,v in (max_positions or {}).items()}
+    model=pulp.LpProblem("UFI_Stochastic_Portfolio_Covariance",pulp.LpMaximize)
+    x=[[pulp.LpVariable(f"pick_{l}_{i}",cat="Binary") for i in range(n)] for l in range(lineup_count)]
+    for l in range(lineup_count):
+        model += pulp.lpSum(x[l])==roster_size
+        model += pulp.lpSum(x[l][i]*salary[i] for i in range(n))<=budget
+        for p,m in mins.items(): model += pulp.lpSum(x[l][i] for i in range(n) if pos[i]==p)>=m
+        for p,m in maxs.items(): model += pulp.lpSum(x[l][i] for i in range(n) if pos[i]==p)<=m
+        if max_per_team is not None:
+            for t in set(team): model += pulp.lpSum(x[l][i] for i in range(n) if team[i]==t)<=int(max_per_team)
+    exposure_cap=int(np.floor(max_player_exposure*lineup_count+1e-9))
+    if exposure_cap<1: raise ValueError("Exposure cap makes every player ineligible; increase max_player_exposure or lineup_count")
+    for i in range(n): model += pulp.lpSum(x[l][i] for l in range(lineup_count))<=exposure_cap
+    if max_overlap is not None:
+        for a in range(lineup_count):
+            for b in range(a+1,lineup_count):
+                overlap=[]
+                for i in range(n):
+                    y=pulp.LpVariable(f"overlap_{a}_{b}_{i}",cat="Binary")
+                    model += y<=x[a][i]; model += y<=x[b][i]; model += y>=x[a][i]+x[b][i]-1
+                    overlap.append(y)
+                model += pulp.lpSum(overlap)<=int(max_overlap)
+    cov=np.cov(sims,rowvar=False,ddof=1)
+    if cov.ndim==0: cov=np.array([[float(cov)]])
+    if max_pairwise_covariance is not None:
+        for a in range(lineup_count):
+            for b in range(a+1,lineup_count):
+                terms=[]
+                for i in range(n):
+                    for j in range(n):
+                        y=pulp.LpVariable(f"covprod_{a}_{b}_{i}_{j}",cat="Binary")
+                        model += y<=x[a][i]; model += y<=x[b][j]; model += y>=x[a][i]+x[b][j]-1
+                        if abs(cov[i,j])>1e-12: terms.append(float(cov[i,j])*y)
+                model += pulp.lpSum(terms)<=float(max_pairwise_covariance)
+    model += pulp.lpSum(x[l][i]*float(values[i]) for l in range(lineup_count) for i in range(n))
+    status=model.solve(pulp.PULP_CBC_CMD(msg=False))
+    if pulp.LpStatus[status]!="Optimal": raise RuntimeError("Stochastic portfolio MILP failed: "+pulp.LpStatus[status])
+    lineups=[]; index_lineups=[]
+    for l in range(lineup_count):
+        ids=[i for i in range(n) if pulp.value(x[l][i])>.5]
+        index_lineups.append(ids)
+        row=df.iloc[ids].copy(); row["portfolio_entry"]=l+1; row["simulation_mean"]=means[ids]; row["simulation_p95"]=p95[ids]
+        row["projected_ownership_pct"]=own[ids]*100; row["lineup_salary"]=float(salary[ids].sum())
+        lineups.append(row)
+    report=scenario_risk_report(sims,index_lineups)
+    report.update({"solver":"PuLP/CBC MILP","objective":"mean + ceiling_weight*(player p95 - player mean) - ownership penalty","max_overlap":max_overlap,"max_pairwise_covariance":max_pairwise_covariance,"exposure_cap_per_player":exposure_cap,"warning":"Covariance caps are empirical and scenario-dependent. They do not guarantee low duplication or top finishes."})
+    return pd.concat(lineups,ignore_index=True),report
