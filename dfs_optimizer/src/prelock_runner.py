@@ -42,10 +42,11 @@ def run_prelock(now=None, fixtures_url=None, lineup_base_url=None, token=None, t
             continue
         data=_fetch_json(url,token)
         players=data.get("players",data.get("lineups",[])) if isinstance(data,dict) else data
+        provider_updated_at=data.get("updated_at") if isinstance(data,dict) else None
         rows=[]
         for row in players:
             row=dict(row); row.setdefault("source_url",url)
-            if "source_timestamp" not in row and data.get("updated_at"): row["source_timestamp"]=data["updated_at"]
+            if "source_timestamp" not in row and provider_updated_at: row["source_timestamp"]=provider_updated_at
             rows.append(row)
         d=pd.DataFrame(rows)
         if d.empty:
