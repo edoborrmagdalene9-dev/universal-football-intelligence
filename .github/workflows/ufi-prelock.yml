@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      UFI_FIXTURE_FEED_URL: \${{ secrets.UFI_FIXTURE_FEED_URL }}
-      UFI_LINEUP_API_BASE_URL: \${{ secrets.UFI_LINEUP_API_BASE_URL }}
-      UFI_LINEUP_API_TOKEN: \${{ secrets.UFI_LINEUP_API_TOKEN }}
-      UFI_LINEUP_TRUSTED_HOSTS: \${{ vars.UFI_LINEUP_TRUSTED_HOSTS }}
+      UFI_FIXTURE_FEED_URL: ${{ secrets.UFI_FIXTURE_FEED_URL }}
+      UFI_LINEUP_API_BASE_URL: ${{ secrets.UFI_LINEUP_API_BASE_URL }}
+      UFI_LINEUP_API_TOKEN: ${{ secrets.UFI_LINEUP_API_TOKEN }}
+      UFI_LINEUP_TRUSTED_HOSTS: ${{ vars.UFI_LINEUP_TRUSTED_HOSTS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
