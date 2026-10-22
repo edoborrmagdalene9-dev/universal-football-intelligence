@@ -406,7 +406,7 @@ elif page == "Data Sources & Calibration Lab":
     st.header("Data Sources & Calibration Lab")
     st.caption("Sourced connectors, source coverage, historical ownership, chronological calibration and joint captain/vice optimization.")
     from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_statsbomb_matches, fetch_statsbomb_events, statsbomb_matches_to_dixon_coles, aggregate_statsbomb_player_events, fetch_open_meteo
-    from src.probability_calibration import ChronologicalIsotonicCalibrator, chronological_split
+    from src.probability_calibration import ChronologicalIsotonicCalibrator, MulticlassIsotonicCalibrator, chronological_split
     from src.ownership_model import estimate_historical_ownership
     from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
 
@@ -493,6 +493,30 @@ elif page == "Data Sources & Calibration Lab":
                 st.download_button("Download holdout calibrated probabilities", hold.to_csv(index=False).encode(), "ufi_calibrated_holdout.csv", "text/csv")
         except Exception as exc:
             st.error(f"Calibration failed: {exc}")
+
+    st.subheader("4b. Dixon-Coles 1X2 probability calibration")
+    st.caption("CSV columns: date, p_home, p_draw, p_away, outcome (H/D/A). Use predictions generated before each match; never calibrate with same-match or future information.")
+    one_x_two_file = st.file_uploader("Historical 1X2 forecast CSV", type=["csv"], key="one_x_two_calibration_csv")
+    if one_x_two_file and st.button("Fit and evaluate 1X2 isotonic calibration", key="fit_one_x_two_calibration"):
+        try:
+            raw_1x2 = pd.read_csv(one_x_two_file)
+            needed_1x2 = {"date", "p_home", "p_draw", "p_away", "outcome"}
+            if not needed_1x2.issubset(raw_1x2.columns):
+                st.error("Missing columns: " + ", ".join(sorted(needed_1x2-set(raw_1x2.columns))))
+            else:
+                train_1x2, hold_1x2 = chronological_split(raw_1x2, "date", train_fraction)
+                calibrator_1x2 = MulticlassIsotonicCalibrator(min_train=300, min_class_outcomes=20).fit(
+                    train_1x2[["p_home", "p_draw", "p_away"]].to_numpy(float), train_1x2.outcome, train_1x2.date)
+                hold_probs = hold_1x2[["p_home", "p_draw", "p_away"]].to_numpy(float)
+                metrics_1x2 = calibrator_1x2.evaluate(hold_probs, hold_1x2.outcome)
+                st.json(metrics_1x2)
+                calibrated_1x2 = calibrator_1x2.predict(hold_probs)
+                hold_1x2["calibrated_p_home"] = calibrated_1x2[:, 0]
+                hold_1x2["calibrated_p_draw"] = calibrated_1x2[:, 1]
+                hold_1x2["calibrated_p_away"] = calibrated_1x2[:, 2]
+                st.download_button("Download calibrated 1X2 holdout", hold_1x2.to_csv(index=False).encode(), "ufi_calibrated_1x2_holdout.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"1X2 calibration failed: {exc}")
 
     st.divider()
     st.subheader("5. Historical contest ownership posterior")
