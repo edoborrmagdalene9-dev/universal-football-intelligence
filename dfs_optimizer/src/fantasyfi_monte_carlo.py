@@ -52,8 +52,12 @@ def run_fantasyfi_monte_carlo(player_df: pd.DataFrame, num_sims: int = 10_000,
     def rate(column):
         return _nonnegative(df[column] if column in df else np.zeros(n), column)
     sim_start = rng.binomial(1, start_p, size=(num_sims,n))
-    sim_appear = np.maximum(sim_start, rng.binomial(1, appearance_p, size=(num_sims,n)))
-    sim_sub = sim_appear * (1-sim_start)
+    # Conditional substitute probability ensures the total appearance rate is appearance_p,
+    # rather than accidentally drawing a second independent starter-probability event.
+    sub_p = np.divide(appearance_p-start_p, 1-start_p, out=np.zeros_like(start_p), where=(start_p < 1))
+    sub_p = np.clip(sub_p, 0, 1)
+    sim_sub = (1-sim_start) * rng.binomial(1, sub_p, size=(num_sims,n))
+    sim_appear = np.maximum(sim_start, sim_sub)
     minutes_mean = _nonnegative(df["minutes_mean"] if "minutes_mean" in df else np.where(start_p > 0,78,22), "minutes_mean")
     minutes_sd = _nonnegative(df["minutes_sd"] if "minutes_sd" in df else np.where(start_p > 0,12,10), "minutes_sd")
     minutes = np.clip(rng.normal(minutes_mean[None,:],minutes_sd[None,:],(num_sims,n)),0,120) * sim_appear
