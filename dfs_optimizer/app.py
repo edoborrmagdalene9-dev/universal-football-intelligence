@@ -405,7 +405,7 @@ elif page == "God-Mode DFS Research Lab":
 elif page == "Data Sources & Calibration Lab":
     st.header("Data Sources & Calibration Lab")
     st.caption("Sourced connectors, source coverage, historical ownership, chronological calibration and joint captain/vice optimization.")
-    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_open_meteo
+    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_statsbomb_matches, fetch_statsbomb_events, statsbomb_matches_to_dixon_coles, aggregate_statsbomb_player_events, fetch_open_meteo
     from src.probability_calibration import ChronologicalIsotonicCalibrator, chronological_split
     from src.ownership_model import estimate_historical_ownership
     from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
@@ -434,6 +434,29 @@ elif page == "Data Sources & Calibration Lab":
             st.download_button("Download competition index", competitions.to_csv(index=False).encode(), "statsbomb_open_data_competitions.csv", "text/csv")
         except Exception as exc:
             st.error(f"StatsBomb index fetch failed: {exc}")
+
+    st.subheader("2b. Pull historical match results and player events")
+    sb1, sb2 = st.columns(2)
+    comp_id = int(sb1.number_input("StatsBomb competition ID", min_value=1, value=2, key="source_sb_comp"))
+    season_id = int(sb2.number_input("StatsBomb season ID", min_value=1, value=27, key="source_sb_season"))
+    if st.button("Fetch selected competition/season matches", key="fetch_sb_matches"):
+        try:
+            sb_matches = fetch_statsbomb_matches(comp_id, season_id)
+            normalized = statsbomb_matches_to_dixon_coles(sb_matches)
+            st.write(f"Fetched {len(sb_matches)} raw match records; {len(normalized)} normalized historical results.")
+            st.dataframe(normalized, use_container_width=True)
+            st.download_button("Download Dixon-Coles-ready results CSV", normalized.to_csv(index=False).encode(), "statsbomb_dixon_coles_results.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Historical match fetch failed: {exc}")
+    sb_match_id = int(st.number_input("StatsBomb match ID for event aggregation", min_value=1, value=22912, key="source_sb_match"))
+    if st.button("Fetch and aggregate player events", key="fetch_sb_events"):
+        try:
+            ev = fetch_statsbomb_events(sb_match_id)
+            agg = aggregate_statsbomb_player_events(ev)
+            st.dataframe(agg, use_container_width=True)
+            st.download_button("Download event-derived player metrics", agg.to_csv(index=False).encode(), "statsbomb_player_event_metrics.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Player event fetch failed: {exc}")
 
     st.divider()
     st.subheader("3. Weather around kickoff")
