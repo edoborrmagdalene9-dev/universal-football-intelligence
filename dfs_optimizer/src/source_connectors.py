@@ -239,3 +239,46 @@ def fetch_openfootball_results(raw_csv_url: str, timeout: int = 20) -> pd.DataFr
     out=pd.DataFrame(rows,columns=["date","home_team","away_team","home_goals","away_goals","source_url"])
     if out.empty: raise ValueError("No rows could be normalized from this OpenFootball CSV; inspect the source column schema.")
     return out
+
+
+def fetch_api_sports_1x2_odds(fixture_id: int, api_key: str | None = None, timeout: int = 20) -> pd.DataFrame:
+    """Fetch currently available API-Sports 1X2 odds and remove overround per bookmaker.
+
+    This is a current snapshot, not a historical closing-odds archive. Poll/store snapshots
+    over time if your license and plan permit; never label current odds as closing odds.
+    """
+    import os
+    from urllib.parse import urlencode
+    api_key=api_key or os.getenv("UFI_LINEUP_API_TOKEN")
+    if not api_key: raise ValueError("Set UFI_LINEUP_API_TOKEN in the runtime environment; do not hardcode keys.")
+    url="https://v3.football.api-sports.io/odds?"+urlencode({"fixture":int(fixture_id)})
+    req=Request(url,headers={"User-Agent":"UniversalFootballIntelligence/1.0","Accept":"application/json","x-apisports-key":api_key})
+    with urlopen(req,timeout=timeout) as response:
+        if response.status!=200: raise RuntimeError(f"API-Sports odds HTTP {response.status}")
+        payload=json.loads(response.read().decode("utf-8"))
+    if payload.get("errors"): raise RuntimeError("API-Sports odds error: "+str(payload["errors"])[:300])
+    rows=[]; retrieved=pd.Timestamp.now(tz="UTC").isoformat()
+    for item in payload.get("response",[]):
+        fixture=(item.get("fixture") or {}).get("id",fixture_id)
+        for book in item.get("bookmakers",[]) or []:
+            for bet in book.get("bets",[]) or []:
+                title=str(bet.get("name","")).strip().lower()
+                if title not in {"match winner","1x2","fulltime result","full time result"}: continue
+                values={str(v.get("value","")).strip().lower():v.get("odd") for v in bet.get("values",[]) or []}
+                def find(*keys):
+                    for key in keys:
+                        if key in values:
+                            try:
+                                odd=float(values[key])
+                                if odd>1: return odd
+                            except (TypeError,ValueError): pass
+                    return None
+                home=find("home","1"); draw=find("draw","x"); away=find("away","2")
+                if not all(v is not None for v in (home,draw,away)): continue
+                raw=np.array([1/home,1/draw,1/away],float); norm=raw/raw.sum()
+                rows.append({"fixture_id":fixture,"bookmaker":book.get("name","unknown"),"market":bet.get("name"),
+                  "home_decimal_odds":home,"draw_decimal_odds":draw,"away_decimal_odds":away,
+                  "raw_home_implied_probability":raw[0],"raw_draw_implied_probability":raw[1],"raw_away_implied_probability":raw[2],
+                  "no_vig_home_probability":norm[0],"no_vig_draw_probability":norm[1],"no_vig_away_probability":norm[2],
+                  "retrieved_at_utc":retrieved,"source_url":url,"source_note":"Current odds snapshot; not closing odds. API plan/coverage may omit bookmakers."})
+    return pd.DataFrame(rows)
