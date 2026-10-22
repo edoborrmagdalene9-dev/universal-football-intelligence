@@ -327,7 +327,7 @@ elif page == "God-Mode DFS Research Lab":
     st.header("God-Mode DFS Research Lab")
     st.caption("Evidence-first spatial, 300-metric, Dixon-Coles and pre-lock tools. No missing values are fabricated.")
     from src.metric_registry import metric_registry, audit_metric_data
-    from src.spatial_kinematics import pitch_geometry, derive_player_kinematics
+    from src.spatial_kinematics import pitch_geometry, derive_player_kinematics, wingback_penetration_index
     from src.prelock_pipeline import validate_prelock_lineups, filter_confirmed_starters
     from src.predictive_models.dixon_coles import fit_dixon_coles, score_grid, match_probabilities
 
@@ -354,6 +354,18 @@ elif page == "God-Mode DFS Research Lab":
                 st.download_button("Download kinematics CSV", kinematics.to_csv(index=False).encode(), "ufi_observed_kinematics.csv", "text/csv")
             except Exception as exc:
                 st.error(f"Kinematics failed: {exc}")
+
+    st.subheader("2b. Wing-back spatial penetration index")
+    st.caption("Requires timestamped event coordinates and a declared attacking direction. This measures observed final-third entry frequency, not guaranteed assists/shots.")
+    wb_file = st.file_uploader("Wing-back/event CSV: player_id, timestamp, x_m", type=["csv"], key="wingback_events_csv")
+    attacking_direction = st.selectbox("Attacking direction", [1, -1], format_func=lambda v: "Increasing x" if v == 1 else "Decreasing x", key="wingback_attacking_direction")
+    if wb_file and st.button("Calculate observed penetration index", key="calculate_wingback_spi"):
+        try:
+            wb = wingback_penetration_index(pd.read_csv(wb_file), pitch_length, attacking_direction)
+            st.dataframe(wb, use_container_width=True)
+            st.download_button("Download wing-back penetration metrics", wb.to_csv(index=False).encode(), "ufi_wingback_penetration.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Wing-back index failed: {exc}")
 
     st.divider()
     st.subheader("3. Dixon-Coles scoreline model")
