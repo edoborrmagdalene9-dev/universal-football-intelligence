@@ -292,6 +292,8 @@ elif page == "Microbehavioral & Monte Carlo lab":
                     roster = int(st.number_input("Roster size", min_value=1, max_value=max(1, len(raw)), value=min(11, len(raw)), key="micro_roster"))
                     entries = int(st.number_input("Number of entries", min_value=1, max_value=20, value=3, key="micro_entries"))
                     max_overlap = int(st.number_input("Maximum players shared by any two entries", min_value=0, max_value=max(0, roster-1), value=min(8, max(0, roster-1)), key="micro_overlap"))
+                    min_positions_json = st.text_input("Minimum players by position (JSON)", '{"GK":1,"DEF":3,"MID":3,"FWD":1}', key="micro_min_positions")
+                    max_positions_json = st.text_input("Maximum players by position (JSON)", '{"GK":1,"DEF":5,"MID":5,"FWD":3}', key="micro_max_positions")
                     own_col = st.selectbox("Ownership column", ["None"] + [c for c in raw.columns if "ownership" in c.lower()], key="micro_ownership_col")
                     if st.button("Optimize multi-entry portfolio"):
                         try:
@@ -299,10 +301,14 @@ elif page == "Microbehavioral & Monte Carlo lab":
                             own = None if own_col == "None" else pd.to_numeric(raw[own_col], errors="raise").to_numpy(float)
                             if own is not None and np.nanmax(own) > 1:
                                 own = own / 100.0
+                            min_positions = json.loads(min_positions_json)
+                            max_positions = json.loads(max_positions_json)
+                            if not isinstance(min_positions, dict) or not isinstance(max_positions, dict):
+                                raise ValueError("Position constraints must be JSON objects")
                             portfolio, report = optimize_fantasyfi_portfolio(
                                 raw, score_matrix, ownership=own, budget=budget, roster_size=roster,
                                 lineup_count=entries, max_overlap=max_overlap if entries > 1 else None,
-                                min_positions={}, max_positions={}
+                                min_positions=min_positions, max_positions=max_positions
                             )
                             st.dataframe(portfolio, use_container_width=True)
                             st.json(report)
