@@ -6,6 +6,7 @@ auditable baseline; independently sampled events do not reproduce full football
 dependence. Optional team-level shocks add limited shared variation.
 """
 from __future__ import annotations
+import argparse
 import numpy as np
 import pandas as pd
 from .scoring_engine import RULES, goal_points
@@ -58,9 +59,16 @@ def run_fantasyfi_monte_carlo(player_df: pd.DataFrame, num_sims: int = 10_000,
     sub_p = np.clip(sub_p, 0, 1)
     sim_sub = (1-sim_start) * rng.binomial(1, sub_p, size=(num_sims,n))
     sim_appear = np.maximum(sim_start, sim_sub)
-    minutes_mean = _nonnegative(df["minutes_mean"] if "minutes_mean" in df else np.where(start_p > 0,78,22), "minutes_mean")
-    minutes_sd = _nonnegative(df["minutes_sd"] if "minutes_sd" in df else np.where(start_p > 0,12,10), "minutes_sd")
-    minutes = np.clip(rng.normal(minutes_mean[None,:],minutes_sd[None,:],(num_sims,n)),0,120) * sim_appear
+    if "minutes_mean" in df:
+        minutes_mean = _nonnegative(df["minutes_mean"], "minutes_mean")
+        minutes_sd = _nonnegative(df["minutes_sd"] if "minutes_sd" in df else np.full(n, 10.0), "minutes_sd")
+        minutes = rng.normal(minutes_mean[None,:], minutes_sd[None,:], (num_sims,n))
+    else:
+        # Baseline minutes differ for starters and substitutes; calibrate these from data when available.
+        starter_minutes = rng.normal(78.0, 12.0, (num_sims,n))
+        substitute_minutes = rng.normal(22.0, 10.0, (num_sims,n))
+        minutes = np.where(sim_start == 1, starter_minutes, substitute_minutes)
+    minutes = np.clip(minutes,0,120) * sim_appear
     active = (minutes > 0).astype(int)
     shock = None
     if team_shock_sd > 0:
@@ -113,3 +121,14 @@ def run_fantasyfi_monte_carlo_csv(input_path, output_path, sims=10_000, seed=42)
     summary,_=run_fantasyfi_monte_carlo(pd.read_csv(input_path),num_sims=sims,seed=seed)
     summary.to_csv(output_path,index=False)
     return summary
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run FantasyFi Monte Carlo simulations from a player projection CSV.")
+    parser.add_argument("--input", required=True, help="Input player projection CSV")
+    parser.add_argument("--output", default="fantasyfi_monte_carlo_summary.csv", help="Output summary CSV")
+    parser.add_argument("--simulations", type=int, default=10000)
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+    result = run_fantasyfi_monte_carlo_csv(args.input, args.output, args.simulations, args.seed)
+    print(result.to_string(index=False))
+    print(f"Saved summary to {args.output}")
