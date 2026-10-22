@@ -1,0 +1,37 @@
+name: UFI 60-minute lineup pre-lock audit
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  prelock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      UFI_FIXTURE_FEED_URL: \${{ secrets.UFI_FIXTURE_FEED_URL }}
+      UFI_LINEUP_API_BASE_URL: \${{ secrets.UFI_LINEUP_API_BASE_URL }}
+      UFI_LINEUP_API_TOKEN: \${{ secrets.UFI_LINEUP_API_TOKEN }}
+      UFI_LINEUP_TRUSTED_HOSTS: \${{ vars.UFI_LINEUP_TRUSTED_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: dfs_optimizer/requirements.txt
+      - run: python -m pip install -r dfs_optimizer/requirements.txt
+      - name: Explain missing provider configuration
+        if: env.UFI_FIXTURE_FEED_URL == '' || env.UFI_LINEUP_TRUSTED_HOSTS == ''
+        run: echo "Pre-lock audit skipped safely: configure authorized fixture feed secret and trusted provider host variable."
+      - name: Run pre-lock audit
+        if: env.UFI_FIXTURE_FEED_URL != '' && env.UFI_LINEUP_TRUSTED_HOSTS != ''
+        run: python -m dfs_optimizer.src.prelock_runner
+      - name: Upload pre-lock audit artifact
+        if: always() && env.UFI_FIXTURE_FEED_URL != '' && env.UFI_LINEUP_TRUSTED_HOSTS != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ufi-prelock-audit
+          path: artifacts/prelock_audit.json
+          if-no-files-found: warn
