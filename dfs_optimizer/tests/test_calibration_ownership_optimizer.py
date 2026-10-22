@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from dfs_optimizer.src.probability_calibration import ChronologicalIsotonicCalibrator, chronological_split
 from dfs_optimizer.src.ownership_model import estimate_historical_ownership
-from dfs_optimizer.src.advanced_lineup_optimizer import optimize_captain_vice_lineup, scenario_risk_report
+from dfs_optimizer.src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
 
 def test_isotonic_calibration_reports_holdout_metrics():
     n=240; p=np.linspace(.02,.98,n); y=(p>.55).astype(int); dates=pd.date_range('2024-01-01',periods=n,tz='UTC')
@@ -32,3 +32,10 @@ def test_joint_captain_vice_optimizer_respects_roster_and_uniqueness():
 def test_scenario_risk_report_requires_shared_valid_scenarios():
     sims=np.arange(600,dtype=float).reshape(200,3); out=scenario_risk_report(sims,[[0,1],[1,2]],alpha=.1)
     assert out['lineups']==2 and len(out['covariance'])==2 and out['scenario_count']==200
+
+def test_stochastic_portfolio_uses_shared_scenarios_and_diversity_constraints():
+    rng=np.random.default_rng(12); sims=rng.normal(np.array([12,10,9,8,7]),np.array([3,2,2,1,1]),size=(250,5))
+    players=pd.DataFrame({'player_id':['a','b','c','d','e'],'position':['GK','DEF','MID','FWD','FWD'],'salary':[10]*5,'team_id':['A','A','B','B','C']})
+    portfolio,report=optimize_stochastic_portfolio(players,sims,budget=40,roster_size=3,lineup_count=2,max_per_team=3,max_player_exposure=1.0,max_overlap=2,max_pairwise_covariance=1e6)
+    assert len(portfolio)==6 and report['lineups']==2 and report['scenario_count']==250
+    assert report['covariance'][0][1] <= 1e6
