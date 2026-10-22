@@ -20,13 +20,15 @@ st.title("⚽ Universal Football Intelligence")
 st.caption("Local-first football research dashboard · validate before predicting")
 st.warning("Research software only. No guaranteed winnings. Demo assumptions are synthetic; do not confuse them with real fixtures.")
 page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "Data standards"])
-extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer", "Microbehavioral & Monte Carlo lab", "God-Mode DFS Research Lab"])
+extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer", "Microbehavioral & Monte Carlo lab", "God-Mode DFS Research Lab", "Data Sources & Calibration Lab"])
 if extension_page == "FantasyFi optimizer":
     page = "FantasyFi optimizer"
 elif extension_page == "Microbehavioral & Monte Carlo lab":
     page = "Microbehavioral & Monte Carlo lab"
 elif extension_page == "God-Mode DFS Research Lab":
     page = "God-Mode DFS Research Lab"
+elif extension_page == "Data Sources & Calibration Lab":
+    page = "Data Sources & Calibration Lab"
 if page == "Overview":
     st.header("Research control centre")
     st.markdown("Validate licensed match data, run chronological baselines, inspect contest ownership, simulate player events and explore score-state scenarios.")
@@ -397,6 +399,113 @@ elif page == "God-Mode DFS Research Lab":
                 st.download_button("Download validated lineup audit", validated.to_csv(index=False).encode(), "ufi_prelock_lineup_audit.csv", "text/csv")
             except Exception as exc:
                 st.error(f"Lineup validation failed: {exc}")
+
+
+
+elif page == "Data Sources & Calibration Lab":
+    st.header("Data Sources & Calibration Lab")
+    st.caption("Sourced connectors, source coverage, historical ownership, chronological calibration and joint captain/vice optimization.")
+    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_open_meteo
+    from src.probability_calibration import ChronologicalIsotonicCalibrator, chronological_split
+    from src.ownership_model import estimate_historical_ownership
+    from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, scenario_risk_report
+
+    st.subheader("1. Source plan for all 300 metrics")
+    catalog = metric_source_catalog()
+    st.write("Each registered metric is mapped to a source family and status. A mapped source is not the same as an observed value.")
+    st.dataframe(catalog, use_container_width=True, height=420)
+    st.download_button("Download 300-metric source catalog", catalog.to_csv(index=False).encode(), "ufi_300_metric_sources.csv", "text/csv")
+    source_data = st.file_uploader("Optional observations CSV for source coverage audit", type=["csv"], key="source_audit_csv")
+    if source_data:
+        try:
+            audit = audit_source_coverage(pd.read_csv(source_data))
+            st.dataframe(audit, use_container_width=True)
+            st.download_button("Download coverage audit", audit.to_csv(index=False).encode(), "ufi_source_coverage_audit.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Source audit failed: {exc}")
+
+    st.divider()
+    st.subheader("2. Public StatsBomb data index")
+    st.caption("Public selected competitions only; events are not optical tracking. Use the source license/attribution and check competition coverage.")
+    if st.button("Fetch StatsBomb Open Data competition index", key="fetch_sb_index"):
+        try:
+            competitions = fetch_statsbomb_competitions()
+            st.dataframe(competitions, use_container_width=True)
+            st.download_button("Download competition index", competitions.to_csv(index=False).encode(), "statsbomb_open_data_competitions.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"StatsBomb index fetch failed: {exc}")
+
+    st.divider()
+    st.subheader("3. Weather around kickoff")
+    wc1, wc2 = st.columns(2)
+    lat = wc1.number_input("Venue latitude", min_value=-90.0, max_value=90.0, value=6.5244, format="%.5f", key="weather_lat")
+    lon = wc2.number_input("Venue longitude", min_value=-180.0, max_value=180.0, value=3.3792, format="%.5f", key="weather_lon")
+    kickoff_weather = st.text_input("Kickoff with timezone (ISO 8601)", value="2026-10-22T18:00:00Z", key="weather_kickoff")
+    if st.button("Fetch Open-Meteo weather", key="fetch_weather"):
+        try:
+            weather = fetch_open_meteo(lat, lon, kickoff_weather)
+            st.json(weather)
+            st.download_button("Download weather JSON", json.dumps(weather, indent=2).encode(), "ufi_kickoff_weather.json", "application/json")
+        except Exception as exc:
+            st.error(f"Weather fetch failed: {exc}")
+
+    st.divider()
+    st.subheader("4. Isotonic probability calibration")
+    st.caption("CSV columns: date, probability, outcome (0/1). Data is sorted chronologically; the calibrator is fitted on the older training window and evaluated on the untouched later holdout.")
+    calibration_file = st.file_uploader("Historical forecast/outcome CSV", type=["csv"], key="calibration_csv")
+    train_fraction = st.slider("Training fraction", min_value=0.60, max_value=0.85, value=0.75, step=0.05, key="cal_train_fraction")
+    if calibration_file and st.button("Fit and evaluate calibration", key="fit_calibration"):
+        try:
+            raw = pd.read_csv(calibration_file)
+            needed = {"date", "probability", "outcome"}
+            if not needed.issubset(raw.columns):
+                st.error("Missing columns: " + ", ".join(sorted(needed-set(raw.columns))))
+            else:
+                train, hold = chronological_split(raw, "date", train_fraction)
+                calibrator = ChronologicalIsotonicCalibrator(min_train=100).fit(train.probability, train.outcome, train.date)
+                metrics = calibrator.evaluate(hold.probability, hold.outcome)
+                st.json({k:v for k,v in metrics.items() if k != "bins"})
+                st.dataframe(pd.DataFrame(metrics["bins"]), use_container_width=True)
+                hold["calibrated_probability"] = calibrator.predict(hold.probability)
+                st.download_button("Download holdout calibrated probabilities", hold.to_csv(index=False).encode(), "ufi_calibrated_holdout.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Calibration failed: {exc}")
+
+    st.divider()
+    st.subheader("5. Historical contest ownership posterior")
+    st.caption("CSV must contain one row per selected player per entry, with entry_id and player_id. Only use contest exports you are authorized to process.")
+    ownership_file = st.file_uploader("Contest entry-player CSV", type=["csv"], key="ownership_posterior_csv")
+    if ownership_file and st.button("Estimate ownership and credible intervals", key="estimate_ownership"):
+        try:
+            ownership = estimate_historical_ownership(pd.read_csv(ownership_file))
+            st.dataframe(ownership, use_container_width=True)
+            st.download_button("Download ownership posterior", ownership.to_csv(index=False).encode(), "ufi_ownership_posterior.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Ownership estimation failed: {exc}")
+
+    st.divider()
+    st.subheader("6. Joint captain / vice / lineup optimization")
+    st.caption("Upload a player slate CSV and a second CSV of jointly simulated scores. The simulation file must have one column per player_id and at least 100 shared scenario rows.")
+    slate_file = st.file_uploader("Slate CSV: player_id, position, salary, team_id", type=["csv"], key="captain_slate_csv")
+    scenario_file = st.file_uploader("Joint scenario matrix CSV (columns named by player_id)", type=["csv"], key="captain_scenarios_csv")
+    oc1, oc2, oc3 = st.columns(3)
+    budget = oc1.number_input("Salary budget", min_value=1.0, value=100.0, key="captain_budget")
+    roster_size = int(oc2.number_input("Roster size", min_value=1, max_value=30, value=11, key="captain_roster_size"))
+    max_team = int(oc3.number_input("Maximum players per team", min_value=1, max_value=30, value=7, key="captain_max_team"))
+    if slate_file and scenario_file and st.button("Optimize roster + captain + vice", key="run_joint_captain"):
+        try:
+            slate = pd.read_csv(slate_file)
+            scenarios = pd.read_csv(scenario_file)
+            if not set(slate.player_id.astype(str)).issubset(set(scenarios.columns.astype(str))):
+                st.error("Scenario CSV needs one column matching every player_id in the slate.")
+            else:
+                sim = scenarios.loc[:, slate.player_id.astype(str).tolist()].to_numpy(float)
+                roster, report = optimize_captain_vice_lineup(slate, sim, budget=budget, roster_size=roster_size, max_per_team=max_team)
+                st.json(report)
+                st.dataframe(roster, use_container_width=True)
+                st.download_button("Download optimized lineup", roster.to_csv(index=False).encode(), "ufi_captain_vice_lineup.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Captain/vice optimization failed: {exc}")
 
 
 else:
