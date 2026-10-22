@@ -15,6 +15,7 @@ SOURCES = [
  {"name":"Unified football data ingestion gist","url":"https://gist.github.com/hungson175/b804219579b3c3f6deb53dd0421d071a","type":"code","use":"data ingestion architecture","ingestion":"reference registered"},
  {"name":"Open-Meteo API","url":"https://open-meteo.com/en/docs","type":"api","use":"weather forecast/reanalysis","ingestion":"live connector implemented; CC BY 4.0 attribution and terms apply"},
  {"name":"scikit-learn isotonic regression","url":"https://scikit-learn.org/stable/modules/generated/sklearn.isotonic.IsotonicRegression.html","type":"documentation","use":"probability calibration","ingestion":"library implementation used"},
+ {"name":"API-Sports/API-Football lineups API","url":"https://www.api-football.com/documentation-v3#tag/Fixtures/operation/get-fixtures-lineups","type":"licensed API","use":"fixture and starting XI/bench ingestion","ingestion":"adapter implemented; requires API key, competition coverage and adequate quota"},
 ]
 def source_register():
     return [dict(x) for x in SOURCES]
