@@ -20,11 +20,13 @@ st.title("⚽ Universal Football Intelligence")
 st.caption("Local-first football research dashboard · validate before predicting")
 st.warning("Research software only. No guaranteed winnings. Demo assumptions are synthetic; do not confuse them with real fixtures.")
 page = st.sidebar.radio("Workspace", ["Overview", "Match data & backtest", "Contest ownership", "Event simulation", "Game-state lab", "Data standards"])
-extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer", "Microbehavioral & Monte Carlo lab"])
+extension_page = st.sidebar.selectbox("Add-on workspace", ["Existing UFI pages", "FantasyFi optimizer", "Microbehavioral & Monte Carlo lab", "God-Mode DFS Research Lab"])
 if extension_page == "FantasyFi optimizer":
     page = "FantasyFi optimizer"
 elif extension_page == "Microbehavioral & Monte Carlo lab":
     page = "Microbehavioral & Monte Carlo lab"
+elif extension_page == "God-Mode DFS Research Lab":
+    page = "God-Mode DFS Research Lab"
 if page == "Overview":
     st.header("Research control centre")
     st.markdown("Validate licensed match data, run chronological baselines, inspect contest ownership, simulate player events and explore score-state scenarios.")
@@ -317,6 +319,85 @@ elif page == "Microbehavioral & Monte Carlo lab":
                             st.error(f"Portfolio optimization failed: {exc}")
         except Exception as exc:
             st.error(f"Could not read player CSV: {exc}")
+
+
+elif page == "God-Mode DFS Research Lab":
+    st.header("God-Mode DFS Research Lab")
+    st.caption("Evidence-first spatial, 300-metric, Dixon-Coles and pre-lock tools. No missing values are fabricated.")
+    from src.metric_registry import metric_registry, audit_metric_data
+    from src.spatial_kinematics import pitch_geometry, derive_player_kinematics
+    from src.prelock_pipeline import validate_prelock_lineups, filter_confirmed_starters
+    from src.predictive_models.dixon_coles import fit_dixon_coles, score_grid, match_probabilities
+
+    st.subheader("1. 300-metric coverage audit")
+    registry = metric_registry()
+    st.write("The registry contains 300 named metrics across six groups. Registry presence is not evidence that a value is available or trained.")
+    metric_file = st.file_uploader("Optional player/team/contest dataset CSV to audit", type=["csv"], key="god_metric_csv")
+    audit = audit_metric_data(pd.read_csv(metric_file)) if metric_file else registry[["category","metric_number","metric_name","status","used_in_prediction"]]
+    st.dataframe(audit, use_container_width=True)
+    st.download_button("Download 300-metric registry/audit CSV", audit.to_csv(index=False).encode(), "ufi_300_metric_audit.csv", "text/csv")
+
+    st.divider()
+    st.subheader("2. Tracking-derived kinematics")
+    pitch_length = float(st.number_input("Pitch length (metres)", min_value=50.0, max_value=130.0, value=105.0, key="god_pitch_l"))
+    pitch_width = float(st.number_input("Pitch width (metres)", min_value=30.0, max_value=90.0, value=68.0, key="god_pitch_w"))
+    st.json(pitch_geometry(pitch_length, pitch_width))
+    tracking_file = st.file_uploader("Tracking CSV: player_id, timestamp, x_m, y_m (optional z_m)", type=["csv"], key="god_tracking_csv")
+    if tracking_file:
+        if st.button("Calculate observed movement metrics", key="god_run_kinematics"):
+            try:
+                tracking = pd.read_csv(tracking_file)
+                kinematics = derive_player_kinematics(tracking, pitch_length, pitch_width)
+                st.dataframe(kinematics, use_container_width=True)
+                st.download_button("Download kinematics CSV", kinematics.to_csv(index=False).encode(), "ufi_observed_kinematics.csv", "text/csv")
+            except Exception as exc:
+                st.error(f"Kinematics failed: {exc}")
+
+    st.divider()
+    st.subheader("3. Dixon-Coles scoreline model")
+    st.caption("Requires historical match results with date, home_team, away_team, home_goals, away_goals. Evaluate only on chronological holdouts.")
+    results_file = st.file_uploader("Historical results CSV", type=["csv"], key="god_dc_csv")
+    if results_file:
+        try:
+            historical = pd.read_csv(results_file)
+            teams = sorted(set(historical.get("home_team", pd.Series(dtype=str)).dropna().astype(str)) | set(historical.get("away_team", pd.Series(dtype=str)).dropna().astype(str)))
+            if len(teams) >= 2:
+                col1, col2 = st.columns(2)
+                home_team = col1.selectbox("Home team", teams, key="god_dc_home")
+                away_options = [t for t in teams if t != home_team]
+                away_team = col2.selectbox("Away team", away_options, key="god_dc_away")
+                max_goals = int(st.slider("Maximum goals in each grid dimension", min_value=4, max_value=15, value=10, key="god_dc_cap"))
+                if st.button("Fit Dixon-Coles and generate score grid", key="god_run_dc"):
+                    try:
+                        fit = fit_dixon_coles(historical.to_dict(orient="records"))
+                        grid = score_grid(fit, home_team, away_team, max_goals=max_goals)
+                        summary = match_probabilities(grid)
+                        st.json({"home_team":home_team,"away_team":away_team,"rho":fit.rho,"home_advantage":fit.home_advantage,"time_decay_xi":fit.xi,"summary":summary,"note":"The finite score grid is normalized; tail mass above the chosen cap is omitted."})
+                        st.dataframe(pd.DataFrame(grid).round(5), use_container_width=True)
+                        st.download_button("Download score grid CSV", pd.DataFrame(grid).to_csv(index=False).encode(), "ufi_dixon_coles_grid.csv", "text/csv")
+                    except Exception as exc:
+                        st.error(f"Dixon-Coles fit failed: {exc}")
+            else:
+                st.warning("The CSV must include at least two team names.")
+        except Exception as exc:
+            st.error(f"Could not read historical results: {exc}")
+
+    st.divider()
+    st.subheader("4. Pre-lock lineup validation (60-minute window)")
+    st.caption("Upload a source-attributed CSV. The helper checks timestamp freshness and starter labels, but cannot prove that a URL is an official provider.")
+    lineup_file = st.file_uploader("Lineup CSV: player_id, team_id, status, source_timestamp, source_url", type=["csv"], key="god_lineup_csv")
+    kickoff = st.text_input("Kickoff time with timezone (example 2026-10-22T18:00:00Z)", key="god_kickoff")
+    if lineup_file and kickoff:
+        if st.button("Validate lineup freshness and starters", key="god_run_lineup"):
+            try:
+                lineup_data = pd.read_csv(lineup_file)
+                validated, report = validate_prelock_lineups(lineup_data, kickoff)
+                st.json(report)
+                st.dataframe(validated, use_container_width=True)
+                st.download_button("Download validated lineup audit", validated.to_csv(index=False).encode(), "ufi_prelock_lineup_audit.csv", "text/csv")
+            except Exception as exc:
+                st.error(f"Lineup validation failed: {exc}")
+
 
 else:
     st.header("Data standards & sources")
