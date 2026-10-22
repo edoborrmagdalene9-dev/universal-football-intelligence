@@ -405,7 +405,7 @@ elif page == "God-Mode DFS Research Lab":
 elif page == "Data Sources & Calibration Lab":
     st.header("Data Sources & Calibration Lab")
     st.caption("Sourced connectors, source coverage, historical ownership, chronological calibration and joint captain/vice optimization.")
-    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_statsbomb_matches, fetch_statsbomb_events, statsbomb_matches_to_dixon_coles, aggregate_statsbomb_player_events, fetch_open_meteo
+    from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_statsbomb_matches, fetch_statsbomb_events, statsbomb_matches_to_dixon_coles, aggregate_statsbomb_player_events, fetch_openfootball_results, fetch_open_meteo
     from src.probability_calibration import ChronologicalIsotonicCalibrator, MulticlassIsotonicCalibrator, chronological_split
     from src.ownership_model import estimate_historical_ownership
     from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
@@ -434,6 +434,17 @@ elif page == "Data Sources & Calibration Lab":
             st.download_button("Download competition index", competitions.to_csv(index=False).encode(), "statsbomb_open_data_competitions.csv", "text/csv")
         except Exception as exc:
             st.error(f"StatsBomb index fetch failed: {exc}")
+
+    st.subheader("2a. OpenFootball historical results CSV")
+    st.caption("Paste a raw.githubusercontent.com/openfootball/... CSV URL. The connector normalizes score rows for Dixon-Coles.")
+    openfootball_url = st.text_input("OpenFootball raw CSV URL", value="", key="openfootball_raw_url", placeholder="https://raw.githubusercontent.com/openfootball/...")
+    if st.button("Fetch and normalize OpenFootball results", key="fetch_openfootball") and openfootball_url:
+        try:
+            openfootball_results = fetch_openfootball_results(openfootball_url)
+            st.dataframe(openfootball_results, use_container_width=True)
+            st.download_button("Download Dixon-Coles-ready OpenFootball results", openfootball_results.to_csv(index=False).encode(), "openfootball_dixon_coles_results.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"OpenFootball import failed: {exc}")
 
     st.subheader("2b. Pull historical match results and player events")
     sb1, sb2 = st.columns(2)
