@@ -138,3 +138,61 @@ def audit_source_coverage(data: pd.DataFrame) -> pd.DataFrame:
     else: catalog["non_null_count"]=0
     catalog["observed_coverage_pct"]=catalog.non_null_count/max(1,len(data))*100
     return catalog
+
+
+def fetch_statsbomb_lineups(match_id: int, timeout: int = 20) -> pd.DataFrame:
+    """Historical lineups from StatsBomb Open Data, not a live pre-match XI feed."""
+    url=f"https://raw.githubusercontent.com/statsbomb/open-data/master/data/lineups/{int(match_id)}.json"
+    rows=_read_json(url,timeout)
+    d=pd.json_normalize(rows)
+    if not d.empty:
+        d["source_url"]=url
+        d["source_timestamp_utc"]=pd.Timestamp.now(tz="UTC").isoformat()
+    return d
+
+def statsbomb_matches_to_dixon_coles(matches: pd.DataFrame) -> pd.DataFrame:
+    """Normalize StatsBomb historical matches to the current Dixon-Coles input schema."""
+    def value(row, *keys):
+        for key in keys:
+            if key in row and pd.notna(row[key]): return row[key]
+        return None
+    rows=[]
+    for _,r in matches.iterrows():
+        date=value(r,"match_date","date")
+        home=value(r,"home_team.home_team_name","home_team_name")
+        away=value(r,"away_team.away_team_name","away_team_name")
+        hg=value(r,"home_score","home_goals"); ag=value(r,"away_score","away_goals")
+        if date is None or home is None or away is None or hg is None or ag is None: continue
+        rows.append({"date":str(date),"home_team":str(home),"away_team":str(away),"home_goals":int(hg),"away_goals":int(ag),
+                     "source_url":value(r,"source_url") or "https://github.com/statsbomb/open-data"})
+    out=pd.DataFrame(rows,columns=["date","home_team","away_team","home_goals","away_goals","source_url"])
+    if len(out) and out[["date","home_team","away_team","home_goals","away_goals"]].isna().any().any():
+        raise ValueError("Normalized StatsBomb matches contain missing required values")
+    return out
+
+def aggregate_statsbomb_player_events(events: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate directly observed event fields; does not infer SCA/GCA or physical tracking."""
+    required={"player.id","player.name","type.name"}
+    if not required.issubset(events.columns): raise ValueError("Events need player.id, player.name and type.name")
+    d=events.copy()
+    d["player_id"]=d["player.id"].astype(str); d["player_name"]=d["player.name"]
+    d["event_type"]=d["type.name"].astype(str).str.lower()
+    d["xg"]=pd.to_numeric(d.get("shot.statsbomb_xg",pd.Series(0,index=d.index)),errors="coerce").fillna(0)
+    outcome=d.get("shot.outcome.name",pd.Series("",index=d.index)).fillna("").astype(str).str.lower()
+    d["shot_event"]=d.event_type.eq("shot")
+    d["goal_event"]=d.shot_event & outcome.eq("goal")
+    d["sot_event"]=d.shot_event & outcome.isin(["goal","saved","saved to post"])
+    d["pass_event"]=d.event_type.eq("pass")
+    pass_outcome=d.get("pass.outcome.name",pd.Series("",index=d.index)).fillna("").astype(str)
+    d["completed_pass_event"]=d.pass_event & pass_outcome.eq("")
+    d["interception_event"]=d.event_type.eq("interception")
+    assist=d.get("pass.goal_assist",pd.Series(False,index=d.index)).fillna(False).astype(bool)
+    d["assist_event"]=assist
+    out=d.groupby(["player_id","player_name"],dropna=False).agg(
+      events=("event_type","size"), shots=("shot_event","sum"), goals=("goal_event","sum"),
+      shots_on_target=("sot_event","sum"), xg=("xg","sum"), completed_passes=("completed_pass_event","sum"),
+      interceptions=("interception_event","sum"), assists=("assist_event","sum")).reset_index()
+    out["source"]="StatsBomb Open Data event aggregation"
+    out["source_url"]="https://github.com/statsbomb/open-data"
+    out["limitations"]="Only selected match coverage; provider event definitions apply; not full-season per-90 rates without minutes and match coverage."
+    return out
