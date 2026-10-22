@@ -196,3 +196,46 @@ def aggregate_statsbomb_player_events(events: pd.DataFrame) -> pd.DataFrame:
     out["source_url"]="https://github.com/statsbomb/open-data"
     out["limitations"]="Only selected match coverage; provider event definitions apply; not full-season per-90 rates without minutes and match coverage."
     return out
+
+
+def fetch_openfootball_results(raw_csv_url: str, timeout: int = 20) -> pd.DataFrame:
+    """Fetch an OpenFootball raw CSV and normalize common score-result columns."""
+    from io import StringIO
+    from urllib.parse import urlparse
+    from urllib.request import Request, urlopen
+    parsed=urlparse(raw_csv_url)
+    if parsed.scheme!="https" or parsed.hostname!="raw.githubusercontent.com" or "/openfootball/" not in parsed.path:
+        raise ValueError("URL must be a raw.githubusercontent.com/openfootball/... CSV URL")
+    req=Request(raw_csv_url,headers={"User-Agent":"UniversalFootballIntelligence/1.0","Accept":"text/csv,text/plain"})
+    with urlopen(req,timeout=timeout) as response:
+        if response.status!=200: raise RuntimeError(f"OpenFootball HTTP {response.status}")
+        raw=response.read(10_000_000).decode("utf-8-sig","replace")
+    source=pd.read_csv(StringIO(raw))
+    norm={re.sub(r"[^a-z0-9]","",str(c).lower()):c for c in source.columns}
+    def col(*aliases):
+        for alias in aliases:
+            if alias in norm: return norm[alias]
+        return None
+    date_col=col("date","matchdate","datetime")
+    home_col=col("hometeam","home","team1","teamhome")
+    away_col=col("awayteam","away","team2","teamaway")
+    hg_col=col("homegoals","fthg","homescored")
+    ag_col=col("awaygoals","ftag","awayscored")
+    score_col=col("ft","fulltime","fulltimescore","score","result")
+    if not all([date_col,home_col,away_col]) or (not (hg_col and ag_col) and not score_col):
+        raise ValueError("CSV columns could not be mapped; expected date, home/away teams and score or home/away goals")
+    rows=[]
+    for _,row in source.iterrows():
+        try:
+            if hg_col and ag_col: hg,ag=int(row[hg_col]),int(row[ag_col])
+            else:
+                match=re.match(r"^\s*(\d+)\s*[-:]\s*(\d+)\s*$",str(row[score_col]))
+                if not match: continue
+                hg,ag=int(match.group(1)),int(match.group(2))
+            if pd.isna(row[home_col]) or pd.isna(row[away_col]): continue
+            rows.append({"date":str(row[date_col]) if date_col else "", "home_team":str(row[home_col]),"away_team":str(row[away_col]),"home_goals":hg,"away_goals":ag,"source_url":raw_csv_url})
+        except (TypeError,ValueError):
+            continue
+    out=pd.DataFrame(rows,columns=["date","home_team","away_team","home_goals","away_goals","source_url"])
+    if out.empty: raise ValueError("No rows could be normalized from this OpenFootball CSV; inspect the source column schema.")
+    return out
