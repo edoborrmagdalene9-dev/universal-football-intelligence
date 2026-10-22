@@ -408,7 +408,7 @@ elif page == "Data Sources & Calibration Lab":
     from src.source_connectors import metric_source_catalog, audit_source_coverage, fetch_statsbomb_competitions, fetch_open_meteo
     from src.probability_calibration import ChronologicalIsotonicCalibrator, chronological_split
     from src.ownership_model import estimate_historical_ownership
-    from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, scenario_risk_report
+    from src.advanced_lineup_optimizer import optimize_captain_vice_lineup, optimize_stochastic_portfolio, scenario_risk_report
 
     st.subheader("1. Source plan for all 300 metrics")
     catalog = metric_source_catalog()
@@ -506,6 +506,36 @@ elif page == "Data Sources & Calibration Lab":
                 st.download_button("Download optimized lineup", roster.to_csv(index=False).encode(), "ufi_captain_vice_lineup.csv", "text/csv")
         except Exception as exc:
             st.error(f"Captain/vice optimization failed: {exc}")
+
+
+
+    st.divider()
+    st.subheader("7. Multi-entry portfolio with covariance constraints")
+    st.caption("Uses shared simulation rows to estimate dependence. This is a MILP with linearized pairwise products; reduce the candidate pool before using large covariance constraints.")
+    portfolio_slate = st.file_uploader("Portfolio slate CSV", type=["csv"], key="portfolio_slate_csv")
+    portfolio_scenarios = st.file_uploader("Portfolio shared scenario matrix CSV", type=["csv"], key="portfolio_scenarios_csv")
+    pc1, pc2, pc3 = st.columns(3)
+    entry_count = int(pc1.number_input("Portfolio entries", min_value=2, max_value=20, value=3, key="portfolio_entry_count"))
+    overlap_cap = int(pc2.number_input("Maximum shared players", min_value=0, max_value=30, value=roster_size-2 if roster_size>2 else 0, key="portfolio_overlap_cap"))
+    exposure_cap = pc3.slider("Max player exposure", min_value=0.34, max_value=1.0, value=0.67, step=0.01, key="portfolio_exposure")
+    use_covariance_cap = st.checkbox("Enforce empirical pairwise covariance cap", value=False, key="portfolio_use_cov_cap")
+    covariance_cap = st.number_input("Maximum covariance (points squared)", value=10000.0, min_value=-1000000.0, max_value=1000000.0, key="portfolio_cov_cap")
+    if portfolio_slate and portfolio_scenarios and st.button("Optimize multi-entry portfolio", key="run_stochastic_portfolio"):
+        try:
+            ps = pd.read_csv(io.BytesIO(portfolio_slate.getvalue()))
+            sm = pd.read_csv(io.BytesIO(portfolio_scenarios.getvalue()))
+            if not set(ps.player_id.astype(str)).issubset(set(sm.columns.astype(str))):
+                st.error("Scenario CSV needs a column matching every player_id in the portfolio slate.")
+            else:
+                matrix = sm.loc[:, ps.player_id.astype(str).tolist()].to_numpy(float)
+                portfolio, risk = optimize_stochastic_portfolio(ps, matrix, budget=budget, roster_size=roster_size,
+                    lineup_count=entry_count, max_per_team=max_team, max_player_exposure=exposure_cap,
+                    max_overlap=overlap_cap, max_pairwise_covariance=covariance_cap if use_covariance_cap else None)
+                st.json(risk)
+                st.dataframe(portfolio, use_container_width=True)
+                st.download_button("Download optimized portfolio", portfolio.to_csv(index=False).encode(), "ufi_stochastic_portfolio.csv", "text/csv")
+        except Exception as exc:
+            st.error(f"Portfolio optimization failed: {exc}")
 
 
 else:
