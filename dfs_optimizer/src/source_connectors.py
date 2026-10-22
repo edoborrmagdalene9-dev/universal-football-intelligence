@@ -121,7 +121,7 @@ def metric_source_catalog() -> pd.DataFrame:
             key="contest_entry_export"; status="requires historical contest entries or authorized ownership projections"
         elif cat=="platform_scoring_rules":
             key="platform_rulebook"; status="must be verified against the exact platform rulebook"
-        elif cat=="portfolio_optimization":
+        elif cat=="portfolio_operations":
             key="derived_from_events"; status="derived from simulation/player data; not a raw source"
         else:
             key="not_publicly_available"; status="needs a verified source or explicit derivation"
