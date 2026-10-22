@@ -47,3 +47,11 @@ def test_multiclass_isotonic_calibration_keeps_probabilities_normalized():
     calibrated=cal.predict(hold[['ph','pd','pa']].to_numpy())
     assert np.allclose(calibrated.sum(axis=1),1.0) and np.all((calibrated>=0)&(calibrated<=1))
     assert cal.evaluate(hold[['ph','pd','pa']].to_numpy(),hold.outcome)['n']==len(hold)
+
+def test_ownership_refuses_to_mix_slates_and_can_include_zero_owned_pool():
+    d=pd.DataFrame({'entry_id':['e1','e1','e2'],'player_id':['a','b','a'],'slate_id':['s1','s1','s2']})
+    with pytest.raises(ValueError): estimate_historical_ownership(d)
+    d=d.drop(columns=['slate_id'])
+    out=estimate_historical_ownership(d,player_pool=['a','b','c'])
+    c=out.loc[out.player_id=='c'].iloc[0]
+    assert c.selected_entries==0 and c.observed_ownership==0
