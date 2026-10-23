@@ -1,0 +1,118 @@
+# Exact-Score Intelligence: Post-Mortems, Robust Scoreline Forecasts, and Risk Controls
+
+## Purpose
+
+This guide extends Universal Football Intelligence (UFI) without removing or replacing existing modules. It is a research and decision-support specification, not a promise that exact-score picks can be made safe. Exact-score betting is intrinsically high variance; the app must prefer calibrated probabilities, honest uncertainty, and post-match learning over confident-sounding tips.
+
+## Case file: 23 October 2026
+
+### Recorded selections and outcomes
+
+- Stuttgart vs Borussia Mönchengladbach: selected 2–1 at decimal odds 9.40; reported full-time result 2–3. Exact-score miss.
+- Bolton Wanderers vs Middlesbrough: selected 1–1 at decimal odds 9.00; the supplied in-play screenshot showed 1–3 at 66 minutes. This was already a severe state mismatch for a 1–1 forecast. Do not record a final result unless independently verified.
+
+### What this case proves—and does not prove
+
+It proves that the selected exact scores failed to match the known match states. It does **not** prove one specific tactical or player-level cause. A defensible post-mortem needs verified event timelines, starting lineups, substitutions, cards, shots and shots on target, xG if available, game state, and pre-kickoff odds snapshots. Never invent a reason for a goal or claim that a model could have known it without evidence.
+
+The two selections also illustrate a process failure: a single most-likely-looking score can be mistaken for a strong prediction. Exact-score probability is usually spread across many outcomes. Odds of 9.40 imply a raw break-even probability of about 10.64%; odds of 9.00 imply about 11.11%, before accounting for bookmaker margin and market conditions. Those prices are not evidence that the score is likely.
+
+## Required UFI workflow
+
+### 1. Freeze a pre-match forecast
+
+For every fixture, persist an immutable timestamped record containing:
+
+- fixture ID, competition, kickoff time and timezone;
+- data source, retrieval time, freshness, missing fields and source reliability;
+- expected goals for each team (lambda), method and uncertainty interval;
+- a complete scoreline probability grid (at least 0–0 through 5–5, with a tail bucket);
+- 1X2, totals and both-teams-to-score probabilities derived from the same distribution;
+- market odds timestamp, market type, bookmaker, implied probability and margin-removal method;
+- lineup/injury/suspension confidence and any unconfirmed assumptions;
+- model version, feature version and forecast creation time.
+
+Do not overwrite the pre-match forecast with post-match knowledge. Store live updates as separate forecast versions.
+
+### 2. Generate a distribution, not just one score
+
+Use the existing Poisson score grid as a baseline, with Dixon–Coles low-score dependence only when implemented and tested. Compare against a simple league-frequency baseline and an independent goal-rate baseline. Do not treat more complex models as better until they win on chronological out-of-sample tests.
+
+Return:
+- the top scorelines and their individual probabilities;
+- cumulative probability of the displayed shortlist;
+- the probability mass outside the displayed grid;
+- uncertainty or data-quality warnings;
+- the scoreline range that covers a chosen cumulative probability, rather than calling one score “sure.”
+
+A shortlist of different scores is for scenario coverage, not a guarantee. If the user chooses multiple scores, report overlap, combined coverage under the model, cost, and the probability of all selections losing.
+
+### 3. Live-state override
+
+If the match has started, never reuse a pre-match scoreline as if nothing changed. Recalculate conditional probabilities from the current minute and score using a live model that has been separately validated. Incorporate, when verified and available:
+
+- current score and elapsed/added time;
+- red cards and player dismissals;
+- substitutions and lineup changes;
+- shots, shots on target, xG, big chances and set pieces;
+- attacking pressure and possession only with context (raw possession alone is not a goal forecast);
+- injuries, stoppages and time remaining;
+- pre-match strength and current game state.
+
+If no validated live model or reliable live feed is available, mark the live probability as unavailable; do not fabricate it. Suspended odds are not a reliable signal by themselves.
+
+### 4. Explain scoreline failures using evidence
+
+After the match, obtain verified final score and event timeline. Build a post-match audit:
+
+1. Did the actual result fall inside the model's high-probability region?
+2. Was the forecast wrong because the goal rates were misestimated, because of red cards/penalties/early goals, or because the scoreline distribution was miscalibrated?
+3. Did late game state produce open play, defensive collapse, time-wasting, or a comeback? Record only if supported by match events or credible reporting.
+4. Were lineups, injuries, schedule congestion, travel, weather, tactical matchups, or referee tendencies actually known pre-match?
+5. Was any key input missing, stale, incorrectly mapped, or sourced after kickoff?
+6. Did the model overvalue recent form, head-to-head results, a favorite label, or one exact score?
+7. What would the baseline have forecast, and did the advanced model improve on it?
+
+Use a structured reason taxonomy: data_error, lineup_uncertainty, goal_rate_error, scoreline_dependence, red_card, penalty, early_goal_game_state, late_game_state, finishing_variance, keeper_variance, set_piece, model_calibration, market_price, unknown. A reason can be unknown; never force a causal explanation.
+
+### 5. Historical validation gates
+
+Evaluate chronologically, never with random train/test splitting across time. Each forecast must use only information available before kickoff. Report:
+
+- exact-score log loss / ranked probability score where appropriate;
+- multiclass Brier score and calibration plots;
+- 1X2 log loss and Brier score;
+- top-1 exact-score hit rate with sample size and confidence interval;
+- top-k scoreline coverage with sample size;
+- comparison against league-frequency, independent Poisson, and market-implied baselines;
+- results by league, season, odds band and data-quality tier;
+- performance on untouched test dates;
+- profit/ROI only when complete timestamped, pre-kickoff odds and settlement rules are available, with commission/margin and drawdown included.
+
+A small sample of correct or incorrect bets is not proof of skill. Do not tune the model on the same matches used to report final performance.
+
+### 6. Odds and selection discipline
+
+For decimal odds O, raw implied probability is 1/O. Remove market margin only using a documented method and a complete, same-market odds set. Compare model and market probabilities on the same outcome definition. Flag an apparent edge only if it survives probability uncertainty and data-quality checks.
+
+Do not rank selections by payout alone. Do not automatically prefer long odds, favorites, or contrarian scores. “Wicked” should mean rigorous, skeptical, and willing to reject a tempting pick—not reckless. If no demonstrable edge exists, the correct output is **NO BET / PAPER TRACK ONLY**.
+
+Never increase stakes to recover a previous loss. Avoid stake escalation, chasing, and claims of guaranteed or “sure” scores. The app must clearly separate research forecasts from betting recommendations and include a reminder that all exact-score outcomes can lose.
+
+## App implementation checklist
+
+- [ ] Add a new Exact-Score Post-Mortem research guide linked from the research/help area.
+- [ ] Add a structured forecast snapshot schema and keep pre-match/live/post-match records separate.
+- [ ] Add a scoreline-grid view with probabilities, cumulative shortlist coverage, and tail mass.
+- [ ] Add a match-event audit form with source links and an explicit unknown reason.
+- [ ] Add a data-freshness and lineup-confidence gate before a forecast can be marked usable.
+- [ ] Add a chronological evaluation report with baseline comparisons and calibration metrics.
+- [ ] Add a hard warning when an exact score is displayed without calibrated out-of-sample evidence.
+- [ ] Add a live-score mismatch warning; never present a stale pre-match pick as a current live forecast.
+- [ ] Preserve all existing features and routes; this is an additive module.
+- [ ] Add tests for probability normalization, timestamp leakage, missing data, score-state updates, market-margin handling, and no-bet decisions.
+- [ ] Run the existing test suite and report the actual result. Do not claim implementation or tests are complete until verified.
+
+## Acceptance criteria
+
+The module is not considered validated until it can replay historical fixtures in date order, reproduce each forecast from data available at that time, show calibration and baseline comparisons on held-out dates, and explain missing-data limitations. A guide file alone does not mean the app's model has changed or that the model has been tested.
