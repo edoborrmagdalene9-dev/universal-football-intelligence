@@ -1,0 +1,22 @@
+name: UFI Exact-Score Module Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  exact-score-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Test exact-score intelligence module
+        run: node --test tests/exact-score-intelligence.test.js
+      - name: Test existing Python suite
+        run: python -m unittest discover -s tests -p "test_*.py" -v
