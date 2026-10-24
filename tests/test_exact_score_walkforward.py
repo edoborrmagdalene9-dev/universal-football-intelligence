@@ -1,11 +1,11 @@
 import unittest
-from tools.exact_score_walkforward import evaluate, poisson_pmf, result_probs
+from tools.exact_score_walkforward import evaluate, pmf, result_probs
 
 
 class WalkForwardTests(unittest.TestCase):
     def test_poisson_distribution_starts_correctly(self):
-        self.assertAlmostEqual(poisson_pmf(0, 0), 1.0)
-        self.assertAlmostEqual(poisson_pmf(1, 0), 0.0)
+        self.assertAlmostEqual(pmf(0, 0), 1.0)
+        self.assertAlmostEqual(pmf(1, 0), 0.0)
 
     def test_outcomes_normalize(self):
         _, p = result_probs(1.4, 1.1)
