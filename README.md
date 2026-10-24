@@ -121,7 +121,7 @@ The browser app cannot securely store a private API key or run a reliable CORS p
 - The view computes an independent-Poisson scoreline grid from user-entered expected-goal rates, displays the highest-probability scorelines and their probabilities, summarizes 1X2 probabilities and grid tail mass, and calculates raw break-even probability from entered decimal odds.
 - It supports timestamped local forecast snapshots, separate post-match audit records with evidence/source fields and an explicit unknown category, and JSON/CSV export.
 - Open it from the left navigation after refreshing the published app. Forecasts and audit records are stored in that browser's local storage; export them for backup.
-- **Not yet validated:** the goal rates are manual inputs; no live feed, automatic lineup/news verification, calibrated live-state model, or historical exact-score calibration is claimed. The view is research/paper-tracking support, not an automated pick engine. The existing test suite has not been run by this commit.
+- **Not yet validated:** the goal rates are manual inputs; no live feed, automatic lineup/news verification, calibrated live-state model, or historical exact-score calibration is claimed. The view is research/paper-tracking support, not an automated pick engine. Automated GitHub Actions tests passed for the exact-score module and existing Python test suite on commit `dd8ab931c8132a6f1fc45924eb3ce6295bcf7a4c`; this verifies the tests, not predictive accuracy or calibration.
 
 ## Exact-score post-mortem and match intelligence
 
