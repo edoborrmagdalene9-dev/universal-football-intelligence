@@ -36,12 +36,15 @@ def evaluate(rows, min_history=100, team_window=10):
                       "rolling_team_rates": (max(.05, mean_h*ha*ad), max(.05, mean_a*aa*hd))}
             actual = (row["home_goals"], row["away_goals"])
             cls = 0 if actual[0] > actual[1] else (1 if actual[0] == actual[1] else 2)
-            rec = {"models": {}}
+            rec = {"date": row.get("date"), "home_team": row["home_team"], "away_team": row["away_team"],
+                   "home_goals": actual[0], "away_goals": actual[1], "models": {}}
             for name, (lh, la) in models.items():
                 exact, probs = result_probs(lh, la)
-                rec["models"][name] = {"exact_score_logloss": -math.log(max(1e-12, exact.get(actual, 0))),
+                rec["models"][name] = {"lambda_home": lh, "lambda_away": la,
+                    "exact_score_logloss": -math.log(max(1e-12, exact.get(actual, 0))),
                     "one_x_two_logloss": -math.log(max(1e-12, probs[cls])),
-                    "one_x_two_brier": sum((probs[i]-(i==cls))**2 for i in range(3))}
+                    "one_x_two_brier": sum((probs[i]-(i==cls))**2 for i in range(3)),
+                    "p_home": probs[0], "p_draw": probs[1], "p_away": probs[2]}
             predictions.append(rec)
         past.append(row)
         for name, gf, ga in ((row["home_team"], row["home_goals"], row["away_goals"]),
@@ -57,4 +60,52 @@ def evaluate(rows, min_history=100, team_window=10):
             summary["models"][name][metric] = sum(v[metric] for v in vals)/len(vals) if vals else None
     summary["historical_matches"] = len(rows)
     summary["evaluated_unseen_matches"] = len(predictions)
+    summary["note"] = "Lower scores are better. Chronological benchmark only; not proof of calibration or profit."
     return summary, predictions
+
+
+def read_results_csv(path):
+    import csv
+    from datetime import datetime
+    with open(path, newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        required = {"date", "home_team", "away_team", "home_goals", "away_goals"}
+        if not reader.fieldnames or not required.issubset(reader.fieldnames):
+            raise ValueError("CSV columns required: date,home_team,away_team,home_goals,away_goals")
+        rows = []
+        for line, row in enumerate(reader, 2):
+            try:
+                stamp = datetime.fromisoformat(row["date"].strip().replace("Z", "+00:00")).timestamp()
+                match = {"date": row["date"], "home_team": row["home_team"].strip(),
+                         "away_team": row["away_team"].strip(), "home_goals": int(row["home_goals"]),
+                         "away_goals": int(row["away_goals"]), "_timestamp": stamp}
+                if not match["home_team"] or not match["away_team"] or min(match["home_goals"], match["away_goals"]) < 0:
+                    raise ValueError()
+                rows.append(match)
+            except (ValueError, TypeError) as exc:
+                raise ValueError("Invalid CSV row " + str(line)) from exc
+    rows.sort(key=lambda item: item["_timestamp"])
+    for row in rows:
+        row.pop("_timestamp", None)
+    return rows
+
+
+def main():
+    import argparse
+    import json
+    from pathlib import Path
+    parser = argparse.ArgumentParser(description="Chronological scoreline baseline evaluation")
+    parser.add_argument("csv", help="historical results CSV")
+    parser.add_argument("--min-history", type=int, default=100)
+    parser.add_argument("--window", type=int, default=10)
+    parser.add_argument("--out", default="exact-score-walkforward-report.json")
+    args = parser.parse_args()
+    summary, predictions = evaluate(read_results_csv(args.csv), max(1, args.min_history), max(1, args.window))
+    summary["predictions"] = predictions
+    Path(args.out).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(json.dumps({key: value for key, value in summary.items() if key != "predictions"}, indent=2))
+    print("Full report written to " + args.out)
+
+
+if __name__ == "__main__":
+    main()
