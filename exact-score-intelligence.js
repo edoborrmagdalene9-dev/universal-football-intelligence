@@ -65,7 +65,7 @@ renderLedger();
 /* Optional secret-safe live provider proxy. The browser never receives the provider token. */
 const API_KEY = 'ufi_exact_score_api_base_v1';
 let feedTimer = null;
-const feedBase = () => String($('esiApiBase')?.value || '').trim().replace(/\\/+$/, '');
+const feedBase = () => String($('esiApiBase')?.value || '').trim().replace(/\/+$/, '');
 function feedStatus(msg,bad=false){const el=$('esiFeedStatus');if(el){el.textContent=msg;el.className='notice '+(bad?'warning':'good')}}
 function safeBase(){
  const base=feedBase();
