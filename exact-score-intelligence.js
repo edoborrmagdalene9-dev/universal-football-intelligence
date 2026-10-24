@@ -61,4 +61,61 @@ $('esiExport')?.addEventListener('click',()=>download('ufi-exact-score-ledger.js
 $('esiExportCsv')?.addEventListener('click',()=>{const rows=[['type','createdAt','match','kickoff','homeLambda','awayLambda','top5','odds','selectedScore','finalScore','minuteScore','reason','source','notes','lesson']];ledger.forEach(x=>rows.push([x.type,x.createdAt,x.match,x.kickoff||'',x.homeLambda??'',x.awayLambda??'',JSON.stringify(x.top5||[]),x.odds??'',x.selectedScore||'',x.finalScore||'',x.minuteScore||'',x.reason||'',x.source||x.sourceUrl||'',x.notes||'',x.lesson||'']));const csv=rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');download('ufi-exact-score-ledger.csv',csv,'text/csv')});
 $('esiClear')?.addEventListener('click',()=>{if(!confirm('Delete the local exact-score ledger? Export a backup first if needed.'))return;ledger=[];save();renderLedger();status('Local exact-score ledger cleared.')});
 renderLedger();
+
+/* Optional secret-safe live provider proxy. The browser never receives the provider token. */
+const API_KEY = 'ufi_exact_score_api_base_v1';
+let feedTimer = null;
+const feedBase = () => String($('esiApiBase')?.value || '').trim().replace(/\\/+$/, '');
+function feedStatus(msg,bad=false){const el=$('esiFeedStatus');if(el){el.textContent=msg;el.className='notice '+(bad?'warning':'good')}}
+function safeBase(){
+ const base=feedBase();
+ try { const u=new URL(base); if(u.protocol!=='https:' && u.hostname!=='localhost' && u.hostname!=='127.0.0.1') throw new Error(); return u.origin=== 'null' ? '' : base; }
+ catch(_){feedStatus('Enter a valid HTTPS backend URL (localhost is allowed for local testing).',true);return ''}
+}
+async function fetchFeed(path){
+ const base=safeBase(); if(!base) throw new Error('Backend URL is missing or invalid.');
+ const response=await fetch(base+path,{headers:{Accept:'application/json'},cache:'no-store'});
+ if(!response.ok) throw new Error('Backend returned HTTP '+response.status);
+ const body=await response.json(); if(body && body.ok===false) throw new Error(body.error||'Provider error');
+ return body;
+}
+function unwrapRows(payload){
+ const root=payload?.data;
+ if(Array.isArray(root)) return root;
+ if(Array.isArray(root?.data)) return root.data;
+ if(Array.isArray(root?.data?.data)) return root.data.data;
+ return [];
+}
+function getTeamNames(f){
+ const participants=f?.participants||[];
+ const names=participants.map(p=>p?.name||p?.participant?.name||p?.meta?.location).filter(Boolean);
+ return {home:names[0]||f?.home_team||f?.name||'Home',away:names[1]||f?.away_team||'Away'};
+}
+function renderFeed(payload,label){
+ const rows=unwrapRows(payload);
+ const host=$('esiFeedOutput'); if(!host)return;
+ if(!rows.length){host.innerHTML='<p class="muted">No fixture rows returned. Check provider coverage, date and subscription. Raw response metadata: '+esc(JSON.stringify({source:payload?.source,fetchedAt:payload?.fetchedAt,cacheHit:payload?.cacheHit}).slice(0,500))+'</p>';return}
+ host.innerHTML='<p class="muted">Source: '+esc(payload?.source||'provider')+' · fetched '+esc(payload?.fetchedAt?new Date(payload.fetchedAt*1000).toISOString():'time unavailable')+' · '+esc(label)+' · '+rows.length+' row(s). Click a row to copy its team names into the scenario.</p><table><thead><tr><th>Fixture</th><th>Status</th><th>Score</th><th>Fixture ID</th></tr></thead><tbody>'+rows.slice(0,100).map(f=>{const n=getTeamNames(f);const id=f?.id??f?.fixture_id??'';const status=f?.state?.name||f?.state?.short_name||f?.status||'Unknown';const scores=Array.isArray(f?.scores)?f.scores.map(s=>s?.score?.goals??s?.score??'').filter(x=>x!=='').join(' - '):((f?.home_score??'?')+' - '+(f?.away_score??'?'));return '<tr><td><button class="button small esiFixturePick" data-home="'+esc(n.home)+'" data-away="'+esc(n.away)+'" data-id="'+esc(id)+'">'+esc(n.home+' vs '+n.away)+'</button></td><td>'+esc(status)+'</td><td>'+esc(scores)+'</td><td>'+esc(id)+'</td></tr>'}).join('')+'</tbody></table><details><summary>Inspect source response</summary><pre>'+esc(JSON.stringify(payload,null,2).slice(0,20000))+'</pre></details>';
+ host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',()=>{$('esiHome').value=b.dataset.home;$('esiAway').value=b.dataset.away;if($('esiProviderFixtureId'))$('esiProviderFixtureId').value=b.dataset.id||'';feedStatus('Fixture selected. Team names are populated; goal rates are NOT inferred from this feed yet. Load historical results and validate a model before using probabilities.');}));
+}
+async function loadLive(){
+ try{const data=await fetchFeed('/api/live');renderFeed(data,'live matches');feedStatus('Live feed refreshed. Scores/events are sourced data; exact-score live probabilities remain unavailable until the conditional model is validated.');}
+ catch(e){feedStatus('Live feed unavailable: '+e.message,true)}
+}
+async function loadDateFixtures(){
+ try{const d=$('esiFeedDate')?.value||new Date().toISOString().slice(0,10);const data=await fetchFeed('/api/fixtures?date='+encodeURIComponent(d));renderFeed(data,'fixtures on '+d);feedStatus('Fixture list loaded. Missing provider fields remain unknown.');}
+ catch(e){feedStatus('Fixture list unavailable: '+e.message,true)}
+}
+async function loadFixtureDetails(){
+ const id=String($('esiProviderFixtureId')?.value||'').trim();if(!/^\\d+$/.test(id))return feedStatus('Choose a fixture row or enter a numeric provider fixture ID.',true);
+ try{const data=await fetchFeed('/api/fixture?id='+encodeURIComponent(id));const host=$('esiFeedOutput');if(host)host.innerHTML='<p class="muted">Detailed provider response · '+esc(data?.source||'provider')+' · '+esc(data?.fetchedAt?new Date(data.fetchedAt*1000).toISOString():'timestamp unavailable')+'</p><pre>'+esc(JSON.stringify(data,null,2).slice(0,30000))+'</pre>';feedStatus('Fixture detail loaded. Check source timestamps and missing fields; no model probability is claimed from raw events alone.');}
+ catch(e){feedStatus('Fixture details unavailable: '+e.message,true)}
+}
+$('esiConnectFeed')?.addEventListener('click',()=>{const base=safeBase();if(!base)return;try{localStorage.setItem(API_KEY,base)}catch(_){}if(feedTimer)clearInterval(feedTimer);loadLive();feedTimer=setInterval(loadLive,30000);});
+$('esiLoadFixtures')?.addEventListener('click',loadDateFixtures);
+$('esiLoadFixtureDetails')?.addEventListener('click',loadFixtureDetails);
+$('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedTimer);feedTimer=null;feedStatus('Automatic refresh stopped.')});
+try{const savedBase=localStorage.getItem(API_KEY);if(savedBase&&$('esiApiBase'))$('esiApiBase').value=savedBase;}catch(_){}
+if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
+
 })();
