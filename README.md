@@ -115,7 +115,20 @@ Fetched source prices are timestamped and retained with matched fixture candidat
 The browser app cannot securely store a private API key or run a reliable CORS proxy by itself. Do not commit credentials to this public repository. For stronger production data access, run a private backend/proxy with source caching, request throttling, audit timestamps and explicit provider terms review.
 
 
+## Exact-score intelligence module (experimental)
+
+- `exact-score-intelligence.js` adds a dedicated **Exact-score intelligence** view to the app without replacing the existing scenario engine or other modules.
+- The view computes an independent-Poisson scoreline grid from user-entered expected-goal rates, displays the highest-probability scorelines and their probabilities, summarizes 1X2 probabilities and grid tail mass, and calculates raw break-even probability from entered decimal odds.
+- It supports timestamped local forecast snapshots, separate post-match audit records with evidence/source fields and an explicit unknown category, and JSON/CSV export.
+- Open it from the left navigation after refreshing the published app. Forecasts and audit records are stored in that browser's local storage; export them for backup.
+- **Not yet validated:** the goal rates are manual inputs; no live feed, automatic lineup/news verification, calibrated live-state model, or historical exact-score calibration is claimed. The view is research/paper-tracking support, not an automated pick engine. The existing test suite has not been run by this commit.
+
 ## Exact-score post-mortem and match intelligence
+
+- [Exact-score post-mortem guide: Stuttgart 2–1 vs Mönchengladbach (FT 2–3) and Bolton 1–1 vs Middlesbrough (1–3 at 66' in the supplied screenshot)](docs/exact-score-postmortem-and-match-intelligence.md)
+- Defines evidence-first post-match review, immutable pre-match forecasts, live-state overrides, scoreline probability grids, chronological calibration tests, market-margin checks and explicit no-bet/paper-track decisions.
+- This is an additive research guide. It does not claim that the existing prediction engine has been changed, validated or made more accurate; implementation and tests remain separate acceptance requirements.
+
 
 - [Exact-score post-mortem guide: Stuttgart 2–1 vs Mönchengladbach (FT 2–3) and Bolton 1–1 vs Middlesbrough (1–3 at 66' in the supplied screenshot)](docs/exact-score-postmortem-and-match-intelligence.md)
 - Defines evidence-first post-match review, immutable pre-match forecasts, live-state overrides, scoreline probability grids, chronological calibration tests, market-margin checks and explicit no-bet/paper-track decisions.
