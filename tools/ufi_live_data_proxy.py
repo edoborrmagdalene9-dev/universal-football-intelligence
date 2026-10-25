@@ -59,6 +59,23 @@ def cached(key: str, ttl: int, fn):
     return value, False
 
 
+def origin_allowed(origin: str | None) -> bool:
+    # Non-browser clients may omit Origin. Browser origins must match exactly.
+    return not origin or origin == ALLOWED_ORIGIN
+
+
+def rate_limited(client_ip: str, now: float | None = None) -> bool:
+    """Apply a per-client sliding-window limit; return True when over limit."""
+    current = time.time() if now is None else now
+    recent = [stamp for stamp in REQUESTS.get(client_ip, []) if current - stamp < RATE_WINDOW]
+    if len(recent) >= RATE_LIMIT:
+        REQUESTS[client_ip] = recent
+        return True
+    recent.append(current)
+    REQUESTS[client_ip] = recent
+    return False
+
+
 def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
     if route == "/api/health":
         return {"ok": True, "provider": "Sportmonks Football API v3", "tokenConfigured": bool(TOKEN),
@@ -95,24 +112,42 @@ class Handler(BaseHTTPRequestHandler):
     def _headers(self, status: int = 200):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
+        origin = self.headers.get("Origin")
+        if origin and origin == ALLOWED_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
 
+    def _json(self, status: int, payload: object):
+        self._headers(status)
+        if status != 204:
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
     def do_OPTIONS(self):
-        self._headers(204)
+        origin = self.headers.get("Origin")
+        if not origin_allowed(origin):
+            self._json(403, {"ok": False, "error": "Origin not allowed"})
+            return
+        self._json(204, {})
 
     def do_GET(self):
+        origin = self.headers.get("Origin")
+        if not origin_allowed(origin):
+            self._json(403, {"ok": False, "error": "Origin not allowed"})
+            return
+        if rate_limited(self.client_address[0]):
+            self._json(429, {"ok": False, "error": "Rate limit exceeded; retry shortly."})
+            return
         parsed = urllib.parse.urlparse(self.path)
         try:
             payload, _ = get_payload(parsed.path, urllib.parse.parse_qs(parsed.query))
-            self._headers(200)
-            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+            self._json(200, payload)
         except ProviderError as exc:
-            self._headers(400 if "must use" in str(exc) or "must be" in str(exc) or "Unknown endpoint" in str(exc) else 502)
-            self.wfile.write(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False).encode("utf-8"))
+            status = 400 if "must use" in str(exc) or "must be" in str(exc) or "Unknown endpoint" in str(exc) else 502
+            self._json(status, {"ok": False, "error": str(exc)})
 
     def log_message(self, fmt, *args):
         # Avoid logging query strings or secrets.
