@@ -99,10 +99,7 @@
 <label>Current minute<input id="lmsMinute" type="number" min="0" max="120" value="60"></label><label>Current home score<input id="lmsScoreH" type="number" min="0" value="0"></label><label>Current away score<input id="lmsScoreA" type="number" min="0" value="0"></label>
 <label>Home remaining xG<input id="lmsRemH" type="number" min="0" max="4" step="0.05" value="0.55"></label><label>Away remaining xG<input id="lmsRemA" type="number" min="0" max="4" step="0.05" value="0.45"></label><label>Probability shock threshold (pp)<input id="lmsShockLimit" type="number" min="2" max="30" value="10"></label>
 </div>
-<label>Timestamped odds snapshots JSON<textarea id="lmsOddsSnapshots" rows="6">[
-  {"timestamp":"2026-10-25T15:30:00Z","home":2.10,"draw":3.20,"away":3.60},
-  {"timestamp":"2026-10-25T15:30:15Z","home":1.95,"draw":3.25,"away":3.85}
-]</textarea></label>
+<label>Timestamped odds snapshots JSON<textarea id="lmsOddsSnapshots" rows="6">[]</textarea></label>
 <div class="button-row"><button id="lmsRun" class="button primary">Compare prices + update live score branches</button></div><div id="lmsOutput" class="notice">No odds snapshots evaluated. Supply source timestamps and refresh after verified match-state changes.</div>
 </article>
 <article class="panel panel-wide" id="unseenBacktestPanel">
