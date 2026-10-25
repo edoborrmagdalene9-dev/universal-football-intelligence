@@ -66,7 +66,7 @@ if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',()
 if(typeof module!=='undefined'&&module.exports)module.exports={evaluateAdvancedMatchRiskAndEdge:function(matchData,userBankroll){
  const current=Number(matchData.currentSecond||0);
  if(!Array.isArray(matchData.homeTeam?.players)||!Array.isArray(matchData.awayTeam?.players)||!matchData.referee)throw Error('Provide homeTeam.players, awayTeam.players and referee.');
- function calc(players){return players.reduce((acc,p)=>{const value=p.marketValue==null?1000000:Number(p.marketValue),age=p.age==null?26:Number(p.age),caps=p.caps==null?30:Number(p.caps);if(!Number.isFinite(value)||value<0||!Number.isFinite(age)||age<15||age>60||!Number.isFinite(caps)||caps<0)throw Error('Invalid player attributes');return acc+value*Math.exp(-0.015*Math.pow(age-27,2))*Math.log10(caps+10)},0)}
+ function calc(players){if(!Array.isArray(players)||players.length===0)throw Error('Each team requires a non-empty players array');return players.reduce((acc,p)=>{const value=p.marketValue==null?1000000:Number(p.marketValue),age=p.age==null?26:Number(p.age),caps=p.caps==null?30:Number(p.caps);if(!Number.isFinite(value)||value<0||!Number.isFinite(age)||age<15||age>60||!Number.isFinite(caps)||caps<0)throw Error('Invalid player attributes');return acc+value*Math.exp(-0.015*Math.pow(age-27,2))*Math.log10(caps+10)},0)}
  const hs=calc(matchData.homeTeam.players),as=calc(matchData.awayTeam.players),ref=matchData.referee,second=current>2700;
  const gap=Number((second?ref.avgWhistleGap45to90:ref.avgWhistleGap1to45)??(second?85:120));
  if(!Number.isFinite(gap)||gap<=0||!Number.isFinite(Number(userBankroll))||Number(userBankroll)<0)throw Error('Invalid referee gap or bankroll');
