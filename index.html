@@ -15,6 +15,7 @@
 <button class="nav-item" data-view="players"><span>♙</span> Player intelligence</button>
 <button class="nav-item" data-view="scenarios"><span>◉</span> Scenario engine</button>
 <button class="nav-item" data-view="exactscore"><span>◎</span> Exact-score intelligence</button>
+<button class="nav-item" data-view="liveengine"><span>⚡</span> Live chaos engine</button>
 <button class="nav-item" data-view="slips"><span>▤</span> Slip & odds lab</button>
 <button class="nav-item" data-view="backtest"><span>↗</span> Backtesting</button>
 <button class="nav-item" data-view="library"><span>▧</span> Research library</button>
@@ -100,6 +101,32 @@
 </div>
 <div class="panel"><div class="panel-head"><div><div class="eyebrow">03 / IMMUTABLE LOCAL LEDGER</div><h2>Forecasts and post-mortems</h2></div><button id="esiClear" class="button danger small">Clear local ledger</button></div><p class="muted">Saved records stay in this browser until exported. Pre-match forecasts and post-match reviews are separate records; results never overwrite the forecast.</p><div id="esiLedger" class="table-wrap"></div></div>
 </section>
+<section class="view" id="view-liveengine">
+<div class="page-heading"><div><div class="eyebrow">EXPERIMENTAL / LIVE STATE</div><h1>Live correct-score & chaos engine</h1><p>Score-conditioned Poisson scenarios, Dixon–Coles pre-match correction, player-level randomness audit and a fail-safe discard protocol.</p></div></div>
+<div class="notice warning"><b>Research mode:</b> this module does not fetch live data automatically. Enter source-backed values manually. Foot/chaos effects are unvalidated hypotheses, not calibrated facts or betting advice. Missing player data is not treated as zero risk.</div>
+<div class="panel">
+<h2>Fixture & model state</h2>
+<div class="form-grid three">
+<label>Home team<input id="lcsHome" value="Home team"></label><label>Away team<input id="lcsAway" value="Away team"></label>
+<label>Mode<select id="lcsMode"><option value="prematch">Pre-match</option><option value="live">Live match</option></select></label>
+<label id="lcsMinuteWrap" style="display:none">Current minute<input id="lcsMinute" type="number" min="0" max="120" value="35"></label>
+<label>Current home score<input id="lcsCurrentHome" type="number" min="0" max="20" value="0"></label><label>Current away score<input id="lcsCurrentAway" type="number" min="0" max="20" value="0"></label>
+<label>Baseline home expected goals<input id="lcsXgHome" type="number" min="0" max="6" step="0.05" value="1.35"></label><label>Baseline away expected goals<input id="lcsXgAway" type="number" min="0" max="6" step="0.05" value="1.05"></label>
+<label>Dixon–Coles rho (pre-match only)<input id="lcsRho" type="number" min="-0.15" max="0.15" step="0.01" value="-0.05"></label>
+<label>Home actual red cards<input id="lcsRedHome" type="number" min="0" max="2" value="0"></label><label>Away actual red cards<input id="lcsRedAway" type="number" min="0" max="2" value="0"></label>
+<label>Home live volatility (0–2)<input id="lcsVolHome" type="number" min="0" max="2" step="0.1" value="0"></label><label>Away live volatility (0–2)<input id="lcsVolAway" type="number" min="0" max="2" step="0.1" value="0"></label>
+<label>Team chaos circuit-breaker threshold<input id="lcsTcsLimit" type="number" min="1" max="20" step="0.5" value="5"></label>
+</div>
+<label class="check-row"><input id="lcsPressing" type="checkbox"> High-pressing context reported (enables experimental inverse-foot penalty)</label>
+<p class="muted">Live remaining xG uses λ × (1 − minute/90)^1.15. This is a simple time-decay heuristic, not a validated live xG estimator. Real red-card adjustments and early-goal volatility are experimental defaults.</p>
+</div>
+<div class="form-grid two">
+<div class="panel"><h2>Home starting-player profiles</h2><p class="muted">JSON array. Fields: name, dominantFoot (Left/Right/Both/Unknown), positionSide (left/right/center), rIndex (0–1). Use sourced observations; do not invent live behavior.</p><textarea id="lcsPlayersHome" rows="8" placeholder='[{"name":"Player","dominantFoot":"Right","positionSide":"left","rIndex":0.2}]'></textarea></div>
+<div class="panel"><h2>Away starting-player profiles</h2><p class="muted">Same schema. R-Index should be derived from observed deviations and normalized to 0–1; this prototype accepts it as a manual input.</p><textarea id="lcsPlayersAway" rows="8" placeholder='[{"name":"Player","dominantFoot":"Left","positionSide":"right","rIndex":0.2}]'></textarea></div>
+</div>
+<div class="button-row"><button id="lcsRun" class="button primary">Run score & chaos audit</button><button id="lcsExample" class="button">Load example player profiles</button></div>
+<div class="panel"><div class="panel-head"><h2>Engine output</h2><span class="tag">EXPERIMENTAL</span></div><div id="lcsOutput" class="notice">Enter fixture rates and available player observations, then run the audit. No result is inferred until you run it.</div></div>
+</section>
 <section class="view" id="view-backtest">
 <div class="page-heading"><div><div class="eyebrow">06 / VALIDATE</div><h1>Backtesting & calibration</h1><p>Keep predictions and outcomes together. Evaluate probability quality, not just wins.</p></div><button id="exportBacktest" class="button">Export CSV</button></div>
 <div class="form-grid two"><div class="panel"><h2>Log forecast</h2><label>Match / forecast ID<input id="btMatch" placeholder="Teams, date or match ID"></label><label>Forecast method<input id="btMethod" placeholder="e.g. independent Poisson v1"></label><div class="form-grid three"><label>Home win %<input id="btHome" type="number" min="0" max="100" value="45"></label><label>Draw %<input id="btDraw" type="number" min="0" max="100" value="28"></label><label>Away win %<input id="btAway" type="number" min="0" max="100" value="27"></label></div><label>Actual result<select id="btResult"><option value="H">Home win</option><option value="D">Draw</option><option value="A">Away win</option></select></label><label>Notes / data version<textarea id="btNotes" placeholder="Data cutoff, lineups, assumptions, caveats"></textarea></label><button id="saveBacktest" class="button primary">Save settled forecast</button><div id="btStatus" class="notice">Probabilities should sum to 100%; system normalizes them and records the original inputs.</div></div>
@@ -122,6 +149,7 @@
 <script src="audit-intelligence.js?v=slip-ocr-fix-20261018"></script>
 <script src="ai-council.js?v=slip-ocr-fix-20261018"></script>
 <script src="exact-score-intelligence.js?v=exact-score-20261024-1"></script>
+<script src="live-correct-score-chaos-engine.js?v=live-chaos-20261025-1"></script>
 <script>
 /* Navigation safety net: keep page switching available even if another app module fails. */
 document.querySelectorAll('.nav-item').forEach(function(button){
