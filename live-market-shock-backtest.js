@@ -139,17 +139,33 @@ async function runWeather(){
   const base=($('lmsWeatherBase').value||($('esiApiBase')&&$('esiApiBase').value)||'').trim().replace(/[/]+$/,'');
   if(!$('lmsWeatherLat').value.trim()||!$('lmsWeatherLon').value.trim())throw Error('Enter verified stadium coordinates; blank coordinates are not valid.');
   const lat=Number($('lmsWeatherLat').value),lon=Number($('lmsWeatherLon').value),day=$('lmsWeatherDate').value,hour=Number($('lmsWeatherHour').value);
-  if(!base)throw Error('Enter the deployed UFI HTTPS backend URL.');
-  if(!base.toLowerCase().startsWith('https://'))throw Error('Weather backend must use HTTPS.');
   if(!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lon)||lon < -180||lon>180)throw Error('Enter valid stadium latitude and longitude.');
   if(!day||!Number.isInteger(hour)||hour<0||hour>23)throw Error('Enter match date and UTC hour (0–23).');
   out.textContent='Loading weather…';
-  const url=base+'/api/weather?'+new URLSearchParams({lat:String(lat),lon:String(lon),date:day,hour:String(hour)});
+  let url,backend=Boolean(base);
+  const params={latitude:String(lat),longitude:String(lon),hourly:'temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m',timezone:'UTC'};
+  if(base){
+   if(!base.toLowerCase().startsWith('https://'))throw Error('Weather backend must use HTTPS.');
+   url=base+'/api/weather?'+new URLSearchParams({lat:String(lat),lon:String(lon),date:day,hour:String(hour)});
+  }else{
+   const today=new Date().toISOString().slice(0,10);
+   if(day<today){url='https://archive-api.open-meteo.com/v1/archive?'+new URLSearchParams({...params,start_date:day,end_date:day})}
+   else{url='https://api.open-meteo.com/v1/forecast?'+new URLSearchParams({...params,forecast_days:'16'})}
+  }
   const response=await fetch(url,{headers:{Accept:'application/json'}});
   const data=await response.json();
-  if(!response.ok||data.error)throw Error(data.error||('Weather endpoint HTTP '+response.status));
-  const w=data.weather||{};
-  out.innerHTML='<b>Weather source:</b> '+esc(data.source)+' · matched '+esc(data.matchedHourUtc)+' UTC<br>Temperature: '+esc(w.temperatureC??'unknown')+' °C · Humidity: '+esc(w.relativeHumidityPct??'unknown')+'% · Precipitation: '+esc(w.precipitationMm??'unknown')+' mm · Wind: '+esc(w.windSpeedKmh??'unknown')+' km/h<br><span class="muted">Fetched '+new Date(data.fetchedAt*1000).toISOString()+'. '+esc(data.note||'')+'</span>';
+  if(!response.ok||data.error)throw Error(data.reason||data.error||('Weather endpoint HTTP '+response.status));
+  let w=data.weather||{},matched=data.matchedHourUtc||'';
+  if(!backend){
+   const times=data.hourly&&data.hourly.time||[],indices=times.map((t,i)=>({t,i})).filter(x=>x.t.startsWith(day+'T'));
+   if(!indices.length)throw Error('Open-Meteo has no hourly data for that date; forecast requests cover up to 16 days ahead.');
+   const chosen=indices.reduce((best,x)=>Math.abs(Number(x.t.slice(11,13))-hour)<Math.abs(Number(best.t.slice(11,13))-hour)?x:best);
+   const val=key=>data.hourly[key]&&data.hourly[key][chosen.i]!==undefined?data.hourly[key][chosen.i]:null;
+   w={temperatureC:val('temperature_2m'),relativeHumidityPct:val('relative_humidity_2m'),precipitationMm:val('precipitation'),windSpeedKmh:val('wind_speed_10m')};
+   matched=chosen.t;
+  }
+  const fetched=Number(data.fetchedAt||Date.now()/1000);
+  out.innerHTML='<b>Weather source:</b> '+esc(backend?(data.source||'Open-Meteo via UFI backend'):'Open-Meteo direct')+' · matched '+esc(matched)+' UTC<br>Temperature: '+esc(w.temperatureC??'unknown')+' °C · Humidity: '+esc(w.relativeHumidityPct??'unknown')+'% · Precipitation: '+esc(w.precipitationMm??'unknown')+' mm · Wind: '+esc(w.windSpeedKmh??'unknown')+' km/h<br><span class="muted">Fetched '+new Date(fetched*1000).toISOString()+'. Grid-cell estimate, not a stadium sensor. Verify coordinates and kickoff time.</span>';
  }catch(e){out.innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}
 }
 let autoOddsTimer=null,autoOddsSnapshots=[];
