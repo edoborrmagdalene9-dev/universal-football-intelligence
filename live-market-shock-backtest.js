@@ -173,7 +173,8 @@ async function pollProviderOdds(){
  const status=$('lmsAutoStatus');
  try{
   const base=$('lmsAutoBase').value.trim().replace(/[/]+$/,'');
-  const fixture=$('lmsAutoFixture').value.trim(),bookmaker=$('lmsAutoBookmaker').value.trim(),market=$('lmsAutoMarket').value.trim();
+  const fixture=($('lmsAutoFixture').value.trim()||(($('esiProviderFixtureId')&&$('esiProviderFixtureId').value)||'').trim()),bookmaker=$('lmsAutoBookmaker').value.trim(),market=$('lmsAutoMarket').value.trim();
+  if(fixture&&!$('lmsAutoFixture').value.trim())$('lmsAutoFixture').value=fixture;
   if(!base||!base.toLowerCase().startsWith('https://'))throw Error('Enter the deployed UFI HTTPS backend URL.');
   if(!/^[0-9]+$/.test(fixture)||!/^[0-9]+$/.test(bookmaker)||!/^[0-9]+$/.test(market))throw Error('Fixture, bookmaker and market IDs must be numeric.');
   const url=base+'/api/inplay-odds?'+new URLSearchParams({id:fixture,bookmaker,market});
