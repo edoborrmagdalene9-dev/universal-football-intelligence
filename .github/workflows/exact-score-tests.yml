@@ -22,5 +22,7 @@ jobs:
         run: node --test tests/live-correct-score-chaos-engine.test.cjs
       - name: Test universal event and trap engine
         run: node --test tests/universal-match-state-engine.test.cjs
+      - name: Test live market shock and historical backtest UI
+        run: node --test tests/live-market-shock-backtest.test.cjs
       - name: Test existing Python suite
         run: python -m unittest discover -s tests -p "test_*.py" -v
