@@ -137,6 +137,19 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
         data, hit = cached(key, CACHE_TTL["weather"], lambda: open_meteo_weather(lat, lon, raw_date, hour))
         data["cacheHit"] = hit
         return data, hit
+    if route == "/api/inplay-odds":
+        fixture_id = (query.get("id") or [""])[0].strip()
+        bookmaker_id = (query.get("bookmaker") or [""])[0].strip()
+        market_id = (query.get("market") or ["1"])[0].strip()
+        if not fixture_id.isdigit() or not bookmaker_id.isdigit() or not market_id.isdigit():
+            raise ProviderError("inplay-odds requires numeric id=fixture, bookmaker=provider bookmaker ID and market=market ID")
+        filters = f"bookmakers:{bookmaker_id};markets:{market_id}"
+        key = f"inplay-odds:{fixture_id}:{bookmaker_id}:{market_id}"
+        data, hit = cached(key, CACHE_TTL["live"], lambda: provider_get(
+            "/odds/inplay/fixtures/" + fixture_id,
+            {"include": "market;bookmaker;fixture", "filters": filters}))
+        return {"source": "Sportmonks in-play odds", "fetchedAt": time.time(), "fixtureId": fixture_id,
+                "bookmakerId": bookmaker_id, "marketId": market_id, "cacheHit": hit, "data": data}, hit
     if route == "/api/fixtures":
         raw_date = (query.get("date") or [date.today().isoformat()])[0]
         try:
@@ -162,7 +175,7 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
         data, hit = cached(key, CACHE_TTL["fixture"], lambda: provider_get(
             "/fixtures/" + fixture_id, {"include": includes}))
         return {"source": "Sportmonks", "fetchedAt": time.time(), "cacheHit": hit, "data": data}, hit
-    raise ProviderError("Unknown endpoint. Use /api/health, /api/fixtures?date=YYYY-MM-DD, /api/live, /api/fixture?id=ID or /api/weather?lat=..&lon=..&date=YYYY-MM-DD&hour=..")
+    raise ProviderError("Unknown endpoint. Use /api/health, /api/fixtures?date=YYYY-MM-DD, /api/live, /api/fixture?id=ID, /api/inplay-odds?id=ID&bookmaker=ID&market=1 or /api/weather?lat=..&lon=..&date=YYYY-MM-DD&hour=..")
 
 
 class Handler(BaseHTTPRequestHandler):
