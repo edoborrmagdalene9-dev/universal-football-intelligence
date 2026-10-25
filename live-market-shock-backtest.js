@@ -137,6 +137,7 @@ async function runWeather(){
  const out=$('lmsWeatherOutput');
  try{
   const base=($('lmsWeatherBase').value||($('esiApiBase')&&$('esiApiBase').value)||'').trim().replace(/[/]+$/,'');
+  if(!$('lmsWeatherLat').value.trim()||!$('lmsWeatherLon').value.trim())throw Error('Enter verified stadium coordinates; blank coordinates are not valid.');
   const lat=Number($('lmsWeatherLat').value),lon=Number($('lmsWeatherLon').value),day=$('lmsWeatherDate').value,hour=Number($('lmsWeatherHour').value);
   if(!base)throw Error('Enter the deployed UFI HTTPS backend URL.');
   if(!base.toLowerCase().startsWith('https://'))throw Error('Weather backend must use HTTPS.');
