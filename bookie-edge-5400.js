@@ -10,7 +10,7 @@ function evaluate(){
   if(!Number.isFinite(minute)||minute<0||minute>130||!Number.isFinite(maxAge)||maxAge<1||![minEV,maxUncertainty,minSamples,minSnapshots,minProb,minEdge].every(Number.isFinite))throw Error('Check the gate settings; values must be numeric and valid.');
   const candidates=JSON.parse($('beCandidates').value||'[]');
   if(!Array.isArray(candidates)||!candidates.length)throw Error('Enter at least one candidate.');
-  const now=Date.now(),elapsedSeconds=Math.min(5400,Math.max(0,Math.floor(Math.min(minute,90)*60))),checkpointCount=elapsedSeconds;
+  const now=Date.now(),elapsedSeconds=Math.min(5400,Math.max(0,Math.floor(Math.min(minute,90)*60))),timeWeight=elapsedSeconds/5400;
   const results=candidates.map((c,i)=>{
    const reasons=[];
    const odds=Number(c.odds),p=Number(c.modelProbability),market=Number(c.marketProbability),unc=Number(c.uncertainty),samples=Number(c.validationMatches),snaps=Number(c.snapshots);
@@ -25,17 +25,22 @@ function evaluate(){
    if(valid&&unc>maxUncertainty)reasons.push('Probability uncertainty exceeds limit');
    if(valid&&p<minProb)reasons.push('Model probability below configured floor');
    const conservativeP=valid?Math.max(0,p-1.645*unc):0;
-   const conservativeEV=valid?conservativeP*odds-1: -1;
-   const conservativeEdge=valid?conservativeP-market: -1;
+   const conservativeEV=valid?conservativeP*odds-1:-1;
+   const conservativeEdge=valid?conservativeP-market:-1;
+   // User-requested 5400-second time-scaled margin score. This is a heuristic,
+   // not evidence that probability calibration improves as time elapses.
+   const impliedProbability=valid?1/odds:1;
+   const marginScore=valid?(p/impliedProbability)*(1+timeWeight):0;
+   if(valid&&marginScore<1.05)reasons.push('5400 margin gate failed: time-scaled margin score '+marginScore.toFixed(3)+' is below 1.050');
    if(valid&&conservativeEV<minEV)reasons.push('Conservative net EV '+pct(conservativeEV)+' below required '+pct(minEV));
    if(valid&&conservativeEdge<minEdge)reasons.push('Conservative edge versus supplied market probability '+(conservativeEdge*100).toFixed(2)+'pp below threshold');
    const survive=reasons.length===0;
-   return {selection:c.selection||('Candidate '+(i+1)),odds,modelProbability:p,marketProbability:market,uncertainty:unc,conservativeP,conservativeEV,conservativeEdge,age,survive,reasons};
+   return {selection:c.selection||('Candidate '+(i+1)),odds,modelProbability:p,marketProbability:market,uncertainty:unc,conservativeP,conservativeEV,conservativeEdge,marginScore,age,survive,reasons};
   });
   const approved=results.filter(x=>x.survive).length;
-  const rows=results.map(r=>'<tr><td>'+esc(r.selection)+'</td><td>'+esc(Number.isFinite(r.odds)?r.odds.toFixed(2):'—')+'</td><td>'+esc(Number.isFinite(r.modelProbability)?pct(r.modelProbability):'—')+'</td><td>'+esc(Number.isFinite(r.conservativeP)?pct(r.conservativeP):'—')+'</td><td>'+esc(Number.isFinite(r.conservativeEV)?pct(r.conservativeEV):'—')+'</td><td>'+esc(Number.isFinite(r.conservativeEdge)?(r.conservativeEdge*100).toFixed(2)+'pp':'—')+'</td><td><b>'+ (r.survive?'SURVIVES CURRENT GATE':'DISCARD')+'</b><br>'+esc(r.reasons.join('; ')||'All configured filters passed on this evaluation only')+'</td></tr>').join('');
-  out.innerHTML='<b>'+approved+' / '+results.length+' candidates pass the current gate.</b><br>Match clock: '+minute+'′ · 5400-second frame: '+checkpointCount+' elapsed checkpoints out of 5400 (90 minutes).<p class="muted">The gate evaluated current supplied data once. It cannot prove 5400 future observations will pass. Re-run when new source data arrives; repeated unchanged inputs are not independent evidence.</p><div class="table-wrap"><table><thead><tr><th>Selection</th><th>Odds</th><th>Model P</th><th>Conservative P</th><th>Conservative EV</th><th>Edge</th><th>Decision / reason</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
- }catch(e){out.innerHTML='<b>Cannot approve any selection.</b><br>'+esc(e.message); }
+  const rows=results.map(r=>'<tr><td>'+esc(r.selection)+'</td><td>'+esc(Number.isFinite(r.odds)?r.odds.toFixed(2):'—')+'</td><td>'+esc(Number.isFinite(r.modelProbability)?pct(r.modelProbability):'—')+'</td><td>'+esc(Number.isFinite(r.conservativeP)?pct(r.conservativeP):'—')+'</td><td>'+esc(Number.isFinite(r.marginScore)?r.marginScore.toFixed(3):'—')+'</td><td>'+esc(Number.isFinite(r.conservativeEV)?pct(r.conservativeEV):'—')+'</td><td>'+esc(Number.isFinite(r.conservativeEdge)?(r.conservativeEdge*100).toFixed(2)+'pp':'—')+'</td><td><b>'+(r.survive?'SURVIVES CURRENT GATE':'DISCARD')+'</b><br>'+esc(r.reasons.join('; ')||'All configured filters passed on this evaluation only')+'</td></tr>').join('');
+  out.innerHTML='<b>'+approved+' / '+results.length+' candidates pass the current gate.</b><br>Match clock: '+minute+'′ · 5400-second frame: '+elapsedSeconds+' elapsed seconds of 5400 (90 minutes); time weight '+timeWeight.toFixed(3)+'.<p class="muted">The time-scaled margin score is a heuristic and does not itself increase the model’s true probability. Conservative EV, edge, freshness and validation checks remain mandatory. This evaluates supplied data once; it cannot prove 5400 future observations will pass. Re-run when fresh source data arrives; repeated unchanged inputs are not independent evidence.</p><div class="table-wrap"><table><thead><tr><th>Selection</th><th>Odds</th><th>Model P</th><th>Conservative P</th><th>5400 Margin Score</th><th>Conservative EV</th><th>Edge</th><th>Decision / reason</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+ }catch(e){out.innerHTML='<b>Cannot approve any selection.</b><br>'+esc(e.message);}
 }
 function example(){
  const ts=new Date().toISOString();
