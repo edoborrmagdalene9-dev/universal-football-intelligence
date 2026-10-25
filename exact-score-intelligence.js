@@ -99,7 +99,7 @@ function renderFeed(payload,label){
  host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',()=>{$('esiHome').value=b.dataset.home;$('esiAway').value=b.dataset.away;if($('esiProviderFixtureId'))$('esiProviderFixtureId').value=b.dataset.id||'';feedStatus('Fixture selected. Team names are populated; goal rates are NOT inferred from this feed yet. Load historical results and validate a model before using probabilities.');}));
 }
 async function loadLive(){
- try{const data=await fetchFeed('/api/live');renderFeed(data,'live matches');feedStatus('Live feed refreshed. Scores/events are sourced data; exact-score live probabilities remain unavailable until the conditional model is validated.');}
+ try{const data=await fetchFeed('/api/live');renderFeed(data,'live matches');if(typeof window!=='undefined'&&typeof CustomEvent!=='undefined')window.dispatchEvent(new CustomEvent('ufi:live-feed',{detail:data}));feedStatus('Live feed refreshed. Scores/events are sourced data; exact-score live probabilities remain unavailable until the conditional model is validated.');}
  catch(e){feedStatus('Live feed unavailable: '+e.message,true)}
 }
 async function loadDateFixtures(){
