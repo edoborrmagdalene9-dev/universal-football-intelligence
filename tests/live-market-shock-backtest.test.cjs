@@ -9,7 +9,8 @@ function boot(){
  for(const [id,value] of Object.entries({lmsMinute:'70',lmsScoreH:'1',lmsScoreA:'0',lmsRemH:'0.4',lmsRemA:'0.3',lmsShockLimit:'10',lmsOddsSnapshots:'[]',lmsMinHistory:'3',lmsWindow:'5',lmsWeatherBase:'',lmsWeatherLat:'',lmsWeatherLon:'',lmsWeatherDate:'',lmsWeatherHour:'15'}))get(id).value=value;
  let ready;
  const document={getElementById:get,addEventListener:(name,fn)=>{if(name==='DOMContentLoaded')ready=fn},createElement:()=>({click(){},set href(v){},set download(v){}})};
- vm.runInNewContext(fs.readFileSync('live-market-shock-backtest.js','utf8'),{document,Math,Number,String,JSON,Array,Object,Date,Map,Set,URL,URLSearchParams,Blob,console,fetch:async()=>{throw Error('not configured')},FileReader:function(){}});
+ const Reader=function(){this.readAsText=file=>{this.result=file.content;this.onload()}};
+ vm.runInNewContext(fs.readFileSync('live-market-shock-backtest.js','utf8'),{document,Math,Number,String,JSON,Array,Object,Date,Map,Set,URL,URLSearchParams,Blob,console,fetch:async()=>{throw Error('not configured')},FileReader:Reader});
  ready();
  return get;
 }
@@ -42,4 +43,19 @@ test('future-dated odds are rejected',()=>{
  g('lmsOddsSnapshots').value=snapshots(new Date(now+60000).toISOString(),new Date(now+70000).toISOString(),[2.2,3.1,3.2],[2.18,3.1,3.25]);
  g('lmsRun').click();
  assert.match(g('lmsOutput').innerHTML,/FUTURE-DATED/);
+});
+
+test('walk-forward historical test uses earlier rows and reports baseline comparison',()=>{
+ const g=boot();
+ const rows=['date,home_team,away_team,home_goals,away_goals,league'];
+ for(let i=0;i<40;i++){
+  const date=new Date(Date.UTC(2025,0,1+i)).toISOString().slice(0,10);
+  const home=i%2===0?'Team A':'Team B',away=i%2===0?'Team B':'Team A';
+  rows.push([date,home,away,i%4,(i+1)%3,'Test League'].join(','));
+ }
+ g('lmsBacktestFile').files=[{content:rows.join('\n')}];
+ g('lmsBacktestRun').click();
+ assert.match(g('lmsBacktestOutput').innerHTML,/Out-of-sample matches/);
+ assert.match(g('lmsBacktestOutput').innerHTML,/league-average baseline/);
+ assert.match(g('lmsBacktestOutput').innerHTML,/Model exact-score log loss/);
 });
