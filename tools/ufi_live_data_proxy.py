@@ -21,7 +21,10 @@ TOKEN = os.environ.get("SPORTMONKS_API_TOKEN", "").strip()
 PORT = int(os.environ.get("PORT", "8080"))
 ALLOWED_ORIGIN = os.environ.get("UFI_ALLOWED_ORIGIN", "https://edoborrmagdalene9-dev.github.io").strip()
 CACHE: dict[str, tuple[float, object]] = {}
-CACHE_TTL = {"live": 15, "fixtures": 300, "fixture": 15}\nREQUESTS: dict[str, list[float]] = {}\nRATE_WINDOW = 60\nRATE_LIMIT = 60
+CACHE_TTL = {"live": 15, "fixtures": 300, "fixture": 15}
+REQUESTS: dict[str, list[float]] = {}
+RATE_WINDOW = 60
+RATE_LIMIT = 60
 
 
 class ProviderError(Exception):
