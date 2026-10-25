@@ -18,6 +18,56 @@ class LiveProxyTests(unittest.TestCase):
         with self.assertRaises(proxy.ProviderError):
             proxy.get_payload("/nope", {})
 
+    def test_inplay_odds_route_filters_fixture_bookmaker_and_market(self):
+        fixture, bookmaker, market = "12345", "2", "1"
+        key = f"inplay-odds:{fixture}:{bookmaker}:{market}"
+        old = proxy.CACHE.pop(key, None)
+        try:
+            expected = {"data": [{"label": "Home", "value": "2.0"}]}
+            with patch.object(proxy, "provider_get", return_value=expected) as mocked:
+                payload, cache_hit = proxy.get_payload("/api/inplay-odds", {
+                    "id": [fixture], "bookmaker": [bookmaker], "market": [market]
+                })
+            self.assertFalse(cache_hit)
+            self.assertEqual(payload["source"], "Sportmonks in-play odds")
+            mocked.assert_called_once_with(
+                "/odds/inplay/fixtures/12345",
+                {"include": "market;bookmaker;fixture", "filters": "bookmakers:2;markets:1"}
+            )
+        finally:
+            proxy.CACHE.pop(key, None)
+            if old is not None:
+                proxy.CACHE[key] = old
+
+    def test_inplay_odds_requires_numeric_provider_ids(self):
+        with self.assertRaises(proxy.ProviderError):
+            proxy.get_payload("/api/inplay-odds", {"id": ["bad"], "bookmaker": ["2"], "market": ["1"]})
+
+    def test_weather_route_validates_coordinates_and_date(self):
+        with self.assertRaises(proxy.ProviderError):
+            proxy.get_payload("/api/weather", {"lat": ["999"], "lon": ["0"], "date": ["2026-10-25"], "hour": ["12"]})
+        with self.assertRaises(proxy.ProviderError):
+            proxy.get_payload("/api/weather", {"lat": ["0"], "lon": ["0"], "date": ["not-a-date"], "hour": ["12"]})
+
+    def test_weather_route_uses_open_meteo_adapter_and_returns_provenance(self):
+        lat, lon, day, hour = 11.111, 22.222, "2026-10-25", 15
+        key = f"weather:{lat:.3f}:{lon:.3f}:{day}:{hour}"
+        old = proxy.CACHE.pop(key, None)
+        try:
+            expected = {"source": "Open-Meteo", "fetchedAt": 123.0, "weather": {"temperatureC": 25}}
+            with patch.object(proxy, "open_meteo_weather", return_value=expected) as mocked:
+                payload, cache_hit = proxy.get_payload("/api/weather", {
+                    "lat": [str(lat)], "lon": [str(lon)], "date": [day], "hour": [str(hour)]
+                })
+            self.assertFalse(cache_hit)
+            self.assertEqual(payload["source"], "Open-Meteo")
+            self.assertEqual(payload["weather"]["temperatureC"], 25)
+            mocked.assert_called_once_with(lat, lon, day, hour)
+        finally:
+            proxy.CACHE.pop(key, None)
+            if old is not None:
+                proxy.CACHE[key] = old
+
 
     def test_origin_allowlist_requires_exact_browser_origin(self):
         self.assertTrue(proxy.origin_allowed(None))

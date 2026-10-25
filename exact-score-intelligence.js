@@ -111,7 +111,7 @@ async function loadFixtureDetails(){
  try{const data=await fetchFeed('/api/fixture?id='+encodeURIComponent(id));const host=$('esiFeedOutput');if(host)host.innerHTML='<p class="muted">Detailed provider response · '+esc(data?.source||'provider')+' · '+esc(data?.fetchedAt?new Date(data.fetchedAt*1000).toISOString():'timestamp unavailable')+'</p><pre>'+esc(JSON.stringify(data,null,2).slice(0,30000))+'</pre>';feedStatus('Fixture detail loaded. Check source timestamps and missing fields; no model probability is claimed from raw events alone.');}
  catch(e){feedStatus('Fixture details unavailable: '+e.message,true)}
 }
-$('esiConnectFeed')?.addEventListener('click',()=>{const base=safeBase();if(!base)return;try{localStorage.setItem(API_KEY,base)}catch(_){}if(feedTimer)clearInterval(feedTimer);loadLive();feedTimer=setInterval(loadLive,30000);});
+$('esiConnectFeed')?.addEventListener('click',()=>{const base=safeBase();if(!base)return;try{localStorage.setItem(API_KEY,base)}catch(_){}if(feedTimer)clearInterval(feedTimer);loadLive();feedTimer=setInterval(loadLive,10000);});
 $('esiLoadFixtures')?.addEventListener('click',loadDateFixtures);
 $('esiLoadFixtureDetails')?.addEventListener('click',loadFixtureDetails);
 $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedTimer);feedTimer=null;feedStatus('Automatic refresh stopped.')});
