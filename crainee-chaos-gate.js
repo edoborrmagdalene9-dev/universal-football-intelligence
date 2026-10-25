@@ -57,7 +57,7 @@ function example(){
  $('caReferee').value=JSON.stringify({avgWhistleGap1to45:120,avgWhistleGap45to90:85},null,2);
 }
 const MATCH_TOTAL_SECONDS=5400,HALF_TIME_SECONDS=2700;
-document.addEventListener('DOMContentLoaded',()=>{
+if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',()=>{
  if(!$('caRun'))return;
  $('caRun').addEventListener('click',evaluate);
  $('caExample').addEventListener('click',example);
