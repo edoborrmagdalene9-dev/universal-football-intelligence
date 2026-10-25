@@ -17,7 +17,7 @@ function implied(row){
 function parseSourceTime(value){
  if(!value)return NaN;
  let s=String(value).trim().replace(' ','T');
- if(!/(Z|[+-]\\d{2}:?\\d{2})$/i.test(s))s+='Z';
+ if(!(s.endsWith('Z')||s.endsWith('z')||/[+-][0-9]{2}:?[0-9]{2}$/.test(s)))s+='Z';
  return Date.parse(s);
 }
 function parseOdds(){
@@ -70,7 +70,7 @@ function runMarket(){
  }catch(e){out.innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}
 }
 function csvParse(text){
- const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim());
+ const lines=text.replace(String.fromCharCode(65279),'').split(String.fromCharCode(10)).map(x=>x.replaceAll(String.fromCharCode(13),'')).filter(x=>x.trim());
  if(lines.length<2)throw Error('CSV needs a header and at least two match rows.');
  const split=line=>{const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'&&q){cur+='"';i++}else if(c==='"')q=!q;else if(c===','&&!q){out.push(cur);cur=''}else cur+=c}out.push(cur);return out};
  const headers=split(lines[0]).map(x=>x.trim().toLowerCase());const rows=lines.slice(1).map(line=>{const vals=split(line);const o={};headers.forEach((h,i)=>o[h]=(vals[i]||'').trim());return o});
@@ -136,10 +136,10 @@ function runBacktest(){
 async function runWeather(){
  const out=$('lmsWeatherOutput');
  try{
-  const base=($('lmsWeatherBase').value||($('esiApiBase')&&$('esiApiBase').value)||'').trim().replace(/\/$/,'');
+  const base=($('lmsWeatherBase').value||($('esiApiBase')&&$('esiApiBase').value)||'').trim().replace(/[/]+$/,'');
   const lat=Number($('lmsWeatherLat').value),lon=Number($('lmsWeatherLon').value),day=$('lmsWeatherDate').value,hour=Number($('lmsWeatherHour').value);
   if(!base)throw Error('Enter the deployed UFI HTTPS backend URL.');
-  if(!/^https:\/\//i.test(base))throw Error('Weather backend must use HTTPS.');
+  if(!base.toLowerCase().startsWith('https://'))throw Error('Weather backend must use HTTPS.');
   if(!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lon)||lon < -180||lon>180)throw Error('Enter valid stadium latitude and longitude.');
   if(!day||!Number.isInteger(hour)||hour<0||hour>23)throw Error('Enter match date and UTC hour (0–23).');
   out.textContent='Loading weather…';
@@ -157,8 +157,8 @@ async function pollProviderOdds(){
  try{
   const base=$('lmsAutoBase').value.trim().replace(/[/]+$/,'');
   const fixture=$('lmsAutoFixture').value.trim(),bookmaker=$('lmsAutoBookmaker').value.trim(),market=$('lmsAutoMarket').value.trim();
-  if(!base||!/^https:\/\//i.test(base))throw Error('Enter the deployed UFI HTTPS backend URL.');
-  if(!/^\\d+$/.test(fixture)||!/^\\d+$/.test(bookmaker)||!/^\\d+$/.test(market))throw Error('Fixture, bookmaker and market IDs must be numeric.');
+  if(!base||!base.toLowerCase().startsWith('https://'))throw Error('Enter the deployed UFI HTTPS backend URL.');
+  if(!/^[0-9]+$/.test(fixture)||!/^[0-9]+$/.test(bookmaker)||!/^[0-9]+$/.test(market))throw Error('Fixture, bookmaker and market IDs must be numeric.');
   const url=base+'/api/inplay-odds?'+new URLSearchParams({id:fixture,bookmaker,market});
   const response=await fetch(url,{headers:{Accept:'application/json'}});
   const payload=await response.json();
