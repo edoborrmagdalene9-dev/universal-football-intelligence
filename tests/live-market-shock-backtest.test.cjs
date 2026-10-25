@@ -3,14 +3,14 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 
-function boot(){
+function boot(fetchImpl=async()=>{throw Error('not configured')}){
  const els=new Map();
- const get=id=>{if(!els.has(id))els.set(id,{id,value:'',checked:false,innerHTML:'',textContent:'',files:[],handlers:{},addEventListener(t,f){this.handlers[t]=f},click(){this.handlers.click?.()}});return els.get(id)};
+ const get=id=>{if(!els.has(id))els.set(id,{id,value:'',checked:false,innerHTML:'',textContent:'',files:[],handlers:{},addEventListener(t,f){this.handlers[t]=f},click(){return this.handlers.click?.()}});return els.get(id)};
  for(const [id,value] of Object.entries({lmsMinute:'70',lmsScoreH:'1',lmsScoreA:'0',lmsRemH:'0.4',lmsRemA:'0.3',lmsShockLimit:'10',lmsOddsSnapshots:'[]',lmsMinHistory:'3',lmsWindow:'5',lmsWeatherBase:'',lmsWeatherLat:'',lmsWeatherLon:'',lmsWeatherDate:'',lmsWeatherHour:'15'}))get(id).value=value;
  let ready;
  const document={getElementById:get,addEventListener:(name,fn)=>{if(name==='DOMContentLoaded')ready=fn},createElement:()=>({click(){},set href(v){},set download(v){}})};
  const Reader=function(){this.readAsText=file=>{this.result=file.content;this.onload()}};
- vm.runInNewContext(fs.readFileSync('live-market-shock-backtest.js','utf8'),{document,Math,Number,String,JSON,Array,Object,Date,Map,Set,URL,URLSearchParams,Blob,console,fetch:async()=>{throw Error('not configured')},FileReader:Reader});
+ vm.runInNewContext(fs.readFileSync('live-market-shock-backtest.js','utf8'),{document,Math,Number,String,JSON,Array,Object,Date,Map,Set,URL,URLSearchParams,Blob,console,fetch:fetchImpl,FileReader:Reader});
  ready();
  return get;
 }
@@ -58,4 +58,13 @@ test('walk-forward historical test uses earlier rows and reports baseline compar
  assert.match(g('lmsBacktestOutput').innerHTML,/Out-of-sample matches/);
  assert.match(g('lmsBacktestOutput').innerHTML,/league-average baseline/);
  assert.match(g('lmsBacktestOutput').innerHTML,/Model exact-score log loss/);
+});
+
+test('weather lookup works directly without a backend URL',async()=>{
+ const today=new Date().toISOString().slice(0,10);
+ const g=boot(async()=>({ok:true,json:async()=>({hourly:{time:[today+'T15:00'],temperature_2m:[27],relative_humidity_2m:[70],precipitation:[0.2],wind_speed_10m:[12]}})}));
+ g('lmsWeatherLat').value='6.45';g('lmsWeatherLon').value='3.40';g('lmsWeatherDate').value=today;g('lmsWeatherHour').value='15';
+ await g('lmsWeatherRun').click();
+ assert.match(g('lmsWeatherOutput').innerHTML,/Open-Meteo direct/);
+ assert.match(g('lmsWeatherOutput').innerHTML,/27 °C/);
 });
