@@ -100,7 +100,6 @@ def open_meteo_weather(lat: float, lon: float, day: str, hour: int) -> object:
         raise ProviderError("Open-Meteo weather source unavailable: " + type(exc).__name__) from exc
     hourly = payload.get("hourly") or {}
     times = hourly.get("time") or []
-    target = f"{day}T{hour:02d}:00"
     if not times:
         raise ProviderError("Weather source returned no hourly observations for that date/location.")
     index = min(range(len(times)), key=lambda i: abs((times[i].split("T")[0] != day) * 100000 + (int(times[i][11:13]) - hour) ** 2))
@@ -150,7 +149,7 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
             "/fixtures/date/" + raw_date, {"include": includes, "per_page": "100"}))
         return {"source": "Sportmonks", "fetchedAt": time.time(), "date": raw_date, "cacheHit": hit, "data": data}, hit
     if route == "/api/live":
-        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type"
+        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
         key = "live"
         data, hit = cached(key, CACHE_TTL["live"], lambda: provider_get("/livescores/inplay", {"include": includes}))
         return {"source": "Sportmonks", "fetchedAt": time.time(), "cacheHit": hit, "data": data}, hit
@@ -158,7 +157,7 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
         fixture_id = (query.get("id") or [""])[0].strip()
         if not fixture_id.isdigit():
             raise ProviderError("id must be a numeric provider fixture ID")
-        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type"
+        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
         key = "fixture:" + fixture_id
         data, hit = cached(key, CACHE_TTL["fixture"], lambda: provider_get(
             "/fixtures/" + fixture_id, {"include": includes}))
