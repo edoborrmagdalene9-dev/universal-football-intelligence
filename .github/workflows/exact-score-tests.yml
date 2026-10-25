@@ -26,5 +26,7 @@ jobs:
         run: node --test tests/live-market-shock-backtest.test.cjs
       - name: Test 5400 bookmaker-edge gate
         run: node --test tests/bookie-edge-5400.test.cjs
+      - name: Test Crainee squad referee chaos gate
+        run: node --test tests/crainee-chaos-gate.test.cjs
       - name: Test existing Python suite
         run: python -m unittest discover -s tests -p "test_*.py" -v
