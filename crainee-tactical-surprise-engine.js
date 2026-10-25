@@ -49,7 +49,7 @@ function evaluateTacticalSurpriseEdge(matchData = {}) {
   const opponentFatigue = num(opponent.defenderFatigue, 1, 0.5, 2);
   const shock = freshness * opponentFatigue * fatigue;
   const score = spaceBehind * fullbackMismatch * shock * (1 + time);
-  const passed = score >= 0.18;
+  const passed = score >= 0.45;
   return {status: passed ? 'TACTICAL_EDGE_FLAGGED' : 'DISCARDED_TACTICALLY',
     currentMatchTime: `${Math.floor(second / 60)}m / 90m (${second}s)`,
     spaceBehindFactor: round(spaceBehind), fullbackMismatchFactor: round(fullbackMismatch),
