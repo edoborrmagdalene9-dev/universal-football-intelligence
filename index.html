@@ -78,6 +78,13 @@
 <p class="muted">Use decimal odds and probabilities from 0 to 1. Include a real ISO timestamp, independent out-of-sample sample count, snapshot count and uncertainty estimate. A source timestamp is required; browser capture time is not a substitute for source freshness.</p>
 <label>Candidate array<textarea id="beCandidates" rows="12" spellcheck="false" placeholder='[{"selection":"Home win","odds":2.4,"modelProbability":0.46,"marketProbability":0.41,"uncertainty":0.04,"sourceUpdatedAt":"2026-10-25T19:00:00Z","validationMatches":500,"snapshots":5}]'></textarea></label>
 <div class="button-row"><button class="button primary" id="beRun">Evaluate / discard candidates</button><button class="button" id="beClear">Clear</button></div><div id="beOutput" class="notice">Waiting for candidate data. No selection is approved by default.</div></div>
+<div class="panel"><div class="panel-head"><div><div class="eyebrow">SQUAD · REFEREE · MATCH PHASE</div><h2>Crainee Advanced Match Risk & Chaos Gate</h2></div><span class="tag">EXPERIMENTAL HEURISTIC</span></div>
+<p class="muted">Scores squad market-value/age/caps inputs, average referee whistle gaps and elapsed match time. This is a contextual risk heuristic, not a calibrated match-win probability. Missing player values use the stated defaults and are reported as assumptions.</p>
+<div class="form-grid two"><label>Current elapsed seconds<input id="caCurrentSecond" type="number" min="0" max="6000" value="0"></label><label>Available bankroll (₦)<input id="caBankroll" type="number" min="0" step="100" value="0"></label></div>
+<div class="form-grid two"><label>Home squad players JSON<textarea id="caHomeSquad" rows="8" spellcheck="false" placeholder='[{"name":"Player A","marketValue":25000000,"age":27,"caps":40}]'></textarea></label><label>Away squad players JSON<textarea id="caAwaySquad" rows="8" spellcheck="false" placeholder='[{"name":"Player B","marketValue":18000000,"age":25,"caps":25}]'></textarea></label></div>
+<div class="form-grid two"><label>Referee whistle-gap JSON<textarea id="caReferee" rows="3" spellcheck="false" placeholder='{"avgWhistleGap1to45":120,"avgWhistleGap45to90":85}'></textarea></label><label>Gate settings<p class="muted">Fixed experimental survival threshold: 0.25. Absolute stake cap: 5% of entered bankroll.</p><button class="button" id="caExample">Load hypothetical example</button></label></div>
+<div class="button-row"><button class="button primary" id="caRun">Evaluate match risk</button><button class="button" id="caClear">Clear inputs</button></div><div id="caOutput" class="notice">Waiting for squad and referee data. No match is cleared by default.</div>
+<p class="muted">The stake output is only a mathematical cap derived from this heuristic, not a recommendation to bet. Do not enter borrowed money or treat this score as proof of an edge.</p></div>
 <div class="panel"><div class="eyebrow">HOW TO READ THE GATE</div><ul><li><b>Net EV:</b> estimated model probability × decimal odds − 1, reduced by an uncertainty haircut.</li><li><b>Conservative edge:</b> lower-confidence model probability minus de-vigged market probability.</li><li><b>5400 survival:</b> checkpoints track elapsed match time; a candidate survives only if every hard data/edge rule passes on each fresh evaluation. Past checks cannot guarantee future stability.</li><li><b>Discard:</b> stale source timestamp, missing evidence, too few independent validation matches, excessive uncertainty, inadequate conservative edge or negative/insufficient net EV.</li></ul><p class="muted">Never interpret unavailable markets or sudden odds movement as proof of manipulation. The filter does not place bets and does not promise profit.</p></div>
 </section>
 <section class="view" id="view-slips">
@@ -233,5 +240,7 @@ document.querySelectorAll('[data-go]').forEach(function(button){
     window.scrollTo(0,0);
   });
 });
+<script src="bookie-edge-5400.js?v=bookie-edge-20261025-2"></script>
+<script src="crainee-chaos-gate.js?v=crainee-20261025-1"></script>
 </script>
 </body></html>
