@@ -39,6 +39,9 @@ function calc(){
  const sh=Math.max(0,Math.floor(n('lcsCurrentHome')||0)), sa=Math.max(0,Math.floor(n('lcsCurrentAway')||0));
  let lh=clamp(n('lcsXgHome')||0,0,6), la=clamp(n('lcsXgAway')||0,0,6);
  const rho=clamp(n('lcsRho')||0,-0.15,0.15), pressing=$('lcsPressing').checked;
+ const odds=Number($('lcsOver15Odds').value), combinedBaseline=(Number($('lcsXgHome').value)||0)+(Number($('lcsXgAway').value)||0);
+ const filterPassed=Number.isFinite(odds)&&odds>=1.08&&odds<=1.35&&combinedBaseline>=2.60;
+ const leagueProfile=$('lcsLeague').value;
  const ph=profileChaos(parsePlayers('lcsPlayersHome'),pressing), pa=profileChaos(parsePlayers('lcsPlayersAway'),pressing);
  const redH=ph.filter(p=>p.virtualRed).length, redA=pa.filter(p=>p.virtualRed).length;
  const tcsH=ph.reduce((s,p)=>s+p.rIndex,0)+(Number($('lcsVolHome').value)||0);
@@ -72,9 +75,10 @@ function calc(){
  rows.sort((x,y)=>y.p-x.p);
  const top=rows.slice(0,4);
  const profilesComplete=ph.length===11&&pa.length===11;
- const green=!discarded&&profilesComplete&&tcsH<Number($('lcsTcsLimit').value)*0.65&&tcsA<Number($('lcsTcsLimit').value)*0.65&&redH===0&&redA===0;
+ const green=!discarded&&filterPassed&&profilesComplete&&tcsH<Number($('lcsTcsLimit').value)*0.65&&tcsA<Number($('lcsTcsLimit').value)*0.65&&redH===0&&redA===0;
  const status=discarded?'MATCH DISCARDED: High Randomness Anomaly Detected (TCS Exceeded Limits).':green?'GREEN LIGHT: Low Randomness / Model Filters Passed (experimental, not validated confidence).':'CAUTION: Elevated randomness or model risk. Do not apply maximum model weight.';
  $('lcsOutput').innerHTML='<div class="notice '+(discarded?'warning':green?'good':'warning')+'"><b>'+esc(status)+'</b></div>'+
+ '<div class="notice '+(filterPassed?'good':'warning')+'"><b>Candidate filter: '+(filterPassed?'YES':'NO / INCOMPLETE')+'</b> — Over 1.5 odds '+(Number.isFinite(odds)?odds.toFixed(2):'not supplied')+'; combined baseline xG '+combinedBaseline.toFixed(2)+' (target ≥ 2.60). Target lower-tier league selected: '+(leagueProfile==='target'?'yes':leagueProfile==='major'?'no':'unknown')+'. Odds and league classification are user-entered and not verified by a feed.</div>'+
  '<div class="outcome-grid"><div><span>Home remaining xG*</span><b>'+remH.toFixed(2)+'</b></div><div><span>Away remaining xG*</span><b>'+remA.toFixed(2)+'</b></div><div><span>Home TCS</span><b>'+tcsH.toFixed(2)+'</b></div><div><span>Away TCS</span><b>'+tcsA.toFixed(2)+'</b></div></div>'+
  (discarded?'<p class="muted">Prediction suppressed by circuit breaker. The scorelines below are intentionally withheld.</p>':
  '<h3>Top 4 final-score scenarios</h3><div class="table-wrap"><table><thead><tr><th>Rank</th><th>Final score</th><th>Model probability</th></tr></thead><tbody>'+top.map((r,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+r.h+'–'+r.a+'</b></td><td>'+pct(r.p)+'</td></tr>').join('')+'</tbody></table></div>'+
