@@ -14,18 +14,30 @@ function implied(row){
  if(raw.some((v,i)=>!Number.isFinite(v)||Number(row[keys[i]])<=1))throw Error('Every 1X2 decimal price must be > 1.00.');
  const sum=raw.reduce((a,b)=>a+b,0);return raw.map(v=>v/sum);
 }
+function parseSourceTime(value){
+ if(!value)return NaN;
+ let s=String(value).trim().replace(' ','T');
+ if(!/(Z|[+-]\\d{2}:?\\d{2})$/i.test(s))s+='Z';
+ return Date.parse(s);
+}
 function parseOdds(){
  const rows=JSON.parse($('lmsOddsSnapshots').value||'[]');
  if(!Array.isArray(rows)||rows.length<2)throw Error('Enter at least two timestamped odds snapshots as a JSON array.');
- const valid=rows.map(r=>{if(!r.timestamp)throw Error('Every odds snapshot needs an ISO timestamp.');const ts=Date.parse(r.timestamp);if(!Number.isFinite(ts))throw Error('Invalid odds timestamp: '+r.timestamp);return {...r,ts,p:implied(r)}}).sort((a,b)=>a.ts-b.ts);
- if(valid[0].ts===valid[1].ts)throw Error('The two latest snapshots need distinct timestamps.');
+ const valid=rows.map(r=>{
+  if(!r.timestamp)throw Error('Every odds snapshot needs an ISO timestamp.');
+  const ts=Date.parse(r.timestamp);if(!Number.isFinite(ts))throw Error('Invalid odds timestamp: '+r.timestamp);
+  const sourceTs=r.sourceUpdatedAt?parseSourceTime(r.sourceUpdatedAt):ts;
+  if(!Number.isFinite(sourceTs))throw Error('Invalid provider source-update timestamp: '+r.sourceUpdatedAt);
+  return {...r,ts,sourceTs,p:implied(r)}
+ }).sort((a,b)=>a.ts-b.ts);
+ if(valid[0].ts===valid[1].ts)throw Error('The two latest snapshots need distinct capture timestamps.');
  return valid;
 }
 function runMarket(){
  const out=$('lmsOutput');
  try{
   const snaps=parseOdds(),a=snaps[snaps.length-2],b=snaps[snaps.length-1],now=Date.now();
-  const rawAge=(now-b.ts)/1000,age=Math.max(0,rawAge),gap=(b.ts-a.ts)/1000;
+  const rawAge=(now-b.sourceTs)/1000,age=Math.max(0,rawAge),gap=(b.ts-a.ts)/1000;
   const minute=clamp(Number($('lmsMinute').value)||0,0,120),h=Math.max(0,Math.floor(Number($('lmsScoreH').value)||0)),away=Math.max(0,Math.floor(Number($('lmsScoreA').value)||0));
   const lh=clamp(Number($('lmsRemH').value)||0,0,4),la=clamp(Number($('lmsRemA').value)||0,0,4);
   const changes=b.p.map((p,i)=>p-a.p[i]),maxAbs=Math.max(...changes.map(Math.abs));
@@ -139,9 +151,50 @@ async function runWeather(){
   out.innerHTML='<b>Weather source:</b> '+esc(data.source)+' · matched '+esc(data.matchedHourUtc)+' UTC<br>Temperature: '+esc(w.temperatureC??'unknown')+' °C · Humidity: '+esc(w.relativeHumidityPct??'unknown')+'% · Precipitation: '+esc(w.precipitationMm??'unknown')+' mm · Wind: '+esc(w.windSpeedKmh??'unknown')+' km/h<br><span class="muted">Fetched '+new Date(data.fetchedAt*1000).toISOString()+'. '+esc(data.note||'')+'</span>';
  }catch(e){out.innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}
 }
+let autoOddsTimer=null,autoOddsSnapshots=[];
+async function pollProviderOdds(){
+ const status=$('lmsAutoStatus');
+ try{
+  const base=$('lmsAutoBase').value.trim().replace(/\\/$/,'');
+  const fixture=$('lmsAutoFixture').value.trim(),bookmaker=$('lmsAutoBookmaker').value.trim(),market=$('lmsAutoMarket').value.trim();
+  if(!base||!/^https:\/\//i.test(base))throw Error('Enter the deployed UFI HTTPS backend URL.');
+  if(!/^\\d+$/.test(fixture)||!/^\\d+$/.test(bookmaker)||!/^\\d+$/.test(market))throw Error('Fixture, bookmaker and market IDs must be numeric.');
+  const url=base+'/api/inplay-odds?'+new URLSearchParams({id:fixture,bookmaker,market});
+  const response=await fetch(url,{headers:{Accept:'application/json'}});
+  const payload=await response.json();
+  if(!response.ok||payload.error)throw Error(payload.error||('In-play odds HTTP '+response.status));
+  const root=payload.data||{},rows=Array.isArray(root.data)?root.data:(Array.isArray(payload.data)?payload.data:[]);
+  const label=r=>String(r.label||r.name||'').trim().toLowerCase();
+  const pick=names=>rows.find(r=>names.includes(label(r)));
+  const home=pick(['home','1']),draw=pick(['draw','x']),away=pick(['away','2']);
+  if(!home||!draw||!away)throw Error('Provider returned no complete Home/Draw/Away trio for this bookmaker/market. Verify market ID, bookmaker ID and plan access.');
+  const sourceUpdatedAt=[home,draw,away].map(r=>r.latest_bookmaker_update||r.updated_at||'').filter(Boolean).sort().slice(-1)[0]||'';
+  const snap={timestamp:new Date(Number(payload.fetchedAt||Date.now()/1000)*1000).toISOString(),sourceUpdatedAt,home:Number(home.value),draw:Number(draw.value),away:Number(away.value),source:'Sportmonks',fixtureId:fixture,bookmakerId:bookmaker,marketId:market};
+  if([snap.home,snap.draw,snap.away].some(v=>!Number.isFinite(v)||v<=1))throw Error('Provider returned invalid decimal odds.');
+  autoOddsSnapshots.push(snap);autoOddsSnapshots=autoOddsSnapshots.slice(-20);
+  $('lmsOddsSnapshots').value=JSON.stringify(autoOddsSnapshots,null,2);
+  status.innerHTML='Polling every 5 seconds · '+esc(payload.source||'Sportmonks')+' · latest fetch '+esc(snap.timestamp)+' · source update '+esc(sourceUpdatedAt||'not supplied')+' · '+autoOddsSnapshots.length+' snapshots captured.';
+  if(autoOddsSnapshots.length>=2)runMarket();
+ }catch(e){status.innerHTML='<span class="warning-text">'+esc(e.message)+'</span>';if(/token|HTTP 4|HTTP 5|plan|entitlement/i.test(e.message)){if(autoOddsTimer){clearInterval(autoOddsTimer);autoOddsTimer=null}}}
+}
+function startAutoOdds(){
+ if(autoOddsTimer)clearInterval(autoOddsTimer);
+ autoOddsSnapshots=[];
+ $('lmsOddsSnapshots').value='[]';
+ pollProviderOdds();
+ autoOddsTimer=setInterval(pollProviderOdds,5000);
+ $('lmsAutoStatus').textContent='Starting provider odds polling…';
+}
+function stopAutoOdds(){
+ if(autoOddsTimer)clearInterval(autoOddsTimer);
+ autoOddsTimer=null;
+ $('lmsAutoStatus').textContent='Automatic odds polling stopped.';
+}
 document.addEventListener('DOMContentLoaded',()=>{
  $('lmsRun').addEventListener('click',runMarket);
  $('lmsBacktestRun').addEventListener('click',runBacktest);
  $('lmsWeatherRun').addEventListener('click',runWeather);
+ $('lmsAutoStart').addEventListener('click',startAutoOdds);
+ $('lmsAutoStop').addEventListener('click',stopAutoOdds);
 });
 })();
