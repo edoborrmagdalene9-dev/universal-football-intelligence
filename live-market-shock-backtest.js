@@ -25,16 +25,16 @@ function runMarket(){
  const out=$('lmsOutput');
  try{
   const snaps=parseOdds(),a=snaps[snaps.length-2],b=snaps[snaps.length-1],now=Date.now();
-  const age=Math.max(0,(now-b.ts)/1000),gap=(b.ts-a.ts)/1000;
+  const rawAge=(now-b.ts)/1000,age=Math.max(0,rawAge),gap=(b.ts-a.ts)/1000;
   const minute=clamp(Number($('lmsMinute').value)||0,0,120),h=Math.max(0,Math.floor(Number($('lmsScoreH').value)||0)),away=Math.max(0,Math.floor(Number($('lmsScoreA').value)||0));
   const lh=clamp(Number($('lmsRemH').value)||0,0,4),la=clamp(Number($('lmsRemA').value)||0,0,4);
   const changes=b.p.map((p,i)=>p-a.p[i]),maxAbs=Math.max(...changes.map(Math.abs));
   const maxRel=Math.max(...['home','draw','away'].map(k=>Math.abs(Number(a[k])-Number(b[k]))/Number(a[k])));
   const shockLimit=(Number($('lmsShockLimit').value)||10)/100;
-  const stale=age>120||gap>900||gap<1;
+  const stale=rawAge < -5 || age>120 || gap>900 || gap<1;
   const shock=maxAbs>=shockLimit||maxRel>=0.25;
   const reasons=[];
-  if(stale)reasons.push('STALE / badly spaced odds snapshots — do not use them to update a live forecast.');
+  if(rawAge < -5)reasons.push('FUTURE-DATED snapshot — source clock or timestamp is invalid.'); else if(stale)reasons.push('STALE / badly spaced odds snapshots — do not use them to update a live forecast.');
   if(shock)reasons.push('MARKET SHOCK — material price movement; suspend scoreline approval and re-check events, VAR, cards, injuries and feed timestamps.');
   if(!stale&&!shock)reasons.push('No configured shock threshold crossed. This is not proof that the market is correct.');
   // Small bounded adjustment only for modest, fresh moves. A large move causes a HOLD, not chasing.
@@ -121,8 +121,27 @@ function runBacktest(){
  }catch(e){out.innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}
  };reader.readAsText(file);
 }
+async function runWeather(){
+ const out=$('lmsWeatherOutput');
+ try{
+  const base=($('lmsWeatherBase').value||($('esiApiBase')&&$('esiApiBase').value)||'').trim().replace(/\/$/,'');
+  const lat=Number($('lmsWeatherLat').value),lon=Number($('lmsWeatherLon').value),day=$('lmsWeatherDate').value,hour=Number($('lmsWeatherHour').value);
+  if(!base)throw Error('Enter the deployed UFI HTTPS backend URL.');
+  if(!/^https:\/\//i.test(base))throw Error('Weather backend must use HTTPS.');
+  if(!Number.isFinite(lat)||lat < -90||lat>90||!Number.isFinite(lon)||lon < -180||lon>180)throw Error('Enter valid stadium latitude and longitude.');
+  if(!day||!Number.isInteger(hour)||hour<0||hour>23)throw Error('Enter match date and UTC hour (0–23).');
+  out.textContent='Loading weather…';
+  const url=base+'/api/weather?'+new URLSearchParams({lat:String(lat),lon:String(lon),date:day,hour:String(hour)});
+  const response=await fetch(url,{headers:{Accept:'application/json'}});
+  const data=await response.json();
+  if(!response.ok||data.error)throw Error(data.error||('Weather endpoint HTTP '+response.status));
+  const w=data.weather||{};
+  out.innerHTML='<b>Weather source:</b> '+esc(data.source)+' · matched '+esc(data.matchedHourUtc)+' UTC<br>Temperature: '+esc(w.temperatureC??'unknown')+' °C · Humidity: '+esc(w.relativeHumidityPct??'unknown')+'% · Precipitation: '+esc(w.precipitationMm??'unknown')+' mm · Wind: '+esc(w.windSpeedKmh??'unknown')+' km/h<br><span class="muted">Fetched '+new Date(data.fetchedAt*1000).toISOString()+'. '+esc(data.note||'')+'</span>';
+ }catch(e){out.innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}
+}
 document.addEventListener('DOMContentLoaded',()=>{
  $('lmsRun').addEventListener('click',runMarket);
  $('lmsBacktestRun').addEventListener('click',runBacktest);
+ $('lmsWeatherRun').addEventListener('click',runWeather);
 });
 })();
