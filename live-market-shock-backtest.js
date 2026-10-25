@@ -155,7 +155,7 @@ let autoOddsTimer=null,autoOddsSnapshots=[];
 async function pollProviderOdds(){
  const status=$('lmsAutoStatus');
  try{
-  const base=$('lmsAutoBase').value.trim().replace(/\\/$/,'');
+  const base=$('lmsAutoBase').value.trim().replace(/[/]+$/,'');
   const fixture=$('lmsAutoFixture').value.trim(),bookmaker=$('lmsAutoBookmaker').value.trim(),market=$('lmsAutoMarket').value.trim();
   if(!base||!/^https:\/\//i.test(base))throw Error('Enter the deployed UFI HTTPS backend URL.');
   if(!/^\\d+$/.test(fixture)||!/^\\d+$/.test(bookmaker)||!/^\\d+$/.test(market))throw Error('Fixture, bookmaker and market IDs must be numeric.');
