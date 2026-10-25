@@ -223,7 +223,7 @@ function syncLiveScore(payload){
   }
   if(h===null||a===null)return;
   $('lmsScoreH').value=String(h);$('lmsScoreA').value=String(a);
-  const minute=Number(f.state&&f.state.minute??f.minute??f.elapsed);
+  const minute=Number((f.state&&f.state.minute) ?? f.minute ?? f.elapsed);
   if(Number.isFinite(minute)&&minute>=0)$('lmsMinute').value=String(minute);
   const status=$('lmsAutoStatus');if(status)status.innerHTML+=' · score synced from live feed: '+h+'–'+a+(Number.isFinite(minute)?' at '+minute+'′':'');
  }catch(_){/* Keep unknown score unknown if provider schema is incomplete. */}
