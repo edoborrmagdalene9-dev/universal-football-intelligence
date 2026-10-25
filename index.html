@@ -88,6 +88,25 @@
 <div class="form-grid three"><label>UFI backend HTTPS URL<input id="esiApiBase" type="url" placeholder="https://your-ufi-backend.example"></label><label>Fixture date<input id="esiFeedDate" type="date"></label><label>Provider fixture ID (optional)<input id="esiProviderFixtureId" inputmode="numeric" placeholder="ID from provider"></label></div>
 <div class="button-row"><button id="esiConnectFeed" class="button primary">Connect / refresh live feed</button><button id="esiLoadFixtures" class="button">Load fixtures by date</button><button id="esiLoadFixtureDetails" class="button">Load selected fixture details</button><button id="esiStopFeed" class="button">Stop auto-refresh</button></div>
 <div id="esiFeedStatus" class="notice">Not connected. After the backend is deployed, enter its HTTPS base URL and connect. Live data refreshes while this page remains open.</div><div id="esiFeedOutput" class="table-wrap"><p class="muted">No provider data loaded.</p></div></article>
+<article class="panel panel-wide" id="liveMarketShockPanel">
+<div class="panel-head"><div><div class="eyebrow">LIVE MARKET SHOCK + SCORE-STATE RECALIBRATION</div><h2>Price movement circuit breaker</h2></div><span class="tag">SOURCE-TIMESTAMPED</span></div>
+<p class="muted">Paste two or more timestamped decimal 1X2 odds snapshots from the same market/bookmaker. Probabilities are de-vigged per snapshot. This detects a sudden market move; it does not know the cause. If prices move sharply or go stale, it pauses rather than chasing odds. The remaining-goal xG fields are assumptions until a validated live-state model is connected.</p>
+<div class="form-grid three">
+<label>Current minute<input id="lmsMinute" type="number" min="0" max="120" value="60"></label><label>Current home score<input id="lmsScoreH" type="number" min="0" value="0"></label><label>Current away score<input id="lmsScoreA" type="number" min="0" value="0"></label>
+<label>Home remaining xG<input id="lmsRemH" type="number" min="0" max="4" step="0.05" value="0.55"></label><label>Away remaining xG<input id="lmsRemA" type="number" min="0" max="4" step="0.05" value="0.45"></label><label>Probability shock threshold (pp)<input id="lmsShockLimit" type="number" min="2" max="30" value="10"></label>
+</div>
+<label>Timestamped odds snapshots JSON<textarea id="lmsOddsSnapshots" rows="6">[
+  {"timestamp":"2026-10-25T15:30:00Z","home":2.10,"draw":3.20,"away":3.60},
+  {"timestamp":"2026-10-25T15:30:15Z","home":1.95,"draw":3.25,"away":3.85}
+]</textarea></label>
+<div class="button-row"><button id="lmsRun" class="button primary">Compare prices + update live score branches</button></div><div id="lmsOutput" class="notice">No odds snapshots evaluated. Supply source timestamps and refresh after verified match-state changes.</div>
+</article>
+<article class="panel panel-wide" id="unseenBacktestPanel">
+<div class="panel-head"><div><div class="eyebrow">UNSEEN HISTORICAL MATCH VALIDATION</div><h2>Chronological exact-score backtest</h2></div><span class="tag">NO RANDOM SPLIT</span></div>
+<p class="muted">Upload results CSV with <code>date,home_team,away_team,home_goals,away_goals</code> and optional <code>league</code> or <code>league_code</code>. Every match is forecast using earlier matches only; same-date fixtures are held out together to avoid leakage. Compares a rolling team attack/defence Poisson model with a league-average Poisson baseline. This tests results-only data, not every player/tactical feature.</p>
+<div class="form-grid three"><label>Historical results CSV<input id="lmsBacktestFile" type="file" accept=".csv,text/csv"></label><label>Minimum prior matches per team<input id="lmsMinHistory" type="number" min="3" max="30" value="5"></label><label>Rolling window<input id="lmsWindow" type="number" min="5" max="50" value="10"></label></div>
+<div class="button-row"><button id="lmsBacktestRun" class="button primary">Run unseen chronological test</button></div><div id="lmsBacktestOutput" class="table-wrap"><p class="muted">No historical backtest run in this browser session.</p></div>
+</article>
 <div class="dashboard-grid">
 <article class="panel panel-wide"><div class="panel-head"><div><div class="eyebrow">01 / SCORELINE DISTRIBUTION</div><h2>Build a transparent scenario</h2></div><span class="tag">BASELINE ONLY</span></div>
 <div class="form-grid three"><label>Home team<input id="esiHome" placeholder="Home team" value="Home"></label><label>Away team<input id="esiAway" placeholder="Away team" value="Away"></label><label>Kickoff / forecast date<input id="esiKickoff" type="datetime-local"></label><label>Home expected goals (λ)<input id="esiLambdaHome" type="number" min="0.05" max="6" step="0.05" value="1.45"></label><label>Away expected goals (λ)<input id="esiLambdaAway" type="number" min="0.05" max="6" step="0.05" value="1.20"></label><label>Top scorelines to show<input id="esiTopK" type="number" min="1" max="12" step="1" value="5"></label><label>Exact-score decimal odds (optional)<input id="esiOdds" type="number" min="1.01" step="0.01" placeholder="e.g. 9.40"></label><label>Data source / cutoff<input id="esiForecastSource" placeholder="URL, timestamp, lineup source"></label><label>Forecast notes<textarea id="esiForecastNotes" placeholder="Data quality, injuries/lineups verified, uncertainty"></textarea></label></div>
@@ -168,6 +187,7 @@
 <script src="exact-score-intelligence.js?v=exact-score-20261024-1"></script>
 <script src="live-correct-score-chaos-engine.js?v=live-chaos-20261025-1"></script>
 <script src="universal-match-state-engine.js?v=universal-events-20261025-1"></script>
+<script src="live-market-shock-backtest.js?v=market-shock-20261025-1"></script>
 <script>
 /* Navigation safety net: keep page switching available even if another app module fails. */
 document.querySelectorAll('.nav-item').forEach(function(button){
