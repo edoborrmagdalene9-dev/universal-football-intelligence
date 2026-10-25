@@ -207,6 +207,28 @@ function stopAutoOdds(){
  autoOddsTimer=null;
  $('lmsAutoStatus').textContent='Automatic odds polling stopped.';
 }
+function syncLiveScore(payload){
+ try{
+  const fixtureId=String(($('lmsAutoFixture').value||($('esiProviderFixtureId')&&$('esiProviderFixtureId').value)||'')).trim();
+  if(!fixtureId)return;
+  const root=payload&&payload.data,rows=Array.isArray(root)?root:(Array.isArray(root&&root.data)?root.data:(Array.isArray(root&&root.data&&root.data.data)?root.data.data:[]));
+  const f=rows.find(x=>String(x.id??x.fixture_id??'')===fixtureId);if(!f)return;
+  const scores=Array.isArray(f.scores)?f.scores:[],current=scores.filter(s=>String(s.description||'').toUpperCase()==='CURRENT');
+  let h=null,a=null;
+  for(const s of current){
+   const side=String(s.score&&s.score.participant||s.participant&&s.participant.meta&&s.participant.meta.location||s.location||'').toLowerCase();
+   const goals=Number(s.score&&s.score.goals!==undefined?s.score.goals:s.goals);
+   if(!Number.isInteger(goals)||goals<0)continue;
+   if(side==='home')h=goals;if(side==='away')a=goals;
+  }
+  if(h===null||a===null)return;
+  $('lmsScoreH').value=String(h);$('lmsScoreA').value=String(a);
+  const minute=Number(f.state&&f.state.minute??f.minute??f.elapsed);
+  if(Number.isFinite(minute)&&minute>=0)$('lmsMinute').value=String(minute);
+  const status=$('lmsAutoStatus');if(status)status.innerHTML+=' · score synced from live feed: '+h+'–'+a+(Number.isFinite(minute)?' at '+minute+'′':'');
+ }catch(_){/* Keep unknown score unknown if provider schema is incomplete. */}
+}
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('ufi:live-feed',event=>syncLiveScore(event.detail));
 document.addEventListener('DOMContentLoaded',()=>{
  $('lmsRun').addEventListener('click',runMarket);
  $('lmsBacktestRun').addEventListener('click',runBacktest);
