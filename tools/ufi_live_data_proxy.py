@@ -21,7 +21,7 @@ TOKEN = os.environ.get("SPORTMONKS_API_TOKEN", "").strip()
 PORT = int(os.environ.get("PORT", "8080"))
 ALLOWED_ORIGIN = os.environ.get("UFI_ALLOWED_ORIGIN", "https://edoborrmagdalene9-dev.github.io").strip()
 CACHE: dict[str, tuple[float, object]] = {}
-CACHE_TTL = {"live": 15, "fixtures": 300, "fixture": 15}
+CACHE_TTL = {"live": 5, "fixtures": 300, "fixture": 5, "weather": 1800}
 REQUESTS: dict[str, list[float]] = {}
 RATE_WINDOW = 60
 RATE_LIMIT = 60
@@ -76,17 +76,75 @@ def rate_limited(client_ip: str, now: float | None = None) -> bool:
     return False
 
 
+def open_meteo_weather(lat: float, lon: float, day: str, hour: int) -> object:
+    """Fetch one hourly weather observation/forecast from Open-Meteo (no API key)."""
+    today = date.today().isoformat()
+    archive = day < today
+    base = "https://archive-api.open-meteo.com/v1/archive" if archive else "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": str(lat), "longitude": str(lon), "start_date": day, "end_date": day,
+        "hourly": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m",
+        "timezone": "UTC"
+    }
+    # Forecast uses forecast_days/date selection; archive uses start/end date.
+    if not archive:
+        params.pop("start_date", None)
+        params.pop("end_date", None)
+        params["forecast_days"] = "7"
+    url = base + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "UFI-research/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, json.JSONDecodeError) as exc:
+        raise ProviderError("Open-Meteo weather source unavailable: " + type(exc).__name__) from exc
+    hourly = payload.get("hourly") or {}
+    times = hourly.get("time") or []
+    target = f"{day}T{hour:02d}:00"
+    if not times:
+        raise ProviderError("Weather source returned no hourly observations for that date/location.")
+    index = min(range(len(times)), key=lambda i: abs((times[i].split("T")[0] != day) * 100000 + (int(times[i][11:13]) - hour) ** 2))
+    if not times[index].startswith(day + "T"):
+        raise ProviderError("Requested date is outside the provider's available weather window.")
+    def value(key):
+        values = hourly.get(key) or []
+        return values[index] if index < len(values) else None
+    return {
+        "source": "Open-Meteo", "sourceUrl": base, "fetchedAt": time.time(),
+        "requested": {"latitude": lat, "longitude": lon, "date": day, "hourUtc": hour},
+        "matchedHourUtc": times[index], "archive": archive,
+        "weather": {"temperatureC": value("temperature_2m"), "relativeHumidityPct": value("relative_humidity_2m"),
+                    "precipitationMm": value("precipitation"), "windSpeedKmh": value("wind_speed_10m")},
+        "note": "Grid-cell weather estimate, not stadium sensor data; location and kickoff-hour mapping must be checked."
+    }
+
+
 def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
     if route == "/api/health":
         return {"ok": True, "provider": "Sportmonks Football API v3", "tokenConfigured": bool(TOKEN),
                 "note": "Provider connectivity and coverage must be verified; health does not imply model accuracy."}, False
+    if route == "/api/weather":
+        try:
+            lat = float((query.get("lat") or [""])[0])
+            lon = float((query.get("lon") or [""])[0])
+            raw_date = (query.get("date") or [date.today().isoformat()])[0]
+            hour = int((query.get("hour") or ["12"])[0])
+            date.fromisoformat(raw_date)
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 <= hour <= 23):
+                raise ValueError()
+        except (ValueError, TypeError) as exc:
+            raise ProviderError("weather requires valid lat, lon, date=YYYY-MM-DD and hour=0..23") from exc
+        key = f"weather:{lat:.3f}:{lon:.3f}:{raw_date}:{hour}"
+        data, hit = cached(key, CACHE_TTL["weather"], lambda: open_meteo_weather(lat, lon, raw_date, hour))
+        data["cacheHit"] = hit
+        return data, hit
     if route == "/api/fixtures":
         raw_date = (query.get("date") or [date.today().isoformat()])[0]
         try:
             date.fromisoformat(raw_date)
         except ValueError as exc:
             raise ProviderError("date must use YYYY-MM-DD") from exc
-        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type"
+        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
         key = "fixtures:" + raw_date
         data, hit = cached(key, CACHE_TTL["fixtures"], lambda: provider_get(
             "/fixtures/date/" + raw_date, {"include": includes, "per_page": "100"}))
@@ -105,7 +163,7 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
         data, hit = cached(key, CACHE_TTL["fixture"], lambda: provider_get(
             "/fixtures/" + fixture_id, {"include": includes}))
         return {"source": "Sportmonks", "fetchedAt": time.time(), "cacheHit": hit, "data": data}, hit
-    raise ProviderError("Unknown endpoint. Use /api/health, /api/fixtures?date=YYYY-MM-DD, /api/live or /api/fixture?id=ID.")
+    raise ProviderError("Unknown endpoint. Use /api/health, /api/fixtures?date=YYYY-MM-DD, /api/live, /api/fixture?id=ID or /api/weather?lat=..&lon=..&date=YYYY-MM-DD&hour=..")
 
 
 class Handler(BaseHTTPRequestHandler):
