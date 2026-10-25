@@ -11,10 +11,10 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const pct=x=>(100*x).toFixed(2)+'%';
 function factorial(k){let f=1;for(let i=2;i<=k;i++)f*=i;return f}
 function pois(k,l){if(l===0)return k===0?1:0;return Math.exp(-l+k*Math.log(l)-Math.log(factorial(k)))}
-function tau(h,a,rho){
- if(h===0&&a===0)return 1-h* a*rho; // standard Dixon-Coles tau(0,0)
- if(h===0&&a===1)return 1+h*rho;
- if(h===1&&a===0)return 1+a*rho;
+function tau(h,a,lambda,mu,rho){
+ if(h===0&&a===0)return 1-lambda*mu*rho;
+ if(h===0&&a===1)return 1+lambda*rho;
+ if(h===1&&a===0)return 1+mu*rho;
  if(h===1&&a===1)return 1-rho;
  return 1;
 }
@@ -64,12 +64,15 @@ function calc(){
  for(let i=0;i<=sh+10;i++)for(let j=0;j<=sa+10;j++){
   const gh=i-sh, ga=j-sa; if(gh<0||ga<0)continue;
   let p=pois(gh,remH)*pois(ga,remA);
-  if(!live) p*=Math.max(0,tau(i,j,rho));
+  if(!live) p*=Math.max(0,tau(i,j,lh,la,rho));
   rows.push({h:i,a:j,p}); mass+=p;
  }
+ const adjustedMass=rows.reduce((s,r)=>s+r.p,0);
+ if(adjustedMass>0) rows.forEach(r=>r.p/=adjustedMass);
  rows.sort((x,y)=>y.p-x.p);
  const top=rows.slice(0,4);
- const green=!discarded&&tcsH<Number($('lcsTcsLimit').value)*0.65&&tcsA<Number($('lcsTcsLimit').value)*0.65&&redH===0&&redA===0;
+ const profilesComplete=ph.length===11&&pa.length===11;
+ const green=!discarded&&profilesComplete&&tcsH<Number($('lcsTcsLimit').value)*0.65&&tcsA<Number($('lcsTcsLimit').value)*0.65&&redH===0&&redA===0;
  const status=discarded?'MATCH DISCARDED: High Randomness Anomaly Detected (TCS Exceeded Limits).':green?'GREEN LIGHT: Low Randomness / Model Filters Passed (experimental, not validated confidence).':'CAUTION: Elevated randomness or model risk. Do not apply maximum model weight.';
  $('lcsOutput').innerHTML='<div class="notice '+(discarded?'warning':green?'good':'warning')+'"><b>'+esc(status)+'</b></div>'+
  '<div class="outcome-grid"><div><span>Home remaining xG*</span><b>'+remH.toFixed(2)+'</b></div><div><span>Away remaining xG*</span><b>'+remA.toFixed(2)+'</b></div><div><span>Home TCS</span><b>'+tcsH.toFixed(2)+'</b></div><div><span>Away TCS</span><b>'+tcsA.toFixed(2)+'</b></div></div>'+
@@ -77,7 +80,7 @@ function calc(){
  '<h3>Top 4 final-score scenarios</h3><div class="table-wrap"><table><thead><tr><th>Rank</th><th>Final score</th><th>Model probability</th></tr></thead><tbody>'+top.map((r,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+r.h+'–'+r.a+'</b></td><td>'+pct(r.p)+'</td></tr>').join('')+'</tbody></table></div>'+
  '<p class="muted">*Remaining xG is a heuristic derived from entered baseline rates and time decay, not provider-verified live xG. Top four probabilities do not sum to 100%. Displayed score-grid mass: '+pct(mass)+'.</p>')+
  '<h3>Player anomaly audit</h3><div class="form-grid two"><div><b>'+esc(home)+'</b><p>Virtual red flags: '+redH+' · TCS: '+tcsH.toFixed(2)+'</p>'+playerTable(ph)+'</div><div><b>'+esc(away)+'</b><p>Virtual red flags: '+redA+' · TCS: '+tcsA.toFixed(2)+'</p>'+playerTable(pa)+'</div></div>'+
- '<p class="muted">Inverse-foot rule adds 0.18 to R-Index for right-footed players in a left-side role or left-footed players in a right-side role when high pressing is toggled. This is a hypothesis, not an empirically established universal effect. “Virtual red” is a simulation penalty only; it is not a real sending-off.</p>';
+ '<p class="muted">'+(!profilesComplete?'Green-light approval withheld: provide all 11 starting-player profiles for both teams; missing profiles are unknown. ':'')+'Inverse-foot rule adds 0.18 to R-Index for right-footed players in a left-side role or left-footed players in a right-side role when high pressing is toggled. This is a hypothesis, not an empirically established universal effect. “Virtual red” is a simulation penalty only; it is not a real sending-off.</p>';
 }
 function playerTable(ps){if(!ps.length)return '<p class="muted">No player profiles entered; player-level risk is unavailable, not zero.</p>';return '<div class="table-wrap"><table><thead><tr><th>Player</th><th>R-Index</th><th>Foot penalty</th><th>Flag</th></tr></thead><tbody>'+ps.map(p=>'<tr><td>'+esc(p.name||'Unnamed')+'</td><td>'+p.rIndex.toFixed(2)+'</td><td>'+(p.footPenalty*100).toFixed(0)+'%</td><td>'+(p.virtualRed?'VIRTUAL RED':'—')+'</td></tr>').join('')+'</tbody></table></div>'}
 $('lcsRun').addEventListener('click',()=>{try{calc()}catch(e){$('lcsOutput').innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}});
