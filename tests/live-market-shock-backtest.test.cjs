@@ -7,11 +7,11 @@ function boot(fetchImpl=async()=>{throw Error('not configured')}){
  const els=new Map();
  const get=id=>{if(!els.has(id))els.set(id,{id,value:'',checked:false,innerHTML:'',textContent:'',files:[],handlers:{},addEventListener(t,f){this.handlers[t]=f},click(){return this.handlers.click?.()}});return els.get(id)};
  for(const [id,value] of Object.entries({lmsMinute:'70',lmsScoreH:'1',lmsScoreA:'0',lmsRemH:'0.4',lmsRemA:'0.3',lmsShockLimit:'10',lmsOddsSnapshots:'[]',lmsMinHistory:'3',lmsWindow:'5',lmsWeatherBase:'',lmsWeatherLat:'',lmsWeatherLon:'',lmsWeatherDate:'',lmsWeatherHour:'15'}))get(id).value=value;
- let ready;
+ let ready;const win={handler:null,addEventListener:(name,fn)=>{if(name==='ufi:live-feed')win.handler=fn}};
  const document={getElementById:get,addEventListener:(name,fn)=>{if(name==='DOMContentLoaded')ready=fn},createElement:()=>({click(){},set href(v){},set download(v){}})};
  const Reader=function(){this.readAsText=file=>{this.result=file.content;this.onload()}};
- vm.runInNewContext(fs.readFileSync('live-market-shock-backtest.js','utf8'),{document,Math,Number,String,JSON,Array,Object,Date,Map,Set,URL,URLSearchParams,Blob,console,fetch:fetchImpl,FileReader:Reader});
- ready();
+ vm.runInNewContext(fs.readFileSync('live-market-shock-backtest.js','utf8'),{document,window:win,CustomEvent:function(){},Math,Number,String,JSON,Array,Object,Date,Map,Set,URL,URLSearchParams,Blob,console,fetch:fetchImpl,FileReader:Reader});
+ ready();get.emitLive=payload=>win.handler?.({detail:payload});
  return get;
 }
 function snapshots(a,b,first,second){
@@ -67,4 +67,13 @@ test('weather lookup works directly without a backend URL',async()=>{
  await g('lmsWeatherRun').click();
  assert.match(g('lmsWeatherOutput').innerHTML,/Open-Meteo direct/);
  assert.match(g('lmsWeatherOutput').innerHTML,/27 °C/);
+});
+
+test('selected live fixture updates current score and minute automatically',()=>{
+ const g=boot();g('lmsAutoFixture').value='9876';
+ g.emitLive({data:{data:[{id:9876,state:{minute:67},scores:[
+  {description:'CURRENT',score:{participant:'home',goals:2}},
+  {description:'CURRENT',score:{participant:'away',goals:1}}
+ ]}]}});
+ assert.equal(g('lmsScoreH').value,'2');assert.equal(g('lmsScoreA').value,'1');assert.equal(g('lmsMinute').value,'67');
 });
