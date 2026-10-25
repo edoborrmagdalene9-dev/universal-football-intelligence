@@ -16,6 +16,7 @@
 <button class="nav-item" data-view="scenarios"><span>◉</span> Scenario engine</button>
 <button class="nav-item" data-view="exactscore"><span>◎</span> Exact-score intelligence</button>
 <button class="nav-item" data-view="liveengine"><span>⚡</span> Live chaos engine</button>
+<button class="nav-item" data-view="universalengine"><span>🌐</span> Universal event & trap engine</button>
 <button class="nav-item" data-view="slips"><span>▤</span> Slip & odds lab</button>
 <button class="nav-item" data-view="backtest"><span>↗</span> Backtesting</button>
 <button class="nav-item" data-view="library"><span>▧</span> Research library</button>
@@ -128,6 +129,21 @@
 <div class="button-row"><button id="lcsRun" class="button primary">Run score & chaos audit</button><button id="lcsExample" class="button">Load example player profiles</button></div>
 <div class="panel"><div class="panel-head"><h2>Engine output</h2><span class="tag">EXPERIMENTAL</span></div><div id="lcsOutput" class="notice">Enter fixture rates and available player observations, then run the audit. No result is inferred until you run it.</div></div>
 </section>
+<section class="view" id="view-universalengine">
+<div class="page-heading"><div><div class="eyebrow">EXPERIMENTAL STATE SIMULATION</div><h1>Universal Match State & Trap Engine</h1><p>Event-driven score branches, structural stagnation, environmental context and chaos circuit breaker.</p></div></div>
+<div class="notice warning"><b>Manual-input prototype:</b> this view does not automatically ingest live events, referee statistics, weather or player tracking. Enter sourced observations. Experimental multipliers are not calibrated or guaranteed.</div>
+<div class="panel"><h2>Match state</h2><div class="form-grid three">
+<label>Home team<input id="umeHome" value="Home team"></label><label>Away team<input id="umeAway" value="Away team"></label><label>Minute<input id="umeMinute" type="number" min="0" max="120" value="35"></label>
+<label>Home current score<input id="umeScoreH" type="number" min="0" max="20" value="0"></label><label>Away current score<input id="umeScoreA" type="number" min="0" max="20" value="0"></label><label>Live mode <span class="check-row"><input id="umeLive" type="checkbox" checked> Condition on current score</span></label>
+<label>Baseline home expected goals<input id="umeXgH" type="number" min="0" max="6" step=".05" value="1.3"></label><label>Baseline away expected goals<input id="umeXgA" type="number" min="0" max="6" step=".05" value="1.1"></label><label>Chaos circuit-breaker limit<input id="umeChaosLimit" type="number" min=".5" max="10" step=".25" value="2.5"></label>
+</div></div>
+<div class="form-grid two">
+<div class="panel"><h2>360° state baseline (JSON)</h2><p class="muted">Include home/away block, PPDA, staminaDip80, possessionShare; environment pitch/rain/wind/temperatureC; referee strictness/avgYellow/avgRed/penaltyIndex; transitions, finalThirdEntries, progressivePasses, expectedTransitions, expectedFinalThirdEntries, entropy.</p><textarea id="umeState" rows="13" placeholder='{"home":{"block":"low","ppda":12,"staminaDip80":0.15,"possessionShare":40},"away":{"block":"mid","ppda":9,"staminaDip80":0.1,"possessionShare":60},"environment":{"pitch":"normal","rain":0.2,"wind":0.1,"temperatureC":23},"referee":{"strictness":0.5,"avgYellow":4,"avgRed":0.1,"penaltyIndex":1},"transitions":3,"expectedTransitions":8,"finalThirdEntries":4,"expectedFinalThirdEntries":12,"progressivePasses":10,"entropy":0.25}'></textarea></div>
+<div class="panel"><h2>Ordered event timeline (JSON array)</h2><p class="muted">Events supported: foul, yellow, red, second_yellow, manager_red, key_playmaker_out, keeper_injury, attacking_sub, defensive_sub, var_goal_cancelled, penalty_missed, controversial_call, pitch_degradation, early_goal, woodwork, set_piece, own_goal, non_dominant_foot_error, high_disruption. Use team: home/away. Record actual score changes in current score fields.</p><textarea id="umeEvents" rows="13" placeholder='[{"type":"foul","team":"home"},{"type":"early_goal","team":"away"},{"type":"set_piece","team":"away"}]'></textarea></div>
+</div>
+<div class="button-row"><button id="umeRun" class="button primary">Run universal event simulation</button><button id="umeExample" class="button">Load example state & events</button></div>
+<div class="panel"><div class="panel-head"><h2>Universal simulation output</h2><span class="tag">EXPERIMENTAL</span></div><div id="umeOutput" class="notice">Add available match state and events, then run the simulation.</div></div>
+</section>
 <section class="view" id="view-backtest">
 <div class="page-heading"><div><div class="eyebrow">06 / VALIDATE</div><h1>Backtesting & calibration</h1><p>Keep predictions and outcomes together. Evaluate probability quality, not just wins.</p></div><button id="exportBacktest" class="button">Export CSV</button></div>
 <div class="form-grid two"><div class="panel"><h2>Log forecast</h2><label>Match / forecast ID<input id="btMatch" placeholder="Teams, date or match ID"></label><label>Forecast method<input id="btMethod" placeholder="e.g. independent Poisson v1"></label><div class="form-grid three"><label>Home win %<input id="btHome" type="number" min="0" max="100" value="45"></label><label>Draw %<input id="btDraw" type="number" min="0" max="100" value="28"></label><label>Away win %<input id="btAway" type="number" min="0" max="100" value="27"></label></div><label>Actual result<select id="btResult"><option value="H">Home win</option><option value="D">Draw</option><option value="A">Away win</option></select></label><label>Notes / data version<textarea id="btNotes" placeholder="Data cutoff, lineups, assumptions, caveats"></textarea></label><button id="saveBacktest" class="button primary">Save settled forecast</button><div id="btStatus" class="notice">Probabilities should sum to 100%; system normalizes them and records the original inputs.</div></div>
@@ -151,6 +167,7 @@
 <script src="ai-council.js?v=slip-ocr-fix-20261018"></script>
 <script src="exact-score-intelligence.js?v=exact-score-20261024-1"></script>
 <script src="live-correct-score-chaos-engine.js?v=live-chaos-20261025-1"></script>
+<script src="universal-match-state-engine.js?v=universal-events-20261025-1"></script>
 <script>
 /* Navigation safety net: keep page switching available even if another app module fails. */
 document.querySelectorAll('.nav-item').forEach(function(button){
