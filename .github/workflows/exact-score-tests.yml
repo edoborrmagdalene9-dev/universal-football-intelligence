@@ -20,5 +20,7 @@ jobs:
         run: node --test tests/exact-score-intelligence.test.js
       - name: Test live correct-score and chaos engine
         run: node --test tests/live-correct-score-chaos-engine.test.cjs
+      - name: Test universal event and trap engine
+        run: node --test tests/universal-match-state-engine.test.cjs
       - name: Test existing Python suite
         run: python -m unittest discover -s tests -p "test_*.py" -v
