@@ -12,6 +12,7 @@ python tools/ufi_multi_provider_server.py
 
 Configure the variables in the backend secret manager. The GitHub Pages frontend should call the HTTPS backend URL; it should never receive provider credentials. The server retains the original Sportmonks routes and adds:
 - `GET /api/providers/status` — configured/not-configured status only, not a connectivity test.
+- `GET /api/providers/health?providers=sportsgameodds,theoddsapi,weatherapi,sharpapi,openmeteo` — explicit live connectivity checks. Click the UI button to run it; this makes real provider requests and can consume quota. Results cache for 5 minutes. Test one provider with `&provider=theoddsapi` to limit quota use.
 - `GET /api/odds/sportsgameodds?sportID=SOCCER&leagueID=EPL&oddsAvailable=true&limit=50`
 - `GET /api/odds/the-odds-api?sport=soccer_epl&regions=uk&markets=h2h`
 - `GET /api/odds/sharpapi` — provisional adapter for the supplied base URL; confirm its exact endpoint/query contract in SharpAPI's own account docs before relying on it.
@@ -20,7 +21,7 @@ Configure the variables in the backend secret manager. The GitHub Pages frontend
 - `GET /api/ev?probability=0.25&odds=4.5` — transparent expected-return arithmetic.
 - `GET /api/arbitrage?odds=2.1,3.8,3.9` — checks the supplied mutually exclusive outcomes for a theoretical arbitrage margin.
 
-The new odds routes are adapters, not proof that all feeds are connected to the UI/model. Provider response shapes differ; normalize events into the shared UFI match context before the prediction supervisor consumes them. SharpAPI's schema is marked provisional until verified from provider documentation.
+The Exact-score Intelligence provider console dispatches normalized `/api/matches` results into the main app. The main app bridge merges valid home/away fixtures into its existing live-fixture list, which makes them available to existing fixture matching. It does not claim missing scores, events, lineups, or statistics, and it does not yet feed every prediction engine automatically. Provider response shapes differ. SharpAPI's schema remains provisional until verified against the account-specific contract.
 
 ## Quota-saving strategy
 - Prefer cached reads: SportsGameOdds is cached for 10 minutes (matching the documented free-tier update cadence); The Odds API is cached for 90 seconds; SharpAPI for 120 seconds; WeatherAPI for 30 minutes.
