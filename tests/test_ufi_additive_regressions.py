@@ -108,7 +108,7 @@ class RoutingAndSecretSafetyTests(unittest.TestCase):
 
     def test_weather_fallback_uses_requested_hour_not_current_conditions(self):
         weatherapi_payload = {
-            "location": {"name": "London", "tz_id": "Europe/London"},
+            "location": {"name": "Berlin", "tz_id": "Europe/Berlin"},
             "forecast": {"forecastday": [{
                 "date": "2026-10-27",
                 "hour": [
