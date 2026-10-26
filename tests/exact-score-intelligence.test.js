@@ -31,8 +31,9 @@ function boot() {
     Date, Math, Number, String, JSON, Array, Object, Set,
     console
   };
+  context.window = context;
   vm.runInNewContext(fs.readFileSync('exact-score-intelligence.js', 'utf8'), context);
-  context.window = context;\n  return { get, store, context };
+  return { get, store, context };
 }
 
 test('scoreline grid renders normalized 1X2 probabilities and scorelines', () => {
