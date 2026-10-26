@@ -6,6 +6,7 @@ without consuming provider quota or requiring API keys.
 import os
 import sys
 import unittest
+from io import BytesIO
 from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,6 +49,19 @@ class MatchNormalizationTests(unittest.TestCase):
         self.assertIsNone(rows[0]["score"])
         self.assertIn("kickoff", rows[0]["quality"]["missingRequiredFields"])
         self.assertFalse(rows[0]["quality"]["hasScore"])
+
+
+class ProviderErrorSanitizationTests(unittest.TestCase):
+    def test_boolean_error_payload_does_not_become_misleading_message(self):
+        http_error = adapters.urllib.error.HTTPError(
+            "https://provider.invalid/private?key=not-for-logs", 429, "Too Many Requests",
+            {}, BytesIO(b'{"error":true}'))
+        with patch.object(adapters.urllib.request, "urlopen", side_effect=http_error):
+            with self.assertRaises(adapters.AdapterError) as caught:
+                adapters._get_json("https://provider.invalid/private?key=not-for-logs")
+        self.assertIn("HTTP 429", str(caught.exception))
+        self.assertNotIn("True", str(caught.exception))
+        self.assertNotIn("not-for-logs", str(caught.exception))
 
 
 class ArithmeticTests(unittest.TestCase):
