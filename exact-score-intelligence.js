@@ -66,7 +66,7 @@ renderLedger();
 const API_KEY = 'ufi_exact_score_api_base_v1';
 let feedTimer = null;
 const DEFAULT_API_BASE = 'https://universal-football-intelligence.onrender.com';
-const feedBase = () => String($('esiApiBase')?.value || DEFAULT_API_BASE).trim().replace(/\\/+$/, '');
+const feedBase = () => String($('esiApiBase')?.value || DEFAULT_API_BASE).trim().replace(/\/+$/, '');
 function feedStatus(msg,bad=false){const el=$('esiFeedStatus');if(el){el.textContent=msg;el.className='notice '+(bad?'warning':'good')}}
 function safeBase(){
  const base=feedBase();
