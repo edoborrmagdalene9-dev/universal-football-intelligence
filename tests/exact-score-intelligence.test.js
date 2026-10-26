@@ -72,3 +72,36 @@ test('post-match audit permits unknown cause and preserves score evidence', () =
   assert.equal(records[0].selectedScore, '2-1');
   assert.equal(records[0].finalScore, '2-3');
 });
+
+
+test('historical CSV estimator applies team-specific rates instead of silently reusing defaults', async () => {
+  const { get } = boot();
+  const header = 'date,home_team,away_team,home_goals,away_goals';
+  const rows = [];
+  for (let i = 1; i <= 24; i++) {
+    const day = String(i).padStart(2, '0');
+    rows.push('2025-01-' + day + ',Alpha FC,Beta FC,' + (i % 3 === 0 ? 3 : 2) + ',' + (i % 4 === 0 ? 0 : 1));
+  }
+  get('esiHome').value = 'Alpha FC';
+  get('esiAway').value = 'Beta FC';
+  get('esiHistoryCutoff').value = '2025-02-01';
+  get('esiHistoricalCsv').files = [{ text: async () => [header, ...rows].join('\\n') }];
+  await get('esiHistoricalCsv').handlers.change({ target: get('esiHistoricalCsv') });
+  get('esiEstimateRates').click();
+  assert.notEqual(get('esiLambdaHome').value, '1.45');
+  assert.notEqual(get('esiLambdaAway').value, '1.20');
+  assert.match(get('esiRateStatus').textContent, /24 prior matches/);
+  assert.match(get('esiForecastSource').value, /historical results CSV/);
+});
+
+test('historical estimator refuses insufficient history rather than guessing', async () => {
+  const { get } = boot();
+  get('esiHome').value = 'Alpha';
+  get('esiAway').value = 'Beta';
+  get('esiHistoricalCsv').files = [{ text: async () => 'date,home_team,away_team,home_goals,away_goals\\n2025-01-01,Alpha,Beta,1,0' }];
+  await get('esiHistoricalCsv').handlers.change({ target: get('esiHistoricalCsv') });
+  get('esiEstimateRates').click();
+  assert.match(get('esiRateStatus').textContent, /Need at least 20 earlier matches/);
+  assert.equal(get('esiLambdaHome').value, '1.45');
+  assert.equal(get('esiLambdaAway').value, '1.20');
+});
