@@ -28,7 +28,7 @@ function boot() {
   Object.assign(get('lcsVolHome'), { value: '0' });
   Object.assign(get('lcsVolAway'), { value: '0' });
   Object.assign(get('lcsTcsLimit'), { value: '5' });
-  const context = { document: { getElementById: get }, Math, Number, String, JSON, Array, Object, Date, console };
+  const context = { document: { getElementById: get }, window: { addEventListener() {} }, Math, Number, String, JSON, Array, Object, Date, console };
   vm.runInNewContext(fs.readFileSync('live-correct-score-chaos-engine.js', 'utf8'), context);
   return get;
 }
