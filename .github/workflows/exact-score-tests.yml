@@ -34,5 +34,7 @@ jobs:
         run: node --test tests/crainee-unconventional-outcome-engine.test.cjs
       - name: Test Crainee Background Break Engine
         run: node --test tests/crainee-background-break-engine.test.cjs
+      - name: Test Crainee Subconscious Narrative Engine
+        run: node --test tests/crainee-subconscious-narrative-engine.test.cjs
       - name: Test existing Python suite
         run: python -m unittest discover -s tests -p "test_*.py" -v
