@@ -185,4 +185,50 @@ $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedT
 try{const savedBase=localStorage.getItem(API_KEY);if(savedBase&&$('esiApiBase'))$('esiApiBase').value=savedBase;}catch(_){}
 if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
 
+
+/* Multi-provider feed console: keys remain exclusively on the backend. */
+function mountMultiProviderConsole(){
+ const host=$('liveMarketShockPanel');
+ if(!host || $('ufiMultiProviderPanel')) return;
+ host.insertAdjacentHTML('beforeend',`
+ <article class="panel panel-wide" id="ufiMultiProviderPanel">
+  <div class="panel-head"><div><div class="eyebrow">MULTI-PROVIDER DATA ROUTER</div><h3>Odds & weather source console</h3></div><span class="tag">SERVER-SIDE KEYS</span></div>
+  <p class="muted">Uses the HTTPS backend URL from Exact-score intelligence. Keys are never entered into this page. Provider responses are shown with provenance; they are not automatically treated as calibrated model inputs.</p>
+  <div class="form-grid three">
+   <label>SportsGameOdds league ID<input id="ufiSgoLeague" value="EPL"></label>
+   <label>The Odds API sport key<input id="ufiOddsSport" value="soccer_epl"></label>
+   <label>Odds market<input id="ufiOddsMarket" value="h2h"></label>
+   <label>Odds region<input id="ufiOddsRegion" value="uk"></label>
+   <label>Weather latitude<input id="ufiWeatherLat" type="number" step="0.0001" value="6.5244"></label>
+   <label>Weather longitude<input id="ufiWeatherLon" type="number" step="0.0001" value="3.3792"></label>
+  </div>
+  <div class="button-row">
+   <button class="button" id="ufiProviderStatus">Check configured providers</button>
+   <button class="button" id="ufiSgoLoad">Load SportsGameOdds</button>
+   <button class="button" id="ufiOddsLoad">Load The Odds API</button>
+   <button class="button" id="ufiSharpLoad">Load SharpAPI</button>
+   <button class="button" id="ufiWeatherLoad">Load WeatherAPI</button>
+  </div>
+  <div id="ufiProviderStatusText" class="notice">Provider requests have not been run.</div>
+  <pre id="ufiProviderOutput" class="table-wrap" style="max-height:28rem;overflow:auto;white-space:pre-wrap">No provider response yet.</pre>
+ </article>`);
+ const out=$('ufiProviderOutput'), status=$('ufiProviderStatusText');
+ const run=async path=>{
+  const base=safeBase(); if(!base)return;
+  status.textContent='Requesting '+path+' …';
+  try{
+   const data=await fetchFeed(path);
+   out.textContent=JSON.stringify(data,null,2).slice(0,40000);
+   status.textContent='Response received. Verify source timestamp, provider coverage and data freshness before use.';
+   status.className='notice good';
+  }catch(e){status.textContent='Provider unavailable: '+e.message;status.className='notice warning';out.textContent='No usable response. Missing data remains unknown.';}
+ };
+ $('ufiProviderStatus')?.addEventListener('click',()=>run('/api/providers/status'));
+ $('ufiSgoLoad')?.addEventListener('click',()=>run('/api/odds/sportsgameodds?sportID=SOCCER&leagueID='+encodeURIComponent($('ufiSgoLeague').value||'EPL')+'&oddsAvailable=true&limit=50'));
+ $('ufiOddsLoad')?.addEventListener('click',()=>run('/api/odds/the-odds-api?sport='+encodeURIComponent($('ufiOddsSport').value||'soccer_epl')+'&regions='+encodeURIComponent($('ufiOddsRegion').value||'uk')+'&markets='+encodeURIComponent($('ufiOddsMarket').value||'h2h')));
+ $('ufiSharpLoad')?.addEventListener('click',()=>run('/api/odds/sharpapi'));
+ $('ufiWeatherLoad')?.addEventListener('click',()=>run('/api/weather/weatherapi?q='+encodeURIComponent(($('ufiWeatherLat').value||'6.5244')+','+($('ufiWeatherLon').value||'3.3792'))));
+}
+mountMultiProviderConsole();
+
 })();
