@@ -80,23 +80,48 @@ def _integrated_get_payload(route, query):
             try:
                 lat=(query.get("lat") or [""])[0]
                 lon=(query.get("lon") or [""])[0]
-                fallback,_=adapters.handle_extra_route("/api/weather/weatherapi",{"q":[lat+","+lon]})
+                requested_day=(query.get("date") or [date.today().isoformat()])[0]
+                requested_hour=int((query.get("hour") or ["12"])[0])
+                fallback,_=adapters.handle_extra_route(
+                    "/api/weather/weatherapi",{"q":[lat+","+lon],"date":[requested_day]})
                 payload=fallback.get("data") or {}
-                current=payload.get("current") or {}
-                if current:
+                # Prefer a true hourly forecast/history point for the requested
+                # kickoff. Never silently substitute current weather for a future
+                # or historical match.
+                location=payload.get("location") or {}
+                timezone_name=location.get("tz_id") or "UTC"
+                from datetime import datetime, timezone
+                from zoneinfo import ZoneInfo
+                requested_utc=datetime.fromisoformat(
+                    requested_day+"T"+f"{requested_hour:02d}:00").replace(tzinfo=timezone.utc)
+                requested_local=requested_utc.astimezone(ZoneInfo(timezone_name))
+                days=((payload.get("forecast") or {}).get("forecastday") or [])
+                target_day=requested_local.date().isoformat()
+                day_record=next((item for item in days if item.get("date")==target_day),None)
+                hours=(day_record or {}).get("hour") or []
+                if hours:
+                    def hour_distance(item):
+                        try:
+                            parsed=datetime.fromisoformat(item.get("time","").replace(" ","T"))
+                            return abs((parsed-requested_local.replace(tzinfo=None)).total_seconds())
+                        except (TypeError,ValueError):
+                            return float("inf")
+                    point=min(hours,key=hour_distance)
+                    current=point
                     return {"source":"WeatherAPI.com","fallbackUsed":True,
-                            "fallbackReason":"Open-Meteo unavailable; returned current conditions only",
+                            "fallbackReason":"Open-Meteo unavailable; using WeatherAPI hourly data",
                             "fetchedAt":fallback.get("fetchedAt"),
                             "requested":{"latitude":lat,"longitude":lon,
-                                         "date":(query.get("date") or [date.today().isoformat()])[0],
-                                         "hourUtc":(query.get("hour") or ["12"])[0]},
+                                         "date":requested_day,"hourUtc":requested_hour},
+                            "matchedLocalTime":point.get("time"),
+                            "location":{"name":location.get("name"),"timezone":timezone_name},
                             "weather":{"temperatureC":current.get("temp_c"),
                                        "relativeHumidityPct":current.get("humidity"),
                                        "precipitationMm":current.get("precip_mm"),
-                                       "precipitationProbabilityPct":None,
+                                       "precipitationProbabilityPct":current.get("chance_of_rain"),
                                        "windSpeedKmh":current.get("wind_kph")},
-                            "note":"Fallback is current conditions for the nearest WeatherAPI location, not the requested historical/hourly stadium forecast."},False
-            except (adapters.AdapterError,TypeError,ValueError):
+                            "note":"Hourly WeatherAPI forecast/history for the nearest provider location; grid-cell/stadium conditions may differ."},False
+            except (adapters.AdapterError,TypeError,ValueError,KeyError,OverflowError):
                 pass
         raise exc
 legacy.get_payload = _integrated_get_payload
