@@ -32,6 +32,23 @@ def _get_json(url, headers=None, timeout=12):
             return payload, dict(response.headers.items())
     except urllib.error.HTTPError as exc:
         # Never include the URL in the error; query strings may contain credentials.
+        # Providers often return the actionable invalid-parameter reason in JSON.
+        detail=""
+        try:
+            raw=exc.read(2048).decode("utf-8","replace")
+            parsed=json.loads(raw)
+            if isinstance(parsed,dict):
+                detail=parsed.get("error") or parsed.get("message") or parsed.get("detail") or ""
+            elif isinstance(parsed,str):
+                detail=parsed
+        except Exception:
+            detail=""
+        if detail:
+            for secret_name in ("SPORTSGAMEODDS_API_KEY","THE_ODDS_API_KEY","SHARPAPI_KEY","WEATHERAPI_KEY","SPORTMONKS_API_TOKEN"):
+                secret=os.getenv(secret_name,"").strip()
+                if secret: detail=str(detail).replace(secret,"[redacted]")
+            detail=" ".join(str(detail).split())[:240]
+            raise AdapterError("Provider returned HTTP %s: %s" % (exc.code,detail)) from exc
         raise AdapterError("Provider returned HTTP %s; verify credentials, endpoint, coverage and quota." % exc.code) from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise AdapterError("Provider unavailable: %s" % type(exc).__name__) from exc
@@ -83,8 +100,12 @@ def _sharp(query):
     if not key: raise AdapterError("SHARPAPI_KEY is not configured on the server.")
     # Forward only documented, non-secret filter parameters. The exact SharpAPI
     # schema must be confirmed against the account's current API docs before use.
-    allowed=("sport","league","date","from","to","event_id","market","region")
+    allowed=("sport","league","date","from","to","event_id","market","market_type","region","sportsbook","is_live","limit")
     params={k:(query.get(k) or [""])[0] for k in allowed if (query.get(k) or [""])[0]}
+    # Keep health checks and empty-filter requests small on the free tier.
+    params.setdefault("sportsbook","draftkings")
+    params.setdefault("is_live","false")
+    params["limit"]=str(min(5,max(1,int(params.get("limit","5")))))
     payload,hit=_cached("sharp:"+urllib.parse.urlencode(params),_TTLS["sharp"],
                          lambda:_get_json(_query_url(base,params),{"X-API-Key":key})[0])
     return {"ok":True,"source":"SharpAPI","fetchedAt":time.time(),"cacheHit":hit,
