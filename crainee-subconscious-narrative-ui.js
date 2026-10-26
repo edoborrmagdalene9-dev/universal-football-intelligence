@@ -7,7 +7,7 @@
  let clockUnit=0,lastTick=Date.now(),clockTimer=null;
  const clock=document.getElementById('snClock'),progress=document.getElementById('snProgress');
  function updateClock(){const elapsed=Date.now()-lastTick;if(elapsed>=3000){const steps=Math.floor(elapsed/3000);clockUnit=(clockUnit+steps*180)%(5400+180);if(clockUnit>5400)clockUnit=0;lastTick+=steps*3000;}
- const zone=clockUnit<=1800?'DEFENSE':clockUnit<=3600?'MIDFIELD':'ATTACK';clock.textContent='Unit '+clockUnit+' / 5400 · '+zone+' · next calculation in '+Math.max(0,Math.ceil((3000-(Date.now()-lastTick))/1000))+'s';progress.value=clockUnit;}
+ const zone=clockUnit<=1800?'DEFENSE':clockUnit<=3600?'MIDFIELD':'ATTACK';const samples=window.CraineeSubconsciousNarrativeEngine.runPositionalMicroSimulations({});const current=samples.find(s=>s.unit===clockUnit)||samples[samples.length-1];clock.textContent='Unit '+clockUnit+' / 5400 · '+zone+' · positional candidate '+current.scoreline+' · next calculation in '+Math.max(0,Math.ceil((3000-(Date.now()-lastTick))/1000))+'s';progress.value=clockUnit;}
  clockTimer=setInterval(updateClock,250);window.addEventListener('pagehide',()=>{if(clockTimer)clearInterval(clockTimer);},{once:true});
  document.getElementById('snRun').addEventListener('click',()=>{const status=document.getElementById('snStatus'),out=document.getElementById('snResults');try{
  const names=document.getElementById('snMissing').value.split(',').map(s=>s.trim()).filter(Boolean);
