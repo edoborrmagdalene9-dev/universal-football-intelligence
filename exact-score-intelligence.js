@@ -65,7 +65,8 @@ renderLedger();
 /* Optional secret-safe live provider proxy. The browser never receives the provider token. */
 const API_KEY = 'ufi_exact_score_api_base_v1';
 let feedTimer = null;
-const feedBase = () => String($('esiApiBase')?.value || '').trim().replace(/\/+$/, '');
+const DEFAULT_API_BASE = 'https://universal-football-intelligence.onrender.com';
+const feedBase = () => String($('esiApiBase')?.value || DEFAULT_API_BASE).trim().replace(/\\/+$/, '');
 function feedStatus(msg,bad=false){const el=$('esiFeedStatus');if(el){el.textContent=msg;el.className='notice '+(bad?'warning':'good')}}
 function safeBase(){
  const base=feedBase();
@@ -115,7 +116,7 @@ $('esiConnectFeed')?.addEventListener('click',()=>{const base=safeBase();if(!bas
 $('esiLoadFixtures')?.addEventListener('click',loadDateFixtures);
 $('esiLoadFixtureDetails')?.addEventListener('click',loadFixtureDetails);
 $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedTimer);feedTimer=null;feedStatus('Automatic refresh stopped.')});
-try{const savedBase=localStorage.getItem(API_KEY);if(savedBase&&$('esiApiBase'))$('esiApiBase').value=savedBase;}catch(_){}
+try{const savedBase=localStorage.getItem(API_KEY);if($('esiApiBase'))$('esiApiBase').value=savedBase||DEFAULT_API_BASE;}catch(_){if($('esiApiBase'))$('esiApiBase').value=DEFAULT_API_BASE;}
 if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
 
 })();
