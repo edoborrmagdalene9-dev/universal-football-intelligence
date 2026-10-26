@@ -4,6 +4,7 @@ No provider key is embedded in code, responses, logs, or browser-facing configur
 from __future__ import annotations
 import json, os, time, urllib.parse, urllib.request, urllib.error
 from datetime import datetime, timezone
+from ufi_match_context import normalize_provider_payload
 
 class AdapterError(Exception):
     pass
@@ -122,7 +123,22 @@ def calculate_arbitrage(query):
             "equalPayoutStakeFractions":[(1/x)/implied for x in odds],
             "warning":"Valid only when odds cover every mutually exclusive outcome with identical settlement rules; fees, limits and price changes can erase the margin."}
 
+def _normalized_matches(query):
+    if os.getenv("SPORTSGAMEODDS_API_KEY","").strip():
+        raw=_sgo_events(query)
+        records=normalize_provider_payload("SportsGameOdds",raw.get("data"),raw.get("fetchedAt"))
+        return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
+                "data":records,"recordCount":len(records),"note":"Scores/events/lineups remain unknown when absent from the source."}
+    if os.getenv("THE_ODDS_API_KEY","").strip():
+        raw=_odds_api((query.get("sport") or ["soccer_epl"])[0],query)
+        records=normalize_provider_payload("The Odds API",raw.get("data"),raw.get("fetchedAt"))
+        return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
+                "data":records,"recordCount":len(records),"note":"Odds-only feed: score, lineups, events and statistics are intentionally unknown."}
+    raise AdapterError("Configure SPORTSGAMEODDS_API_KEY or THE_ODDS_API_KEY on the backend to load normalized match records.")
+
 def handle_extra_route(route, query):
+    if route == "/api/matches":
+        return _normalized_matches(query),False
     if route == "/api/providers/status":
         names={"sharpapi":bool(os.getenv("SHARPAPI_KEY","").strip()),
                "weatherapi":bool(os.getenv("WEATHERAPI_KEY","").strip()),
