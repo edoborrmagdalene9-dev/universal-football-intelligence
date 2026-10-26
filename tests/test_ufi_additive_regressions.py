@@ -82,8 +82,8 @@ class EmptyPrimaryFeedFallbackTests(unittest.TestCase):
         empty_sportmonks = {"source": "Sportmonks", "data": {"data": [], "message": "No results"}}
         sgo_response = {"source": "SportsGameOdds", "fetchedAt": "2026-10-26T20:00:00Z",
                         "cacheHit": False, "data": {"data": [live_event]}}
-        with patch.object(server, "_original_get_payload", return_value=(empty_sportmonks, True)), \\
-             patch.object(adapters, "handle_extra_route", return_value=None), \\
+        with patch.object(server, "_original_get_payload", return_value=(empty_sportmonks, True)), \
+             patch.object(adapters, "handle_extra_route", return_value=None), \
              patch.object(adapters, "_sgo_events", return_value=sgo_response) as mock_sgo:
             result, cache_hit = server._integrated_get_payload("/api/live", {})
         self.assertFalse(cache_hit)
@@ -104,8 +104,8 @@ class EmptyPrimaryFeedFallbackTests(unittest.TestCase):
         empty_sportmonks = {"source": "Sportmonks", "data": {"data": [], "message": "No results"}}
         odds_response = {"source": "The Odds API", "fetchedAt": 1793133600,
                          "cacheHit": False, "data": events}
-        with patch.object(server, "_original_get_payload", return_value=(empty_sportmonks, True)), \\
-             patch.object(adapters, "handle_extra_route", return_value=None), \\
+        with patch.object(server, "_original_get_payload", return_value=(empty_sportmonks, True)), \
+             patch.object(adapters, "handle_extra_route", return_value=None), \
              patch.object(adapters, "_odds_api", return_value=odds_response) as mock_odds:
             result, cache_hit = server._integrated_get_payload(
                 "/api/fixtures", {"date": ["2026-10-27"]})
