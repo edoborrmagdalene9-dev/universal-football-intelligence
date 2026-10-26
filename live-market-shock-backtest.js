@@ -213,18 +213,26 @@ function syncLiveScore(payload){
   const fixtureId=String(($('lmsAutoFixture').value||($('esiProviderFixtureId')&&$('esiProviderFixtureId').value)||'')).trim();
   if(!fixtureId)return;
   const root=payload&&payload.data,rows=Array.isArray(root)?root:(Array.isArray(root&&root.data)?root.data:(Array.isArray(root&&root.data&&root.data.data)?root.data.data:[]));
-  const f=rows.find(x=>String(x.id??x.fixture_id??'')===fixtureId);if(!f)return;
-  const scores=Array.isArray(f.scores)?f.scores:[],current=scores.filter(s=>String(s.description||'').toUpperCase()==='CURRENT');
+  const f=rows.find(x=>String(x.id??x.fixture_id??x.fixtureId??'')===fixtureId);if(!f)return;
   let h=null,a=null;
-  for(const s of current){
-   const side=String(s.score&&s.score.participant||s.participant&&s.participant.meta&&s.participant.meta.location||s.location||'').toLowerCase();
-   const goals=Number(s.score&&s.score.goals!==undefined?s.score.goals:s.goals);
-   if(!Number.isInteger(goals)||goals<0)continue;
-   if(side==='home')h=goals;if(side==='away')a=goals;
+  const direct=f.score;
+  if(direct&&typeof direct==='object'){
+   const dh=direct.home??direct.homeScore??direct.home_score,da=direct.away??direct.awayScore??direct.away_score;
+   if(dh!=null&&da!=null&&Number.isInteger(Number(dh))&&Number.isInteger(Number(da))){h=Number(dh);a=Number(da);}
+  }
+  if((h===null||a===null)&&f.home_score!=null&&f.away_score!=null&&Number.isInteger(Number(f.home_score))&&Number.isInteger(Number(f.away_score))){h=Number(f.home_score);a=Number(f.away_score);}
+  if(h===null||a===null){
+   const scores=Array.isArray(f.scores)?f.scores:[],current=scores.filter(s=>String(s.description||'').toUpperCase()==='CURRENT');
+   for(const s of current){
+    const side=String(s.score&&s.score.participant||s.participant&&s.participant.meta&&s.participant.meta.location||s.location||'').toLowerCase();
+    const goals=Number(s.score&&s.score.goals!==undefined?s.score.goals:s.goals);
+    if(!Number.isInteger(goals)||goals<0)continue;
+    if(side==='home')h=goals;if(side==='away')a=goals;
+   }
   }
   if(h===null||a===null)return;
   $('lmsScoreH').value=String(h);$('lmsScoreA').value=String(a);
-  const minute=Number((f.state&&f.state.minute) ?? f.minute ?? f.elapsed);
+  const minute=Number((f.state&&f.state.minute) ?? (f.status&&f.status.clock) ?? f.minute ?? f.elapsed);
   if(Number.isFinite(minute)&&minute>=0)$('lmsMinute').value=String(minute);
   const status=$('lmsAutoStatus');if(status)status.innerHTML+=' · score synced from live feed: '+h+'–'+a+(Number.isFinite(minute)?' at '+minute+'′':'');
  }catch(_){/* Keep unknown score unknown if provider schema is incomplete. */}
