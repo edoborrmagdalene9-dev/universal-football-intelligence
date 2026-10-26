@@ -4,7 +4,10 @@ No provider key is embedded in code, responses, logs, or browser-facing configur
 from __future__ import annotations
 import json, os, time, urllib.parse, urllib.request, urllib.error
 from datetime import datetime, timezone
-from ufi_match_context import normalize_provider_payload
+try:
+    from .ufi_match_context import normalize_provider_payload
+except ImportError:
+    from ufi_match_context import normalize_provider_payload
 
 class AdapterError(Exception):
     pass
@@ -88,7 +91,8 @@ def _weatherapi(query):
     location=(query.get("q") or [""])[0]
     if not location: raise AdapterError("WeatherAPI requires q=latitude,longitude or a supported location.")
     day=(query.get("date") or [""])[0]
-    endpoint="forecast.json" if day and day >= datetime.now(timezone.utc).date().isoformat() else "current.json"
+    today=datetime.now(timezone.utc).date().isoformat()
+    endpoint=("history.json" if day < today else "forecast.json") if day else "current.json"
     params={"key":key,"q":location,"days":"3" if endpoint=="forecast.json" else None,"dt":day or None,"aqi":"no","alerts":"no"}
     url="https://api.weatherapi.com/v1/"+endpoint
     cachekey="weatherapi:"+endpoint+":"+location+":"+day
