@@ -72,6 +72,54 @@ class ArithmeticTests(unittest.TestCase):
             adapters.calculate_arbitrage({"odds": ["2.0,1.0"]})
 
 
+class EmptyPrimaryFeedFallbackTests(unittest.TestCase):
+    def test_empty_live_feed_uses_only_provider_marked_live_events(self):
+        live_event = {
+            "eventID": "live-1",
+            "teams": {"home": {"name": "Home FC"}, "away": {"name": "Away FC"}},
+            "status": {"startsAt": "2026-10-26T20:00:00Z", "started": True},
+        }
+        empty_sportmonks = {"source": "Sportmonks", "data": {"data": [], "message": "No results"}}
+        sgo_response = {"source": "SportsGameOdds", "fetchedAt": "2026-10-26T20:00:00Z",
+                        "cacheHit": False, "data": {"data": [live_event]}}
+        with patch.object(server, "_original_get_payload", return_value=(empty_sportmonks, True)), \\
+             patch.object(adapters, "handle_extra_route", return_value=None), \\
+             patch.object(adapters, "_sgo_events", return_value=sgo_response) as mock_sgo:
+            result, cache_hit = server._integrated_get_payload("/api/live", {})
+        self.assertFalse(cache_hit)
+        self.assertTrue(result["fallbackUsed"])
+        self.assertEqual(result["source"], "SportsGameOdds")
+        self.assertEqual(result["recordCount"], 1)
+        self.assertEqual(result["data"][0]["fixtureId"], "live-1")
+        self.assertEqual(mock_sgo.call_args.args[0]["live"], ["true"])
+        self.assertEqual(mock_sgo.call_args.args[0]["started"], ["true"])
+
+    def test_empty_date_feed_uses_odds_fallback_and_filters_to_requested_date(self):
+        events = [
+            {"id": "in-date", "sport_key": "soccer_epl", "commence_time": "2026-10-27T18:00:00Z",
+             "home_team": "Home FC", "away_team": "Away FC", "bookmakers": []},
+            {"id": "wrong-date", "sport_key": "soccer_epl", "commence_time": "2026-10-28T18:00:00Z",
+             "home_team": "Other Home", "away_team": "Other Away", "bookmakers": []},
+        ]
+        empty_sportmonks = {"source": "Sportmonks", "data": {"data": [], "message": "No results"}}
+        odds_response = {"source": "The Odds API", "fetchedAt": 1793133600,
+                         "cacheHit": False, "data": events}
+        with patch.object(server, "_original_get_payload", return_value=(empty_sportmonks, True)), \\
+             patch.object(adapters, "handle_extra_route", return_value=None), \\
+             patch.object(adapters, "_odds_api", return_value=odds_response) as mock_odds:
+            result, cache_hit = server._integrated_get_payload(
+                "/api/fixtures", {"date": ["2026-10-27"]})
+        self.assertFalse(cache_hit)
+        self.assertTrue(result["fallbackUsed"])
+        self.assertEqual(result["source"], "The Odds API")
+        self.assertEqual(result["recordCount"], 1)
+        self.assertEqual(result["data"][0]["fixtureId"], "in-date")
+        self.assertIsNone(result["data"][0]["score"])
+        self.assertIsNone(result["data"][0]["lineups"])
+        self.assertEqual(mock_odds.call_args.args[1]["from"], ["2026-10-27T00:00:00Z"])
+        self.assertEqual(mock_odds.call_args.args[1]["to"], ["2026-10-28T00:00:00Z"])
+
+
 class RoutingAndSecretSafetyTests(unittest.TestCase):
     def test_provider_status_never_returns_secret_values(self):
         with patch.dict(os.environ, {
