@@ -80,8 +80,12 @@ def _sgo_events(query):
     # one of these filters: some API gateway/schema versions reject both together.
     league=(query.get("leagueID") or ["EPL"])[0].strip()
     sport=(query.get("sportID") or ["SOCCER"])[0].strip()
-    params={"leagueID":league,"oddsAvailable":(query.get("oddsAvailable") or ["true"])[0],
-            "limit":min(100,max(1,int((query.get("limit") or ["50"])[0])))}
+    # Match the provider's documented v2/events request shape: explicitly
+    # disable alternate lines for the smallest, cheapest default response.
+    params={"leagueID":league,
+            "oddsAvailable":(query.get("oddsAvailable") or ["true"])[0],
+            "includeAltLines":(query.get("includeAltLines") or ["false"])[0],
+            "limit":min(100,max(1,int((query.get("limit") or ["1"])[0])))}
     if not league:
         params.pop("leagueID",None)
         params["sportID"]=sport or "SOCCER"
