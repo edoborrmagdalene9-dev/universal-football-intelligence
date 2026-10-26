@@ -85,7 +85,7 @@ test('historical CSV estimator applies team-specific rates with a strict date cu
     rows.push('2025-01-' + day + ',Alpha FC,Beta FC,' + (i % 3 === 0 ? 3 : 2) + ',' + (i % 4 === 0 ? 0 : 1));
   }
   const estimator = context.UFIHistoricalRateEstimator;
-  const parsed = estimator.parseCsv([header, ...rows].join('\\n'));
+  const parsed = estimator.parseCsv([header, ...rows].join('\n'));
   const rates = estimator.estimateRates(parsed, 'Alpha FC', 'Beta FC', '2025-02-01');
   assert.equal(rates.matchesUsed, 24);
   assert.notEqual(rates.lambdaHome.toFixed(2), '1.45');
@@ -97,7 +97,7 @@ test('historical CSV estimator applies team-specific rates with a strict date cu
 test('historical estimator refuses insufficient history and missing cutoff', () => {
   const { context } = boot();
   const estimator = context.UFIHistoricalRateEstimator;
-  const parsed = estimator.parseCsv('date,home_team,away_team,home_goals,away_goals\\n2025-01-01,Alpha,Beta,1,0');
+  const parsed = estimator.parseCsv('date,home_team,away_team,home_goals,away_goals\n2025-01-01,Alpha,Beta,1,0');
   assert.throws(() => estimator.estimateRates(parsed, 'Alpha', 'Beta', '2025-02-01'), /Need at least 20 earlier matches/);
   assert.throws(() => estimator.estimateRates(parsed, 'Alpha', 'Beta', ''), /valid forecast kickoff\/cutoff date/);
 });
