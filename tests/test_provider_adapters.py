@@ -30,5 +30,23 @@ class ProviderAdapterTests(unittest.TestCase):
         with self.assertRaises(adapters.AdapterError):
             adapters.calculate_arbitrage({"odds":["1.0,2.0"]})
 
+
+    def test_health_route_reports_missing_keys_without_networking(self):
+        adapters._CACHE.clear()
+        with patch.dict(os.environ, {}, clear=True), patch.object(adapters, "_get_json", return_value=({"current":{"temperature_2m":30}},{})):
+            payload, hit = adapters.handle_extra_route("/api/providers/health", {"providers":["sportsgameodds,theoddsapi,weatherapi,sharpapi,openmeteo"]})
+        self.assertFalse(hit)
+        self.assertFalse(payload["checks"]["sportsgameodds"]["reachable"])
+        self.assertEqual(payload["checks"]["theoddsapi"]["status"], "not-configured")
+        self.assertTrue(payload["checks"]["openmeteo"]["reachable"])
+        self.assertNotIn("apiKey", str(payload))
+
+    def test_health_probe_uses_provider_adapter_and_does_not_echo_key(self):
+        adapters._CACHE.clear()
+        with patch.dict(os.environ, {"SPORTSGAMEODDS_API_KEY":"dummy-test-secret"}, clear=False), patch.object(adapters, "_sgo_events", return_value={"source":"SportsGameOdds","data":[{"eventID":"fixture-1"}]}):
+            payload, hit = adapters.handle_extra_route("/api/providers/health", {"provider":["sportsgameodds"]})
+        self.assertTrue(payload["checks"]["sportsgameodds"]["reachable"])
+        self.assertNotIn("dummy-test-secret", str(payload))
+
 if __name__ == "__main__":
     unittest.main()
