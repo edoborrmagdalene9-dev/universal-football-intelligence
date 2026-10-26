@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ufi-multi-provider-proxy
+    runtime: python
+    plan: free
+    buildCommand: "python --version"
+    startCommand: "python tools/ufi_multi_provider_server.py"
+    healthCheckPath: /api/health
+    envVars:
+      - key: UFI_ALLOWED_ORIGIN
+        value: https://edoborrmagdalene9.github.io
+      - key: SPORTMONKS_API_TOKEN
+        sync: false
+      - key: SHARPAPI_KEY
+        sync: false
+      - key: SHARPAPI_BASE_URL
+        value: https://api.sharpapi.io/api/v1/odds
+      - key: WEATHERAPI_KEY
+        sync: false
+      - key: THE_ODDS_API_KEY
+        sync: false
+      - key: SPORTSGAMEODDS_API_KEY
+        sync: false
