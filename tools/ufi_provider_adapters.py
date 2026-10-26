@@ -142,9 +142,61 @@ def _normalized_matches(query):
                 "data":records,"recordCount":len(records),"note":"Odds-only feed: score, lineups, events and statistics are intentionally unknown."}
     raise AdapterError("Configure SPORTSGAMEODDS_API_KEY or THE_ODDS_API_KEY on the backend to load normalized match records.")
 
+
+def _provider_health(query):
+    """Explicit, quota-aware connectivity checks; invoke only when the user clicks Test."""
+    requested=(query.get("providers") or query.get("provider") or ["sportsGameOdds,theOddsApi,weatherapi,sharpapi,openMeteo"])[0]
+    names=[x.strip().lower() for x in requested.split(",") if x.strip()]
+    if not names or names==["all"]:
+        names=["sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo"]
+    aliases={"sgo":"sportsgameodds","odds":"theoddsapi","the-odds-api":"theoddsapi","weatherapi.com":"weatherapi","open-meteo":"openmeteo"}
+    names=[aliases.get(x,x) for x in names]
+    allowed={"sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo"}
+    unknown=[x for x in names if x not in allowed]
+    if unknown: raise AdapterError("Unknown provider name: "+", ".join(unknown))
+    results={}
+    for name in dict.fromkeys(names):
+        configured=True
+        def probe():
+            if name=="sportsgameodds":
+                if not os.getenv("SPORTSGAMEODDS_API_KEY","").strip(): raise AdapterError("SPORTSGAMEODDS_API_KEY is not configured.")
+                result=_sgo_events({"sportID":["SOCCER"],"leagueID":[(query.get("leagueID") or ["EPL"])[0]],"limit":["1"],"oddsAvailable":["true"]})
+                return {"source":result.get("source"),"records":len(((result.get("data") or {}).get("data") or (result.get("data") or {}).get("events") or [])) if isinstance(result.get("data"),dict) else (len(result.get("data")) if isinstance(result.get("data"),list) else None)}
+            if name=="theoddsapi":
+                if not os.getenv("THE_ODDS_API_KEY","").strip(): raise AdapterError("THE_ODDS_API_KEY is not configured.")
+                result=_odds_api((query.get("sport") or ["soccer_epl"])[0],{"regions":["uk"],"markets":["h2h"]})
+                data=result.get("data")
+                return {"source":"The Odds API","records":len(data) if isinstance(data,list) else None,"quota":result.get("quota")}
+            if name=="weatherapi":
+                if not os.getenv("WEATHERAPI_KEY","").strip(): raise AdapterError("WEATHERAPI_KEY is not configured.")
+                result=_weatherapi({"q":[(query.get("q") or ["6.5244,3.3792"])[0]]})
+                data=result.get("data") or {}
+                return {"source":"WeatherAPI.com","location":(data.get("location") or {}).get("name"),"currentAvailable":isinstance(data.get("current"),dict)}
+            if name=="sharpapi":
+                if not os.getenv("SHARPAPI_KEY","").strip(): raise AdapterError("SHARPAPI_KEY is not configured.")
+                result=_sharp({})
+                return {"source":"SharpAPI","contractStatus":result.get("contractStatus"),"responseReceived":result.get("data") is not None}
+            if name=="openmeteo":
+                url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode({"latitude":"6.5244","longitude":"3.3792","current":"temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"})
+                data,_headers=_get_json(url)
+                return {"source":"Open-Meteo","currentAvailable":isinstance(data.get("current"),dict)}
+        try:
+            value,cache_hit=_cached("health:"+name+":"+str((query.get("sport") or ["soccer_epl"])[0])+":"+str((query.get("q") or ["Lagos"])[0]),300,probe)
+            results[name]={"reachable":True,"status":"ok","cacheHit":cache_hit,**value}
+        except AdapterError as exc:
+            message=str(exc)
+            configured=not message.endswith("is not configured.")
+            results[name]={"reachable":False,"status":"not-configured" if not configured else "error","message":message}
+        except Exception as exc:
+            results[name]={"reachable":False,"status":"error","message":"Probe failed safely: "+type(exc).__name__}
+    return {"ok":all(v["reachable"] for v in results.values()),"checkedAt":datetime.now(timezone.utc).isoformat(),
+            "checks":results,"note":"Connectivity test makes real provider requests and may consume quota. Results are cached for 5 minutes. SharpAPI remains provisional until its endpoint contract is confirmed."}
+
 def handle_extra_route(route, query):
     if route == "/api/matches":
         return _normalized_matches(query),False
+    if route == "/api/providers/health":
+        return _provider_health(query),False
     if route == "/api/providers/status":
         names={"sharpapi":bool(os.getenv("SHARPAPI_KEY","").strip()),
                "weatherapi":bool(os.getenv("WEATHERAPI_KEY","").strip()),
