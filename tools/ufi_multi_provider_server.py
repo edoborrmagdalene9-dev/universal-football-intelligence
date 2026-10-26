@@ -72,6 +72,33 @@ def _integrated_get_payload(route, query):
         return _original_get_payload(route,query)
     except adapters.AdapterError as exc:
         raise legacy.ProviderError(str(exc)) from exc
+    except legacy.ProviderError as exc:
+        # If Open-Meteo is temporarily rate-limited/unavailable, return a clearly
+        # labelled WeatherAPI current observation as a fallback. Do not pretend
+        # it is an hourly kickoff forecast or historical observation.
+        if route == "/api/weather" and os.getenv("WEATHERAPI_KEY","").strip():
+            try:
+                lat=(query.get("lat") or [""])[0]
+                lon=(query.get("lon") or [""])[0]
+                fallback,_=adapters.handle_extra_route("/api/weather/weatherapi",{"q":[lat+","+lon]})
+                payload=fallback.get("data") or {}
+                current=payload.get("current") or {}
+                if current:
+                    return {"source":"WeatherAPI.com","fallbackUsed":True,
+                            "fallbackReason":"Open-Meteo unavailable; returned current conditions only",
+                            "fetchedAt":fallback.get("fetchedAt"),
+                            "requested":{"latitude":lat,"longitude":lon,
+                                         "date":(query.get("date") or [date.today().isoformat()])[0],
+                                         "hourUtc":(query.get("hour") or ["12"])[0]},
+                            "weather":{"temperatureC":current.get("temp_c"),
+                                       "relativeHumidityPct":current.get("humidity"),
+                                       "precipitationMm":current.get("precip_mm"),
+                                       "precipitationProbabilityPct":None,
+                                       "windSpeedKmh":current.get("wind_kph")},
+                            "note":"Fallback is current conditions for the nearest WeatherAPI location, not the requested historical/hourly stadium forecast."},False
+            except (adapters.AdapterError,TypeError,ValueError):
+                pass
+        raise exc
 legacy.get_payload = _integrated_get_payload
 
 if __name__ == "__main__":
