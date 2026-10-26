@@ -151,7 +151,7 @@
 <div class="panel"><h2>Away starting-player profiles</h2><p class="muted">Same schema. R-Index should be derived from observed deviations and normalized to 0–1; this prototype accepts it as a manual input.</p><textarea id="lcsPlayersAway" rows="8" placeholder='[{"name":"Player","dominantFoot":"Left","positionSide":"right","rIndex":0.2}]'></textarea></div>
 </div>
 <div class="button-row"><button id="lcsRun" class="button primary">Run score & chaos audit</button><button id="lcsExample" class="button">Load example player profiles</button></div>
-<div class="panel"><div class="panel-head"><h2>Engine output</h2><span class="tag">EXPERIMENTAL</span></div><div id="lcsOutput" class="notice">Enter fixture rates and available player observations, then run the audit. No result is inferred until you run it.</div></div>
+<div class="panel"><div class="panel-head"><h2>Engine output</h2><span class="tag">EXPERIMENTAL</span></div><div id="lcsFeedStatus" class="notice">No provider fixture selected. Source-backed team/score fields sync only when available.</div><div id="lcsOutput" class="notice">Enter fixture rates and available player observations, then run the audit. No result is inferred until you run it.</div></div>
 </section>
 <section class="view" id="view-universalengine">
 <div class="page-heading"><div><div class="eyebrow">EXPERIMENTAL STATE SIMULATION</div><h1>Universal Match State & Trap Engine</h1><p>Event-driven score branches, structural stagnation, environmental context and chaos circuit breaker.</p></div></div>
@@ -166,7 +166,7 @@
 <div class="panel"><h2>Ordered event timeline (JSON array)</h2><p class="muted">Events supported: foul, yellow, red, second_yellow, manager_red, key_playmaker_out, keeper_injury, attacking_sub, defensive_sub, var_goal_cancelled, penalty_missed, controversial_call, pitch_degradation, early_goal, woodwork, set_piece, own_goal, non_dominant_foot_error, high_disruption. Use team: home/away. Record actual score changes in current score fields.</p><textarea id="umeEvents" rows="13" placeholder='[{"type":"foul","team":"home"},{"type":"early_goal","team":"away"},{"type":"set_piece","team":"away"}]'></textarea></div>
 </div>
 <div class="button-row"><button id="umeRun" class="button primary">Run universal event simulation</button><button id="umeExample" class="button">Load example state & events</button></div>
-<div class="panel"><div class="panel-head"><h2>Universal simulation output</h2><span class="tag">EXPERIMENTAL</span></div><div id="umeOutput" class="notice">Add available match state and events, then run the simulation.</div></div>
+<div class="panel"><div class="panel-head"><h2>Universal simulation output</h2><span class="tag">EXPERIMENTAL</span></div><div id="umeFeedStatus" class="notice">No provider fixture selected. Source-backed team/score fields sync only when available.</div><div id="umeOutput" class="notice">Add available match state and events, then run the simulation.</div></div>
 </section>
 <section class="view" id="view-backtest">
 <div class="page-heading"><div><div class="eyebrow">06 / VALIDATE</div><h1>Backtesting & calibration</h1><p>Keep predictions and outcomes together. Evaluate probability quality, not just wins.</p></div><button id="exportBacktest" class="button">Export CSV</button></div>
@@ -190,8 +190,8 @@
 <script src="audit-intelligence.js?v=slip-ocr-fix-20261018"></script>
 <script src="ai-council.js?v=slip-ocr-fix-20261018"></script>
 <script src="exact-score-intelligence.js?v=exact-score-20261026-fallback-2"></script>
-<script src="live-correct-score-chaos-engine.js?v=live-chaos-20261025-1"></script>
-<script src="universal-match-state-engine.js?v=universal-events-20261025-1"></script>
+<script src="live-correct-score-chaos-engine.js?v=live-chaos-20261026-feed-2"></script>
+<script src="universal-match-state-engine.js?v=universal-events-20261026-feed-2"></script>
 <script src="live-market-shock-backtest.js?v=market-shock-20261025-2"></script>
 <script>
 /* Navigation safety net: keep page switching available even if another app module fails. */
