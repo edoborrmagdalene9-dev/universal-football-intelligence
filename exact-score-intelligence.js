@@ -117,7 +117,7 @@ $('esiConnectFeed')?.addEventListener('click',()=>{const base=safeBase();if(!bas
 $('esiLoadFixtures')?.addEventListener('click',loadDateFixtures);
 $('esiLoadFixtureDetails')?.addEventListener('click',loadFixtureDetails);
 $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedTimer);feedTimer=null;feedStatus('Automatic refresh stopped.')});
-try{const savedBase=localStorage.getItem(API_KEY);if($('esiApiBase'))$('esiApiBase').value=savedBase||DEFAULT_API_BASE;}catch(_){if($('esiApiBase'))$('esiApiBase').value=DEFAULT_API_BASE;}
+try{const savedBase=localStorage.getItem(API_KEY);const candidate=String(savedBase||'').trim();const isPlaceholder=!candidate||/your-ufi-backend\.example/i.test(candidate);const isHttps=/^https:\/\//i.test(candidate);const resolvedBase=isPlaceholder||!isHttps?DEFAULT_API_BASE:candidate.replace(/\/+$/,'');if($('esiApiBase'))$('esiApiBase').value=resolvedBase;if(resolvedBase!==candidate)localStorage.setItem(API_KEY,resolvedBase);}catch(_){if($('esiApiBase'))$('esiApiBase').value=DEFAULT_API_BASE;}
 if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
 
 // Verify the configured HTTPS backend on page load without consuming odds-provider quota.
