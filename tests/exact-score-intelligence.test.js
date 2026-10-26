@@ -32,7 +32,7 @@ function boot() {
     console
   };
   vm.runInNewContext(fs.readFileSync('exact-score-intelligence.js', 'utf8'), context);
-  return { get, store };
+  context.window = context;\n  return { get, store, context };
 }
 
 test('scoreline grid renders normalized 1X2 probabilities and scorelines', () => {
@@ -74,36 +74,29 @@ test('post-match audit permits unknown cause and preserves score evidence', () =
 });
 
 
-test('historical CSV estimator applies team-specific rates instead of silently reusing defaults', async () => {
-  const { get } = boot();
+
+test('historical CSV estimator applies team-specific rates with a strict date cutoff', () => {
+  const { context } = boot();
   const header = 'date,home_team,away_team,home_goals,away_goals';
   const rows = [];
   for (let i = 1; i <= 24; i++) {
     const day = String(i).padStart(2, '0');
     rows.push('2025-01-' + day + ',Alpha FC,Beta FC,' + (i % 3 === 0 ? 3 : 2) + ',' + (i % 4 === 0 ? 0 : 1));
   }
-  get('esiHome').value = 'Alpha FC';
-  get('esiAway').value = 'Beta FC';
-  get('esiHistoryCutoff').value = '2025-02-01';
-  const upload = get('esiHistoricalCsv');
-  upload.files = [{ text: async () => [header, ...rows].join('\\n') }];
-  await upload.handlers.change({ target: upload });
-  get('esiEstimateRates').click();
-  assert.notEqual(get('esiLambdaHome').value, '1.45');
-  assert.notEqual(get('esiLambdaAway').value, '1.20');
-  assert.match(get('esiRateStatus').textContent, /24 prior matches/);
-  assert.match(get('esiForecastSource').value, /historical results CSV/);
+  const estimator = context.UFIHistoricalRateEstimator;
+  const parsed = estimator.parseCsv([header, ...rows].join('\\n'));
+  const rates = estimator.estimateRates(parsed, 'Alpha FC', 'Beta FC', '2025-02-01');
+  assert.equal(rates.matchesUsed, 24);
+  assert.notEqual(rates.lambdaHome.toFixed(2), '1.45');
+  assert.notEqual(rates.lambdaAway.toFixed(2), '1.20');
+  assert.equal(rates.homeAppearances, 24);
+  assert.equal(rates.awayAppearances, 24);
 });
 
-test('historical estimator refuses insufficient history rather than guessing', async () => {
-  const { get } = boot();
-  get('esiHome').value = 'Alpha';
-  get('esiAway').value = 'Beta';
-  const upload = get('esiHistoricalCsv');
-  upload.files = [{ text: async () => 'date,home_team,away_team,home_goals,away_goals\\n2025-01-01,Alpha,Beta,1,0' }];
-  await upload.handlers.change({ target: upload });
-  get('esiEstimateRates').click();
-  assert.match(get('esiRateStatus').textContent, /Need at least 20 earlier matches/);
-  assert.equal(get('esiLambdaHome').value, '1.45');
-  assert.equal(get('esiLambdaAway').value, '1.20');
+test('historical estimator refuses insufficient history and missing cutoff', () => {
+  const { context } = boot();
+  const estimator = context.UFIHistoricalRateEstimator;
+  const parsed = estimator.parseCsv('date,home_team,away_team,home_goals,away_goals\\n2025-01-01,Alpha,Beta,1,0');
+  assert.throws(() => estimator.estimateRates(parsed, 'Alpha', 'Beta', '2025-02-01'), /Need at least 20 earlier matches/);
+  assert.throws(() => estimator.estimateRates(parsed, 'Alpha', 'Beta', ''), /valid forecast kickoff\/cutoff date/);
 });
