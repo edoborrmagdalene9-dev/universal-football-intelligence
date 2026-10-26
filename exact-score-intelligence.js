@@ -119,4 +119,14 @@ $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedT
 try{const savedBase=localStorage.getItem(API_KEY);if($('esiApiBase'))$('esiApiBase').value=savedBase||DEFAULT_API_BASE;}catch(_){if($('esiApiBase'))$('esiApiBase').value=DEFAULT_API_BASE;}
 if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
 
+// Verify the configured HTTPS backend on page load without consuming odds-provider quota.
+if($('esiApiBase')){
+ fetchFeed('/api/providers/status').then(data=>{
+  const providers=data?.providers||{};
+  const configured=Object.entries(providers).filter(([name,p])=>name!=='openMeteo'&&p?.configured).map(([name])=>name);
+  const missing=Object.entries(providers).filter(([name,p])=>name!=='openMeteo'&&!p?.configured).map(([name])=>name);
+  feedStatus('UFI HTTPS backend connected. '+(configured.length?'Configured providers: '+configured.join(', ')+'. ':'')+(missing.length?'Provider keys not configured: '+missing.join(', ')+'. ':'')+'Open-Meteo is available without a key. Health check does not verify provider connectivity or model accuracy.');
+ }).catch(e=>feedStatus('UFI backend connection check failed: '+e.message,true));
+}
+
 })();
