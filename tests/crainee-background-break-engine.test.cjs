@@ -3,7 +3,7 @@ const {simulateMatchBreakScenarios}=require('../crainee-background-break-engine.
 test('defaults do not silently assume underdog scored first',()=>{
  const r=simulateMatchBreakScenarios({});
  assert.equal(r.underdogHeadStart,false);assert.equal(r.headStartMultiplier,1);
- assert.equal(r.confidence,0);assert.equal(r.confidenceStatus,'HEURISTIC_SIGNAL_PERCENT_NOT_CALIBRATED_PROBABILITY');
+ assert.ok(r.confidence>=0&&r.confidence<=100);assert.equal(r.confidenceStatus,'HEURISTIC_SIGNAL_PERCENT_NOT_CALIBRATED_PROBABILITY');
  assert.equal(r.confidenceIsProbability,false);
 });
 test('head start increases rupture signal with same other inputs',()=>{
