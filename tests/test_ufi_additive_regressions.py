@@ -106,6 +106,22 @@ class RoutingAndSecretSafetyTests(unittest.TestCase):
         self.assertIn("Configure", str(caught.exception))
         self.assertNotIn("apiKey", str(caught.exception))
 
+    def test_normalized_match_feed_requests_a_batch_by_default(self):
+        event_rows = [
+            {"eventID": "one", "teams": {"home": {"name": "Home A"},
+             "away": {"name": "Away A"}}, "status": {"startsAt": "2026-10-28T18:00:00Z"}},
+            {"eventID": "two", "teams": {"home": {"name": "Home B"},
+             "away": {"name": "Away B"}}, "status": {"startsAt": "2026-10-28T19:00:00Z"}},
+        ]
+        provider_result = {"source": "SportsGameOdds", "fetchedAt": "2026-10-26T00:00:00Z",
+                           "cacheHit": False, "data": {"data": event_rows}}
+        with patch.dict(os.environ, {"SPORTSGAMEODDS_API_KEY": "test-key"}, clear=False), \
+             patch.object(adapters, "_sgo_events", return_value=provider_result) as mock_sgo:
+            result = adapters._normalized_matches({})
+        self.assertEqual(mock_sgo.call_args.args[0]["limit"], ["50"])
+        self.assertEqual(result["recordCount"], 2)
+        self.assertEqual([row["fixtureId"] for row in result["data"]], ["one", "two"])
+
     def test_weather_fallback_uses_requested_hour_not_current_conditions(self):
         weatherapi_payload = {
             "location": {"name": "Berlin", "tz_id": "Europe/Berlin"},
