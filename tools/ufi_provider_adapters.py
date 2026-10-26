@@ -59,10 +59,15 @@ def _odds_api(sport, query):
 def _sgo_events(query):
     key=os.getenv("SPORTSGAMEODDS_API_KEY","").strip()
     if not key: raise AdapterError("SPORTSGAMEODDS_API_KEY is not configured on the server.")
-    params={"sportID":(query.get("sportID") or ["SOCCER"])[0],
-            "leagueID":(query.get("leagueID") or ["EPL"])[0],
-            "oddsAvailable":(query.get("oddsAvailable") or ["true"])[0],
-            "limit":min(100,int((query.get("limit") or ["50"])[0]))}
+    # The API documents leagueID as taking precedence over sportID. Send only
+    # one of these filters: some API gateway/schema versions reject both together.
+    league=(query.get("leagueID") or ["EPL"])[0].strip()
+    sport=(query.get("sportID") or ["SOCCER"])[0].strip()
+    params={"leagueID":league,"oddsAvailable":(query.get("oddsAvailable") or ["true"])[0],
+            "limit":min(100,max(1,int((query.get("limit") or ["50"])[0])))}
+    if not league:
+        params.pop("leagueID",None)
+        params["sportID"]=sport or "SOCCER"
     if (query.get("live") or [""])[0]: params["live"]=(query.get("live") or [""])[0]
     if (query.get("started") or [""])[0]: params["started"]=(query.get("started") or [""])[0]
     if (query.get("eventID") or [""])[0]: params["eventID"]=(query.get("eventID") or [""])[0]
@@ -130,16 +135,34 @@ def calculate_arbitrage(query):
             "warning":"Valid only when odds cover every mutually exclusive outcome with identical settlement rules; fees, limits and price changes can erase the margin."}
 
 def _normalized_matches(query):
+    errors=[]
+    # Try the richest event feed first, but do not let a bad key, unsupported
+    # league, provider outage, or quota error disable the odds-only fallback.
     if os.getenv("SPORTSGAMEODDS_API_KEY","").strip():
-        raw=_sgo_events(query)
-        records=normalize_provider_payload("SportsGameOdds",raw.get("data"),raw.get("fetchedAt"))
-        return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
-                "data":records,"recordCount":len(records),"note":"Scores/events/lineups remain unknown when absent from the source."}
+        try:
+            raw=_sgo_events(query)
+            records=normalize_provider_payload("SportsGameOdds",raw.get("data"),raw.get("fetchedAt"))
+            if records:
+                return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
+                        "data":records,"recordCount":len(records),"fallbackUsed":False,
+                        "note":"Scores/events/lineups remain unknown when absent from the source."}
+            errors.append("SportsGameOdds returned no normalized records")
+        except AdapterError as exc:
+            errors.append("SportsGameOdds: "+str(exc))
     if os.getenv("THE_ODDS_API_KEY","").strip():
-        raw=_odds_api((query.get("sport") or ["soccer_epl"])[0],query)
-        records=normalize_provider_payload("The Odds API",raw.get("data"),raw.get("fetchedAt"))
-        return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
-                "data":records,"recordCount":len(records),"note":"Odds-only feed: score, lineups, events and statistics are intentionally unknown."}
+        try:
+            raw=_odds_api((query.get("sport") or ["soccer_epl"])[0],query)
+            records=normalize_provider_payload("The Odds API",raw.get("data"),raw.get("fetchedAt"))
+            if records:
+                return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
+                        "data":records,"recordCount":len(records),"fallbackUsed":bool(errors),
+                        "fallbackReason":errors if errors else None,
+                        "note":"Odds-only feed: score, lineups, events and statistics are intentionally unknown."}
+            errors.append("The Odds API returned no normalized records")
+        except AdapterError as exc:
+            errors.append("The Odds API: "+str(exc))
+    if errors:
+        raise AdapterError("No match provider returned usable records. "+"; ".join(errors))
     raise AdapterError("Configure SPORTSGAMEODDS_API_KEY or THE_ODDS_API_KEY on the backend to load normalized match records.")
 
 
