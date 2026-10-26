@@ -168,7 +168,12 @@ def _normalized_matches(query):
     # league, provider outage, or quota error disable the odds-only fallback.
     if os.getenv("SPORTSGAMEODDS_API_KEY","").strip():
         try:
-            raw=_sgo_events(query)
+            # The direct provider route stays intentionally small by default;
+            # the normalized fixture feed should return a useful fixture list.
+            match_query=dict(query)
+            if not (match_query.get("limit") or [""])[0].strip():
+                match_query["limit"]=["50"]
+            raw=_sgo_events(match_query)
             records=normalize_provider_payload("SportsGameOdds",raw.get("data"),raw.get("fetchedAt"))
             if records:
                 return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
