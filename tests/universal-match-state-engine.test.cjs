@@ -6,7 +6,7 @@ function boot(){
  const els=new Map();const get=id=>{if(!els.has(id))els.set(id,{id,value:'',checked:false,innerHTML:'',style:{},handlers:{},addEventListener(t,f){this.handlers[t]=f},click(){this.handlers.click?.()}});return els.get(id)};
  for(const [id,value] of Object.entries({umeHome:'Home',umeAway:'Away',umeMinute:'35',umeScoreH:'1',umeScoreA:'0',umeXgH:'1.3',umeXgA:'1.1',umeChaosLimit:'2.5',umeState:'{}',umeEvents:'[]'}))get(id).value=value;
  get('umeLive').checked=true;
- vm.runInNewContext(fs.readFileSync('universal-match-state-engine.js','utf8'),{document:{getElementById:get},Math,Number,String,JSON,Array,Object,Date,console});
+ vm.runInNewContext(fs.readFileSync('universal-match-state-engine.js','utf8'),{document:{getElementById:get},window:{addEventListener(){}},Math,Number,String,JSON,Array,Object,Date,console});
  return get;
 }
 test('event engine conditions outcomes on the live score and returns three branches',()=>{
