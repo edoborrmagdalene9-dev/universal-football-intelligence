@@ -64,12 +64,81 @@ def _open_meteo_enhanced(lat: float, lon: float, day: str, hour: int):
 
 legacy.open_meteo_weather = _open_meteo_enhanced
 _original_get_payload = legacy.get_payload
+
+def _has_provider_rows(payload):
+    """Detect genuinely empty legacy provider envelopes without guessing data."""
+    if not isinstance(payload,dict):
+        return bool(payload)
+    data=payload.get("data")
+    if isinstance(data,list):
+        return len(data)>0
+    if isinstance(data,dict):
+        rows=data.get("data")
+        if isinstance(rows,list):
+            return len(rows)>0
+        # A non-empty provider envelope without a recognizable row list is
+        # not proof of usable fixtures; treat explicit no-results as empty.
+        if data.get("message") and not rows:
+            return False
+    return data is not None
+
+def _fallback_live_feed(query):
+    """Use only an explicitly live/started SGO feed; never label upcoming odds as live."""
+    raw=adapters._sgo_events({"live":["true"],"started":["true"],
+                              "limit":["50"],"oddsAvailable":["false"],
+                              "includeAltLines":["false"]})
+    rows=adapters.normalize_provider_payload("SportsGameOdds",raw.get("data"),raw.get("fetchedAt"))
+    return {"ok":True,"source":"SportsGameOdds","fetchedAt":raw.get("fetchedAt"),
+            "cacheHit":raw.get("cacheHit"),"data":rows,"recordCount":len(rows),
+            "fallbackUsed":True,"fallbackReason":"Sportmonks returned no accessible live records",
+            "note":"Only provider-marked live/started fixtures are included. Missing scores/events remain unknown."},False
+
+def _fallback_date_fixtures(query):
+    """Use odds-provider fixtures as a labelled fallback when Sportmonks has no date rows."""
+    raw_day=(query.get("date") or [date.today().isoformat()])[0]
+    try:
+        requested=date.fromisoformat(raw_day)
+    except ValueError as exc:
+        raise legacy.ProviderError("date must use YYYY-MM-DD") from exc
+    start=requested.isoformat()+"T00:00:00Z"
+    end=(requested.fromordinal(requested.toordinal()+1)).isoformat()+"T00:00:00Z"
+    sport=(query.get("sport") or ["soccer_epl"])[0]
+    raw=adapters._odds_api(sport,{"from":[start],"to":[end],
+                                  "regions":["uk"],"markets":["h2h"]})
+    rows=adapters.normalize_provider_payload("The Odds API",raw.get("data"),raw.get("fetchedAt"))
+    # Guard against provider timezone/range quirks; never return another date.
+    rows=[row for row in rows if isinstance(row.get("kickoff"),str)
+          and row["kickoff"][:10]==raw_day]
+    return {"ok":True,"source":"The Odds API","fetchedAt":raw.get("fetchedAt"),
+            "cacheHit":raw.get("cacheHit"),"data":rows,"recordCount":len(rows),
+            "fallbackUsed":True,"fallbackReason":"Sportmonks returned no accessible fixtures for the requested date",
+            "note":"Odds-only fixture fallback. Scores, events, lineups and statistics are intentionally unknown."},False
+
 def _integrated_get_payload(route, query):
     try:
         extra=adapters.handle_extra_route(route,query)
         if extra is not None:
             return extra
-        return _original_get_payload(route,query)
+        payload,cache_hit=_original_get_payload(route,query)
+        if route=="/api/live" and not _has_provider_rows(payload):
+            try:
+                return _fallback_live_feed(query)
+            except adapters.AdapterError as fallback_error:
+                if isinstance(payload,dict):
+                    payload=dict(payload)
+                    payload["fallbackAttempt"]={"source":"SportsGameOdds","error":str(fallback_error)}
+                    payload["note"]="Sportmonks returned no accessible live records and the live-only fallback was unavailable."
+                return payload,cache_hit
+        if route=="/api/fixtures" and not _has_provider_rows(payload):
+            try:
+                return _fallback_date_fixtures(query)
+            except adapters.AdapterError as fallback_error:
+                if isinstance(payload,dict):
+                    payload=dict(payload)
+                    payload["fallbackAttempt"]={"source":"The Odds API","error":str(fallback_error)}
+                    payload["note"]="Sportmonks returned no accessible fixtures and the odds-only fallback was unavailable."
+                return payload,cache_hit
+        return payload,cache_hit
     except adapters.AdapterError as exc:
         raise legacy.ProviderError(str(exc)) from exc
     except legacy.ProviderError as exc:
