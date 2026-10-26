@@ -76,7 +76,7 @@ function csvParse(text){
  const headers=split(lines[0]).map(x=>x.trim().toLowerCase());const rows=lines.slice(1).map(line=>{const vals=split(line);const o={};headers.forEach((h,i)=>o[h]=(vals[i]||'').trim());return o});
  const required=['date','home_team','away_team','home_goals','away_goals'];for(const k of required)if(!headers.includes(k))throw Error('Missing CSV column: '+k);
  const dated=rows.map(r=>({...r,hg:Number(r.home_goals),ag:Number(r.away_goals)}));
- const validIsoDate=value=>/^\\d{4}-\\d{2}-\\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
+ const validIsoDate=value=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&!Number.isNaN(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
  const badDate=dated.find(r=>r.date&&!validIsoDate(r.date));
  if(badDate)throw Error('Invalid date "'+badDate.date+'". Use YYYY-MM-DD for every row so the chronological walk-forward test cannot leak future results into earlier forecasts.');
  return dated.filter(r=>r.date&&r.home_team&&r.away_team&&Number.isInteger(r.hg)&&Number.isInteger(r.ag)&&r.hg>=0&&r.ag>=0).sort((a,b)=>a.date.localeCompare(b.date));
