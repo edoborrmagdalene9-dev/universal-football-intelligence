@@ -88,6 +88,34 @@ function calc(){
 }
 function playerTable(ps){if(!ps.length)return '<p class="muted">No player profiles entered; player-level risk is unavailable, not zero.</p>';return '<div class="table-wrap"><table><thead><tr><th>Player</th><th>R-Index</th><th>Foot penalty</th><th>Flag</th></tr></thead><tbody>'+ps.map(p=>'<tr><td>'+esc(p.name||'Unnamed')+'</td><td>'+p.rIndex.toFixed(2)+'</td><td>'+(p.footPenalty*100).toFixed(0)+'%</td><td>'+(p.virtualRed?'VIRTUAL RED':'—')+'</td></tr>').join('')+'</tbody></table></div>'}
 $('lcsRun').addEventListener('click',()=>{try{calc()}catch(e){$('lcsOutput').innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}});
+function scoreFromFixture(f){
+ const s=f?.score;
+ if(s&&typeof s==='object'){
+  const h=s.home??s.homeScore??s.home_score,a=s.away??s.awayScore??s.away_score;
+  if(Number.isInteger(Number(h))&&Number.isInteger(Number(a))&&h!==null&&a!==null)return {h:Number(h),a:Number(a)};
+ }
+ if(f?.home_score!=null&&f?.away_score!=null&&Number.isFinite(Number(f.home_score))&&Number.isFinite(Number(f.away_score)))return {h:Number(f.home_score),a:Number(f.away_score)};
+ if(Array.isArray(f?.scores)){
+  const sides=f.scores.map(x=>({side:String(x?.score?.participant??x?.participant??x?.description??x?.type?.name??'').toLowerCase(),goals:x?.score?.goals??x?.goals}));
+  const h=sides.find(x=>x.side.includes('home')),a=sides.find(x=>x.side.includes('away'));
+  if(h&&a&&Number.isFinite(Number(h.goals))&&Number.isFinite(Number(a.goals)))return {h:Number(h.goals),a:Number(a.goals)};
+ }
+ return null;
+}
+window.addEventListener('ufi:fixture-selected',event=>{
+ const detail=event.detail||{},f=detail.fixture||{},status=f.status&&typeof f.status==='object'?f.status:{};
+ const home=f.homeTeam||f.home_team||f.participants?.find?.(x=>String(x?.meta?.location||'').toLowerCase()==='home')?.name;
+ const away=f.awayTeam||f.away_team||f.participants?.find?.(x=>String(x?.meta?.location||'').toLowerCase()==='away')?.name;
+ if(home)$('lcsHome').value=home;if(away)$('lcsAway').value=away;
+ const score=scoreFromFixture(f);if(score){$('lcsCurrentHome').value=score.h;$('lcsCurrentAway').value=score.a;}
+ const stateText=String(f?.state?.name||f?.state?.short_name||f?.status||'').toLowerCase();
+ const hasLiveState=typeof status.started==='boolean'||/live|in.?play|finished|ended/.test(stateText);
+ const live=status.started===true||/live|in.?play/.test(stateText);
+ if(hasLiveState)$('lcsMode').value=live?'live':'prematch';
+ const clock=status.clock??f?.time?.minute??f?.minute;
+ const minuteMatch=String(clock??'').match(/\d{1,3}/);if(live&&minuteMatch)$('lcsMinute').value=Math.min(120,Number(minuteMatch[0]));
+ const note=$('lcsFeedStatus');if(note)note.textContent='Selected fixture from '+(detail.source||'provider')+(detail.fallbackUsed?' (fallback source)':'')+'. Team names'+(score?' and sourced score':'')+' updated where available. Expected-goal rates, player profiles and tactical fields remain manual unless verified source data is connected.';
+});
 $('lcsMode').addEventListener('change',()=>{$('lcsMinuteWrap').style.display=$('lcsMode').value==='live'?'block':'none'});
 $('lcsExample').addEventListener('click',()=>{
  $('lcsPlayersHome').value=JSON.stringify([{name:'Home Player A',dominantFoot:'Right',positionSide:'left',rIndex:0.12},{name:'Home Player B',dominantFoot:'Left',positionSide:'left',rIndex:0.2}],null,2);
