@@ -96,9 +96,12 @@ function scoreFromFixture(f){
  }
  if(f?.home_score!=null&&f?.away_score!=null&&Number.isFinite(Number(f.home_score))&&Number.isFinite(Number(f.away_score)))return {h:Number(f.home_score),a:Number(f.away_score)};
  if(Array.isArray(f?.scores)){
-  const sides=f.scores.map(x=>({side:String(x?.score?.participant??x?.participant??x?.description??x?.type?.name??'').toLowerCase(),goals:x?.score?.goals??x?.goals}));
-  const h=sides.find(x=>x.side.includes('home')),a=sides.find(x=>x.side.includes('away'));
-  if(h&&a&&Number.isFinite(Number(h.goals))&&Number.isFinite(Number(a.goals)))return {h:Number(h.goals),a:Number(a.goals)};
+  const current=f.scores.filter(x=>/^(CURRENT|FT|FULL_TIME|FINAL)$/i.test(String(x?.description||x?.type?.name||'')));
+  const rows=current.length?current:f.scores;
+  const home=rows.find(x=>String(x?.score?.participant??x?.participant??'').toLowerCase()==='home');
+  const away=rows.find(x=>String(x?.score?.participant??x?.participant??'').toLowerCase()==='away');
+  const h=home?.score?.goals??home?.goals,a=away?.score?.goals??away?.goals;
+  if(h!=null&&a!=null&&Number.isFinite(Number(h))&&Number.isFinite(Number(a)))return {h:Number(h),a:Number(a)};
  }
  return null;
 }
