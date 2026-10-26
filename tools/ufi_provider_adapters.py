@@ -43,6 +43,10 @@ def _get_json(url, headers=None, timeout=12):
                 detail=parsed
         except Exception:
             detail=""
+        # Some providers return non-text error flags (for example {"error": true}).
+        # Do not turn a boolean into a misleading human-readable diagnostic.
+        if not isinstance(detail,str):
+            detail=""
         if detail:
             for secret_name in ("SPORTSGAMEODDS_API_KEY","THE_ODDS_API_KEY","SHARPAPI_KEY","WEATHERAPI_KEY","SPORTMONKS_API_TOKEN"):
                 secret=os.getenv(secret_name,"").strip()
