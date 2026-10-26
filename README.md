@@ -12,3 +12,12 @@
 - The market-shock panel compares timestamped 1X2 prices, pauses on large/stale/future-dated changes, and only makes bounded adjustments for fresh modest shifts. It does not automatically know the cause of a price move and must not be treated as a prediction guarantee.
 - The historical UI backtest uses prior matches only and compares a rolling team-rate Poisson model with a league-average baseline. It is results-only; player/tactical/live-feed/odds-shock improvements still need timestamped aligned historical data and separate unseen tests.
 - The secret-safe proxy exposes `/api/inplay-odds?id=FIXTURE_ID&bookmaker=BOOKMAKER_ID&market=MARKET_ID`; the app can poll a configured provider bookmaker/market every 5 seconds and compare timestamped price snapshots. Sportmonks in-play odds are not available on every plan; a provider bookmaker ID does not automatically mean SportyBet odds.
+
+
+## Multi-provider live-data integration
+
+The existing single-provider proxy remains available. For the expanded provider adapter routes and normalized match-context console, deploy the new entrypoint `tools/ufi_multi_provider_server.py` using the Render blueprint in `render.yaml`. Set credentials only in the backend secret manager; `.env.example` contains blank placeholders.
+
+Read [multi-provider live data and quota strategy](docs/multi-provider-live-data.md) before enabling providers. New endpoints include `/api/providers/status`, `/api/matches`, `/api/odds/sportsgameodds`, `/api/odds/the-odds-api`, `/api/odds/sharpapi`, `/api/weather/weatherapi`, `/api/ev`, and `/api/arbitrage`. The Exact-score intelligence view now includes a provider console that calls the backend; keys are not entered in the browser.
+
+Provider keys exposed in chat, screenshots or repository files should be revoked and replaced before deployment. Free-tier quotas and league coverage are finite; caching and selective polling reduce usage but cannot guarantee unlimited requests. Provider response normalization is not the same as validated live probability modeling.
