@@ -219,6 +219,9 @@ function mountMultiProviderConsole(){
   status.textContent='Requesting '+path+' …';
   try{
    const data=await fetchFeed(path);
+   if(path.startsWith('/api/matches') && typeof window!=='undefined' && typeof CustomEvent!=='undefined'){
+    window.dispatchEvent(new CustomEvent('ufi:match-context',{detail:data}));
+   }
    out.textContent=JSON.stringify(data,null,2).slice(0,40000);
    status.textContent='Response received. Verify source timestamp, provider coverage and data freshness before use.';
    status.className='notice good';
