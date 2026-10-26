@@ -49,9 +49,11 @@
    ruptureIndex:Number(rupture.toFixed(4)),breakThreshold:threshold,
    scenarioPaths:paths,exactScoreExploration:outcomeCandidates,
    interpretation:broken?'A structural-break scenario is flagged for exploration; this is not a prediction or a calibrated upset probability.':'This input combination did not cross the heuristic threshold; unexpected scores remain possible.',
-   confidence:null,confidenceStatus:'NOT_ESTIMATED',
+   confidence:Number(clamp((rupture/threshold)*100,0,100).toFixed(1)),
+   confidenceStatus:'HEURISTIC_SIGNAL_PERCENT_NOT_CALIBRATED_PROBABILITY',
+   confidenceIsProbability:false,
    limitations:[
-    'The rupture index is a hand-built heuristic, not a probability or confidence rating.',
+    'The confidence percentage is retained as a heuristic signal-strength indicator derived from ruptureIndex / breakThreshold, capped at 100; it is not the chance of an upset and is not calibrated.',
     'A head start is only active when underdogScoredFirst is explicitly true; missing input is not silently treated as true.',
     'A scoreline cannot be inferred reliably from these inputs alone.',
     'Weather, referee and player values must be supplied; this module does not imply automatic live-data feeds.',
