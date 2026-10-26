@@ -85,8 +85,9 @@ test('historical CSV estimator applies team-specific rates instead of silently r
   get('esiHome').value = 'Alpha FC';
   get('esiAway').value = 'Beta FC';
   get('esiHistoryCutoff').value = '2025-02-01';
-  get('esiHistoricalCsv').files = [{ text: async () => [header, ...rows].join('\\n') }];
-  await get('esiHistoricalCsv').handlers.change({ target: get('esiHistoricalCsv') });
+  const upload = get('esiHistoricalCsv');
+  upload.files = [{ text: async () => [header, ...rows].join('\\n') }];
+  await upload.handlers.change({ target: upload });
   get('esiEstimateRates').click();
   assert.notEqual(get('esiLambdaHome').value, '1.45');
   assert.notEqual(get('esiLambdaAway').value, '1.20');
@@ -98,8 +99,9 @@ test('historical estimator refuses insufficient history rather than guessing', a
   const { get } = boot();
   get('esiHome').value = 'Alpha';
   get('esiAway').value = 'Beta';
-  get('esiHistoricalCsv').files = [{ text: async () => 'date,home_team,away_team,home_goals,away_goals\\n2025-01-01,Alpha,Beta,1,0' }];
-  await get('esiHistoricalCsv').handlers.change({ target: get('esiHistoricalCsv') });
+  const upload = get('esiHistoricalCsv');
+  upload.files = [{ text: async () => 'date,home_team,away_team,home_goals,away_goals\\n2025-01-01,Alpha,Beta,1,0' }];
+  await upload.handlers.change({ target: upload });
   get('esiEstimateRates').click();
   assert.match(get('esiRateStatus').textContent, /Need at least 20 earlier matches/);
   assert.equal(get('esiLambdaHome').value, '1.45');
