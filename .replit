@@ -1,0 +1,1 @@
+run = "python tools/ufi_multi_provider_server.py"

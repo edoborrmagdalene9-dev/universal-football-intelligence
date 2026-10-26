@@ -26,6 +26,56 @@ const BASE='https://raw.githubusercontent.com/statsbomb/open-data/master/data/';
 const $=id=>document.getElementById(id);
 const STORE='ufi_workspace_v2';
 const S={competitions:[],matches:[],liveFixtures:[],events:[],lineups:[],lineupsMatchId:null,selectedMatch:null,scenario:null,manualSelections:[],activity:[],players:[],subs:[],contexts:[],notes:[],backtests:[],slips:[],playerEventMatches:[],riskAudits:[],lastRiskAudit:null,lastSlip:null};
+/* UFI canonical match-context bridge
+   Converts provider-normalized fixtures into the existing slip-matching workspace.
+   Unknown scores/events/lineups/statistics remain unknown; no synthetic fields are added. */
+function ingestCanonicalMatchContext(payload){
+ const records=Array.isArray(payload)?payload:(Array.isArray(payload?.data)?payload.data:[]);
+ const incoming=records.filter(r=>r&&r.homeTeam&&r.awayTeam).map(r=>({
+  id:r.fixtureId||[r.homeTeam,r.awayTeam,r.kickoff].join('|'),
+  matchId:r.fixtureId||null,
+  date:r.kickoff||null,
+  homeTeam:String(r.homeTeam),
+  awayTeam:String(r.awayTeam),
+  competition:r.competition||null,
+  status:r.status?.ended===true?'finished':(r.status?.started===true?'live':(r.status?.started===false?'scheduled':'unknown')),
+  score:r.score??null,
+  markets:Array.isArray(r.odds)?r.odds:(r.odds?[r.odds]:[]),
+  oddsTimestamp:r.timestamps?.providerUpdatedAt||r.timestamps?.fetchedAt||null,
+  source:'ufi-multi-provider-feed',
+  sourceProvider:r.sources?.fixture||r.sources?.odds||payload?.source||'configured provider',
+  quality:r.quality||{},
+  providerRecord:r
+ }));
+ if(!incoming.length){
+  const msg='Provider response received, but no records had both home and away teams. Check provider coverage and league filters.';
+  if($('liveFixtureOutput'))notice('liveFixtureOutput',msg,'warning');
+  console.warn('UFI canonical match-context bridge:',msg,payload);
+  return {accepted:0,records:records.length};
+ }
+ const key=m=>[normalizeTeamName(m.homeTeam),normalizeTeamName(m.awayTeam),String(m.date||'').slice(0,10)].join('|');
+ const merged=new Map((S.liveFixtures||[]).map(m=>[key(m),m]));
+ incoming.forEach(m=>merged.set(key(m),m));
+ S.liveFixtures=[...merged.values()].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+ if($('liveFixtureOutput')){
+  const missing=incoming.reduce((n,m)=>n+(m.quality?.missingRequiredFields?.length||0),0);
+  notice('liveFixtureOutput','Multi-provider feed ingested: '+incoming.length+' fixtures from '+[...new Set(incoming.map(m=>m.sourceProvider))].join(', ')+'. Unknown score/lineup/event/stat fields were not fabricated. Review each fixture and source freshness before use.','good');
+ }
+ if(typeof addActivity==='function')addActivity('Ingested '+incoming.length+' normalized fixtures from UFI provider feed');
+ if(typeof runSlipFixtureMatching==='function'&&S.manualSelections?.length)runSlipFixtureMatching();
+ return {accepted:incoming.length,records:records.length};
+}
+window.addEventListener('ufi:match-context',function(event){
+ try{
+  const result=ingestCanonicalMatchContext(event.detail);
+  window.UFI_LAST_PROVIDER_INGEST={...result,at:new Date().toISOString(),source:event.detail?.source||'multi-provider'};
+ }catch(error){
+  console.error('UFI provider-context ingestion failed:',error);
+  if($('liveFixtureOutput'))notice('liveFixtureOutput','Provider data arrived but could not be merged: '+(error?.message||String(error)),'error');
+ }
+});
+window.UFIIngestCanonicalMatchContext=ingestCanonicalMatchContext;
+
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const now=()=>new Date().toISOString();
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2800)}
@@ -202,7 +252,7 @@ function resolveSlipFixture(row){
  if(all.length===1){
   const m=all[0],parsed=parseFixtureText(raw),h=normalizeTeamName(m.home_team?.home_team_name);
   const orientation=normalizeTeamName(parsed.homeText).includes(h)?'home-away':(normalizeTeamName(parsed.awayText).includes(h)?'away-home':'verify-orientation');
-  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',reason:m.source==='live-fixture-feed'?'Matched to a current/upcoming public fixture feed. Confirm competition, kickoff, exact SportyBet market and odds.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
+  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',reason:(m.source==='live-fixture-feed'||m.source==='ufi-multi-provider-feed')?'Matched to a current/upcoming provider fixture feed. Confirm competition, kickoff, source freshness, and exact bookmaker market/price before acting.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
  }
  if(all.length>1)return {status:'ambiguous',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'Multiple fixtures match these team names. Add the date/competition and resolve manually.'};
  return {status:(S.liveFixtures.length||S.matches.length)?'not-found-in-loaded-list':'no-fixtures-loaded',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:(S.liveFixtures.length||S.matches.length)?'No matching fixture found in the current feed or loaded historical list.':'Load current fixtures before fixture matching.'};
