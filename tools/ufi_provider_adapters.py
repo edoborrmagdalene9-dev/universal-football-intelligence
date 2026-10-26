@@ -48,7 +48,8 @@ def _odds_api(sport, query):
     params={"apiKey":key,"regions":regions,"markets":markets,"oddsFormat":"decimal",
             "dateFormat":"iso","commenceTimeFrom":(query.get("from") or [None])[0],
             "commenceTimeTo":(query.get("to") or [None])[0]}
-    url="https://api.the-odds-api.com/v4/sports/"+urllib.parse.quote(sport,safe="_")+"/odds"
+    base=os.getenv("THE_ODDS_API_BASE_URL","https://api.the-odds-api.com/v4/sports").strip().rstrip("/")
+    url=base+"/"+urllib.parse.quote(sport,safe="_")+"/odds"
     cachekey="odds:"+sport+":"+urllib.parse.urlencode({k:v for k,v in params.items() if k!="apiKey"})
     payload,hit=_cached(cachekey,_TTLS["odds"],lambda:_get_json(_query_url(url,params)))
     return {"ok":True,"source":"The Odds API","sport":sport,"fetchedAt":time.time(),"cacheHit":hit,
@@ -94,7 +95,8 @@ def _weatherapi(query):
     today=datetime.now(timezone.utc).date().isoformat()
     endpoint=("history.json" if day < today else "forecast.json") if day else "current.json"
     params={"key":key,"q":location,"days":"3" if endpoint=="forecast.json" else None,"dt":day or None,"aqi":"no","alerts":"no"}
-    url="https://api.weatherapi.com/v1/"+endpoint
+    base=os.getenv("WEATHERAPI_BASE_URL","https://api.weatherapi.com/v1").strip().rstrip("/")
+    url=base+"/"+endpoint
     cachekey="weatherapi:"+endpoint+":"+location+":"+day
     payload,hit=_cached(cachekey,_TTLS["weatherapi"],lambda:_get_json(_query_url(url,params))[0])
     return {"ok":True,"source":"WeatherAPI.com","fetchedAt":time.time(),"cacheHit":hit,"data":payload}
