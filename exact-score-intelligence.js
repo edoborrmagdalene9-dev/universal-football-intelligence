@@ -204,6 +204,7 @@ function mountMultiProviderConsole(){
   </div>
   <div class="button-row">
    <button class="button" id="ufiProviderStatus">Check configured providers</button>
+   <button class="button primary" id="ufiMatchContextLoad">Load normalized match context</button>
    <button class="button" id="ufiSgoLoad">Load SportsGameOdds</button>
    <button class="button" id="ufiOddsLoad">Load The Odds API</button>
    <button class="button" id="ufiSharpLoad">Load SharpAPI</button>
@@ -224,6 +225,7 @@ function mountMultiProviderConsole(){
   }catch(e){status.textContent='Provider unavailable: '+e.message;status.className='notice warning';out.textContent='No usable response. Missing data remains unknown.';}
  };
  $('ufiProviderStatus')?.addEventListener('click',()=>run('/api/providers/status'));
+ $('ufiMatchContextLoad')?.addEventListener('click',()=>run('/api/matches?sportID=SOCCER&leagueID='+encodeURIComponent($('ufiSgoLeague').value||'EPL')+'&sport='+encodeURIComponent($('ufiOddsSport').value||'soccer_epl')+'&regions='+encodeURIComponent($('ufiOddsRegion').value||'uk')+'&markets='+encodeURIComponent($('ufiOddsMarket').value||'h2h')));
  $('ufiSgoLoad')?.addEventListener('click',()=>run('/api/odds/sportsgameodds?sportID=SOCCER&leagueID='+encodeURIComponent($('ufiSgoLeague').value||'EPL')+'&oddsAvailable=true&limit=50'));
  $('ufiOddsLoad')?.addEventListener('click',()=>run('/api/odds/the-odds-api?sport='+encodeURIComponent($('ufiOddsSport').value||'soccer_epl')+'&regions='+encodeURIComponent($('ufiOddsRegion').value||'uk')+'&markets='+encodeURIComponent($('ufiOddsMarket').value||'h2h')));
  $('ufiSharpLoad')?.addEventListener('click',()=>run('/api/odds/sharpapi'));
