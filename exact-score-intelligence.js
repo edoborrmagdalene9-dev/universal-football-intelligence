@@ -50,7 +50,8 @@ function parseCsv(text){
 function normTeam(s){return String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ')}
 function estimateRates(rows,homeName,awayName,cutoff){
  const hn=normTeam(homeName),an=normTeam(awayName);if(!hn||!an||hn===an)throw new Error('Enter two distinct team names first.');
- const prior=rows.filter(r=>!cutoff||Date.parse(r.date)<Date.parse(cutoff));
+ if(!cutoff||Number.isNaN(Date.parse(cutoff)))throw new Error('Set a valid forecast kickoff/cutoff date to prevent future-result leakage.');
+ const prior=rows.filter(r=>Date.parse(r.date)<Date.parse(cutoff));
  if(prior.length<20)throw new Error('Need at least 20 earlier matches before the forecast cutoff; found '+prior.length+'.');
  const team={};
  let homeGoals=0,awayGoals=0;
