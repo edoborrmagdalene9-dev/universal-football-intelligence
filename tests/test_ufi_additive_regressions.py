@@ -106,6 +106,40 @@ class RoutingAndSecretSafetyTests(unittest.TestCase):
         self.assertIn("Configure", str(caught.exception))
         self.assertNotIn("apiKey", str(caught.exception))
 
+    def test_weather_fallback_uses_requested_hour_not_current_conditions(self):
+        weatherapi_payload = {
+            "location": {"name": "London", "tz_id": "Europe/London"},
+            "forecast": {"forecastday": [{
+                "date": "2026-10-27",
+                "hour": [
+                    {"time": "2026-10-27 14:00", "temp_c": 20, "humidity": 70,
+                     "precip_mm": 0.1, "chance_of_rain": 15, "wind_kph": 8},
+                    {"time": "2026-10-27 15:00", "temp_c": 21, "humidity": 65,
+                     "precip_mm": 0.2, "chance_of_rain": 25, "wind_kph": 9},
+                ],
+            }]},
+        }
+        def fake_extra(route, query):
+            if route == "/api/weather":
+                return None
+            if route == "/api/weather/weatherapi":
+                return {"source": "WeatherAPI.com", "fetchedAt": 1,
+                        "data": weatherapi_payload}, False
+            return None
+        with patch.dict(os.environ, {"WEATHERAPI_KEY": "test-key"}, clear=False), \
+             patch.object(server, "_original_get_payload",
+                          side_effect=legacy.ProviderError("Open-Meteo unavailable")), \
+             patch.object(adapters, "handle_extra_route", side_effect=fake_extra):
+            result, cache_hit = server._integrated_get_payload(
+                "/api/weather", {"lat": ["51.5"], "lon": ["-0.1"],
+                                 "date": ["2026-10-27"], "hour": ["14"]})
+        self.assertFalse(cache_hit)
+        self.assertTrue(result["fallbackUsed"])
+        self.assertEqual(result["matchedLocalTime"], "2026-10-27 15:00")
+        self.assertEqual(result["weather"]["temperatureC"], 21)
+        self.assertEqual(result["weather"]["precipitationProbabilityPct"], 25)
+        self.assertNotIn("current conditions", result["note"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
