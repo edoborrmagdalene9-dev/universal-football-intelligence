@@ -27,5 +27,10 @@ jobs:
           python-version: "3.11"
       - name: Compile existing Python modules
         run: python -m compileall -q tools
+      - name: Syntax-check existing browser modules
+        run: |
+          for file in app.js exact-score-intelligence.js live-correct-score-chaos-engine.js universal-match-state-engine.js live-market-shock-backtest.js audit-intelligence.js ai-council.js calculator-risk-engine.js; do
+            node --check "$file"
+          done
       - name: Run additive backend regression tests
         run: python -m unittest discover -s tests -p "test_ufi_*.py" -v
