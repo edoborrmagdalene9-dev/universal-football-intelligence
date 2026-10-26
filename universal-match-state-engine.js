@@ -78,6 +78,34 @@ function run(){
  '<p class="muted">This simulation is deterministic from manually entered state/events; it does not detect events automatically or run a millisecond feed. Environment, referee, fatigue, SSIS, TSI, entropy and LVTS are heuristic prototypes and need chronological historical validation. *Adjusted remaining xG is not provider-verified xG.</p>';
 }
 $('umeRun').addEventListener('click',()=>{try{run()}catch(e){$('umeOutput').innerHTML='<div class="notice warning">'+esc(e.message)+'</div>'}});
+function scoreFromFixture(f){
+ const s=f?.score;
+ if(s&&typeof s==='object'){
+  const h=s.home??s.homeScore??s.home_score,a=s.away??s.awayScore??s.away_score;
+  if(h!=null&&a!=null&&Number.isFinite(Number(h))&&Number.isFinite(Number(a)))return {h:Number(h),a:Number(a)};
+ }
+ if(f?.home_score!=null&&f?.away_score!=null&&Number.isFinite(Number(f.home_score))&&Number.isFinite(Number(f.away_score)))return {h:Number(f.home_score),a:Number(f.away_score)};
+ if(Array.isArray(f?.scores)){
+  const sides=f.scores.map(x=>({side:String(x?.score?.participant??x?.participant??x?.description??x?.type?.name??'').toLowerCase(),goals:x?.score?.goals??x?.goals}));
+  const h=sides.find(x=>x.side.includes('home')),a=sides.find(x=>x.side.includes('away'));
+  if(h&&a&&Number.isFinite(Number(h.goals))&&Number.isFinite(Number(a.goals)))return {h:Number(h.goals),a:Number(a.goals)};
+ }
+ return null;
+}
+window.addEventListener('ufi:fixture-selected',event=>{
+ const detail=event.detail||{},f=detail.fixture||{},status=f.status&&typeof f.status==='object'?f.status:{};
+ const home=f.homeTeam||f.home_team||f.participants?.find?.(x=>String(x?.meta?.location||'').toLowerCase()==='home')?.name;
+ const away=f.awayTeam||f.away_team||f.participants?.find?.(x=>String(x?.meta?.location||'').toLowerCase()==='away')?.name;
+ if(home)$('umeHome').value=home;if(away)$('umeAway').value=away;
+ const score=scoreFromFixture(f);if(score){$('umeScoreH').value=score.h;$('umeScoreA').value=score.a;}
+ const stateText=String(f?.state?.name||f?.state?.short_name||f?.status||'').toLowerCase();
+ const hasLiveState=typeof status.started==='boolean'||/live|in.?play|finished|ended/.test(stateText);
+ const live=status.started===true||/live|in.?play/.test(stateText);
+ if(hasLiveState)$('umeLive').checked=live;
+ const clock=status.clock??f?.time?.minute??f?.minute;
+ const minuteMatch=String(clock??'').match(/\d{1,3}/);if(live&&minuteMatch)$('umeMinute').value=Math.min(120,Number(minuteMatch[0]));
+ const note=$('umeFeedStatus');if(note)note.textContent='Selected fixture from '+(detail.source||'provider')+(detail.fallbackUsed?' (fallback source)':'')+'. Team names'+(score?' and sourced score':'')+' updated where available. Remaining xG, event timeline, tactical profiles, environment and referee fields remain manual until verified data is available.';
+});
 $('umeExample').addEventListener('click',()=>{
  $('umeState').value=JSON.stringify({home:{block:'low',ppda:12,staminaDip80:.15,possessionShare:38},away:{block:'mid',ppda:9,staminaDip80:.1,possessionShare:62},environment:{pitch:'normal',rain:.2,wind:.1,temperatureC:23},referee:{strictness:.5,avgYellow:4.2,avgRed:.15,penaltyIndex:1},transitions:3,expectedTransitions:8,finalThirdEntries:4,expectedFinalThirdEntries:12,progressivePasses:10,entropy:.25},null,2);
  $('umeEvents').value=JSON.stringify([{type:'foul',team:'home'},{type:'box_entry',team:'away'},{type:'set_piece',team:'away'}],null,2);
