@@ -78,7 +78,10 @@ def _sgo_events(query):
     if not key: raise AdapterError("SPORTSGAMEODDS_API_KEY is not configured on the server.")
     # The API documents leagueID as taking precedence over sportID. Send only
     # one of these filters: some API gateway/schema versions reject both together.
-    league=(query.get("leagueID") or ["EPL"])[0].strip()
+    # The supplied plan page lists MLS among the entry-level leagues, while
+    # the live API explicitly rejects EPL for this account's current tier.
+    # Default to a verified accessible soccer league; honor explicit leagueID.
+    league=(query.get("leagueID") or ["MLS"])[0].strip()
     sport=(query.get("sportID") or ["SOCCER"])[0].strip()
     # Match the provider's documented v2/events request shape: explicitly
     # disable alternate lines for the smallest, cheapest default response.
@@ -208,7 +211,7 @@ def _provider_health(query):
         def probe():
             if name=="sportsgameodds":
                 if not os.getenv("SPORTSGAMEODDS_API_KEY","").strip(): raise AdapterError("SPORTSGAMEODDS_API_KEY is not configured.")
-                result=_sgo_events({"sportID":["SOCCER"],"leagueID":[(query.get("leagueID") or ["EPL"])[0]],"limit":["1"],"oddsAvailable":["true"]})
+                result=_sgo_events({"sportID":["SOCCER"],"leagueID":[(query.get("leagueID") or ["MLS"])[0]],"limit":["1"],"oddsAvailable":["true"],"includeAltLines":["false"]})
                 return {"source":result.get("source"),"records":len(((result.get("data") or {}).get("data") or (result.get("data") or {}).get("events") or [])) if isinstance(result.get("data"),dict) else (len(result.get("data")) if isinstance(result.get("data"),list) else None)}
             if name=="theoddsapi":
                 if not os.getenv("THE_ODDS_API_KEY","").strip(): raise AdapterError("THE_ODDS_API_KEY is not configured.")
