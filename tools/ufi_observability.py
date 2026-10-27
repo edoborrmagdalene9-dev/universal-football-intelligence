@@ -19,7 +19,7 @@ def emit_request(route: str, outcome: str, duration_ms: float, error_type: str |
     if ph_key:
         host=os.getenv("POSTHOG_HOST","https://us.i.posthog.com").strip().rstrip("/")
         _post(host+"/capture/",{"api_key":ph_key,"event":"ufi_backend_request",
-              "distinct_id":"ufi-backend-service","properties":event},timeout=0.7)
+              "distinct_id":"ufi-backend-service","properties":event},{},timeout=0.7)
 
 def _post(url: str, payload, headers: dict[str,str], timeout: float) -> None:
     try:
