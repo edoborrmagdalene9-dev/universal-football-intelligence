@@ -183,9 +183,11 @@ $('esiAutoHistory')?.addEventListener('click',async()=>{
  const button=$('esiAutoHistory');if(button){button.disabled=true;button.textContent='Downloading public history…';}
  try{
   const fixture=window.UFI_SELECTED_PROVIDER_FIXTURE||{};
-  await loadPublicHistoryAndEstimate(($('esiHome')?.value||fixture.home||'').trim(),($('esiAway')?.value||fixture.away||'').trim(),fixture);
+  const home=($('esiHome')?.value||fixture.home||'').trim(),away=($('esiAway')?.value||fixture.away||'').trim();
+  const result=await runServerScoreModel(home,away,fixture,true);
+  if(!result.ok)throw new Error(result.error||result.reason||result.result?.reason||'Insufficient source data');
  }catch(err){
-  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Public historical data unavailable: '+err.message+' No rate assumptions were changed.';}
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Public history/model unavailable: '+err.message+' No rate assumptions were changed.';}
  }finally{if(button){button.disabled=false;button.textContent='Fetch public history + estimate λ';}}
 });
 $('esiEstimateRates')?.addEventListener('click',()=>{
@@ -254,18 +256,11 @@ function renderFeed(payload,label){
   window.UFI_SELECTED_PROVIDER_FIXTURE=context;
   document.dispatchEvent(new CustomEvent('ufi:provider-fixture-selected',{detail:context}));
   feedStatus('Fixture selected from '+context.source+'. Checking historical results before setting λ…');
-  if(historicalRows){
-   applyHistoricalRates(home,away,'Uploaded historical results CSV');
-   feedStatus('Fixture identity loaded. Existing estimator applied only prior results; verify competition coverage, calibration, odds and lineup gates.');
-   return;
-  }
-  try{
-   await loadPublicHistoryAndEstimate(home,away,context);
-   feedStatus('Fixture and public historical baseline loaded. Score grids recalculated; other evidence and market gates still apply.');
-  }catch(err){
-   const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Automatic historical estimate unavailable: '+err.message+' No default λ was relabelled as fixture-specific.';}
-   feedStatus('Fixture identity loaded; historical λ unavailable. Existing default rates remain illustrative only. '+err.message,true);
-  }
+  const hasUploadedHistory=!!historicalRows;
+  if(hasUploadedHistory)applyHistoricalRates(home,away,'Uploaded historical results CSV');
+  const modelResult=await runServerScoreModel(home,away,context,!hasUploadedHistory);
+  if(modelResult.ok)feedStatus('Fixture selected; independent Poisson and Dixon–Coles models ran with chronological historical diagnostics. Market gate remains WAIT until odds/EV/live gates pass.');
+  else feedStatus('Fixture identity loaded; model output unavailable. Existing rates were not overwritten unless the source-backed model passed its data gates. '+String(modelResult.error||modelResult.reason||modelResult.result?.reason||''),true);
  }));
 }
 async function loadLive(){
