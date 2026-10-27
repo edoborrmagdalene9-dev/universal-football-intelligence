@@ -173,8 +173,11 @@ def send_email(subject,body):
 
 def alert_once(store,key,subject,message):
     if store.seen(key): return False
-    sent=send_telegram(message) or send_email(subject,message)
+    telegram_sent=send_telegram(message)
+    email_sent=send_email(subject,message)
+    sent=telegram_sent or email_sent
     if sent: store.mark(key)
+    print(json.dumps({"telegramSent":telegram_sent,"emailSent":email_sent,"alertKey":key}))
     print(json.dumps({"alertKey":key,"delivered":sent}))
     return sent
 
@@ -209,7 +212,7 @@ def main():
                 prices=odds_values(odds_payload) if odds_payload is not None else []
                 eligible=[p for p in prices if ODDS_MIN<=p<=ODDS_MAX]
                 if not pressure or not eligible: continue
-                key="live-over05ht:%s:%s"%(fid,minute)
+                key="live-over05ht:%s"%fid
                 msg=("UFI LIVE MARKET REVIEW — NOT A BET INSTRUCTION\n%s vs %s | %s'\nScore: %s-%s\nStats: total SOT=%s; total shots=%s; dangerous attacks=%s\nObserved Over 0.5 first-half price(s): %s\nReview source timestamps, cards/VAR, and settlement terms. This experimental trigger is not validated as profitable; no automatic staking."%(home,away,minute,score[0],score[1],stats["sot"],stats["shots"],stats["danger"],", ".join("%.2f"%p for p in eligible)))
                 if alert_once(store,key,"UFI live market review: %s vs %s"%(home,away),msg): counts["liveReviewAlerts"]+=1
         print(json.dumps({"ok":True,"runAtUtc":now.isoformat(),"counts":counts,"stateDb":STATE_DB,"note":"SQLite must be on persistent storage for scheduled deduplication and durable historical snapshots."},sort_keys=True))
