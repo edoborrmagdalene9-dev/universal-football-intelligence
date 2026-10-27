@@ -29,6 +29,7 @@ function makeHarness({failGroq = false} = {}) {
     location:{origin:'https://test.invalid'},
     fetch:async (url,options)=>{
       calls.push({url,options});
+      if(url.includes('/api/ai/council')) return okResponse({ok:true,provider:'Gemini',text:JSON.stringify(payload),fallbackUsed:false});
       if(failGroq && url.includes('api.groq.com')) return {ok:false,status:429,text:async()=>JSON.stringify({error:{message:'rate limit test'}})};
       if(url.includes('generativelanguage.googleapis.com')) return okResponse({candidates:[{content:{parts:[{text:JSON.stringify(payload)}]}}]});
       return okResponse({choices:[{message:{content:JSON.stringify(payload)}}]});
@@ -50,7 +51,7 @@ function makeHarness({failGroq = false} = {}) {
   await failover.get('runAiCouncil').handlers.click();
   assert.equal(failover.calls.length,4,'fourth provider should be called after one of the first three fails');
   assert.equal(failover.attached[0].successfulModels,3,'fallback should restore three successful model opinions');
-  assert.equal(failover.attached[0].fallbackUsed,'Hugging Face','the configured spare provider should be recorded');
+  assert.equal(failover.attached[0].fallbackUsed,'OpenRouter','the configured OpenRouter provider should be used after a primary provider fails');
   assert.equal(failover.attached[0].models.find(m=>m.provider==='Groq').status,'failed','failed provider should be visible');
   console.log('AI council smoke tests passed: 3-way parallel execution and provider failover.');
 })().catch(err=>{console.error(err);process.exitCode=1;});
