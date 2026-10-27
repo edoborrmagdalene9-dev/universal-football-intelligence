@@ -200,7 +200,7 @@ function renderFeed(payload,label){
  const host=$('esiFeedOutput'); if(!host)return;
  if(!rows.length){host.innerHTML='<p class="muted">No fixture rows returned. Check provider coverage, date and subscription. Raw response metadata: '+esc(JSON.stringify({source:payload?.source,fetchedAt:payload?.fetchedAt,cacheHit:payload?.cacheHit}).slice(0,500))+'</p>';return}
  host.innerHTML='<p class="muted">Source: '+esc(payload?.source||'provider')+' · fetched '+esc(payload?.fetchedAt?new Date(payload.fetchedAt*1000).toISOString():'time unavailable')+' · '+esc(label)+' · '+rows.length+' row(s). Click a row to copy its team names into the scenario.</p><table><thead><tr><th>Fixture</th><th>Status</th><th>Score</th><th>Fixture ID</th></tr></thead><tbody>'+rows.slice(0,100).map(f=>{const n=getTeamNames(f);const id=f?.id??f?.fixture_id??'';const status=f?.state?.name||f?.state?.short_name||f?.status||'Unknown';const scores=Array.isArray(f?.scores)?f.scores.map(s=>s?.score?.goals??s?.score??'').filter(x=>x!=='').join(' - '):((f?.home_score??'?')+' - '+(f?.away_score??'?'));return '<tr><td><button class="button small esiFixturePick" data-home="'+esc(n.home)+'" data-away="'+esc(n.away)+'" data-id="'+esc(id)+'">'+esc(n.home+' vs '+n.away)+'</button></td><td>'+esc(status)+'</td><td>'+esc(scores)+'</td><td>'+esc(id)+'</td></tr>'}).join('')+'</tbody></table><details><summary>Inspect source response</summary><pre>'+esc(JSON.stringify(payload,null,2).slice(0,20000))+'</pre></details>';
- host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',()=>{
+ host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',async()=>{
   const home=b.dataset.home,away=b.dataset.away,id=b.dataset.id||'';
   $('esiHome').value=home;$('esiAway').value=away;
   if($('scenarioHomeName'))$('scenarioHomeName').value=home;
@@ -209,27 +209,23 @@ function renderFeed(payload,label){
   const selected=rows.find(f=>String(f?.id??f?.fixture_id??'')===String(id))||{};
   const kick=selected.starting_at||selected.kickoff||selected.start_time||'';
   if(kick&&$('esiKickoff')){const d=new Date(String(kick).replace(' ','T')+(String(kick).includes('Z')?'':'Z'));if(!Number.isNaN(+d))$('esiKickoff').value=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
-  const context={id,home,away,competition:selected.league?.name||selected.competition?.name||selected.competition||'',kickoff:kick,source:payload?.source||'provider',fetchedAt:payload?.fetchedAt||null,selectedAt:new Date().toISOString()};
+  if(kick&&$('esiHistoryCutoff'))$('esiHistoryCutoff').value=String(kick).slice(0,10);
+  const context={id,league_id:selected.league_id||selected.leagueId||null,home,away,competition:selected.league?.name||selected.competition?.name||selected.competition||'',kickoff:kick,source:payload?.source||'provider',fetchedAt:payload?.fetchedAt||null,selectedAt:new Date().toISOString()};
   window.UFI_SELECTED_PROVIDER_FIXTURE=context;
   document.dispatchEvent(new CustomEvent('ufi:provider-fixture-selected',{detail:context}));
-  let rateMessage='Fixture identity loaded from '+context.source+'. Goal rates were not inferred from fixture metadata.';
+  feedStatus('Fixture selected from '+context.source+'. Checking historical results before setting λ…');
   if(historicalRows){
-   try{
-    const cutoff=$('esiKickoff')?.value||$('esiHistoryCutoff')?.value||'';
-    const estimate=estimateRates(historicalRows,home,away,cutoff);
-    $('esiLambdaHome').value=estimate.lambdaHome.toFixed(2);$('esiLambdaAway').value=estimate.lambdaAway.toFixed(2);
-    if($('lambdaHome'))$('lambdaHome').value=estimate.lambdaHome.toFixed(2);
-    if($('lambdaAway'))$('lambdaAway').value=estimate.lambdaAway.toFixed(2);
-    $('esiForecastSource').value=estimate.source+'; '+estimate.matchesUsed+' prior matches; cutoff '+estimate.cutoff;
-    $('esiForecastNotes').value=(estimate.notices||[]).join(' ');
-    rateMessage='Historical λ estimates applied to existing score grids: home '+estimate.lambdaHome.toFixed(2)+', away '+estimate.lambdaAway.toFixed(2)+' using '+estimate.matchesUsed+' earlier matches. Results-only baseline; calibration, lineups, odds and live-state gates still apply.';
-    renderGrid();
-    if(typeof window.UFI_SCENARIO_RECALCULATE==='function')window.UFI_SCENARIO_RECALCULATE();
-   }catch(err){rateMessage+=' Rates remain unchanged: '+err.message;}
-  }else{
-   rateMessage+=' Upload a historical results CSV to estimate λ; no default λ is relabelled as fixture-specific.';
+   applyHistoricalRates(home,away,'Uploaded historical results CSV');
+   feedStatus('Fixture identity loaded. Existing estimator applied only prior results; verify competition coverage, calibration, odds and lineup gates.');
+   return;
   }
-  feedStatus(rateMessage,!historicalRows);
+  try{
+   await loadPublicHistoryAndEstimate(home,away,context);
+   feedStatus('Fixture and public historical baseline loaded. Score grids recalculated; other evidence and market gates still apply.');
+  }catch(err){
+   const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Automatic historical estimate unavailable: '+err.message+' No default λ was relabelled as fixture-specific.';}
+   feedStatus('Fixture identity loaded; historical λ unavailable. Existing default rates remain illustrative only. '+err.message,true);
+  }
  }));
 }
 async function loadLive(){
