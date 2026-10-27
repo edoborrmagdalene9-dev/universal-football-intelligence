@@ -68,6 +68,43 @@ function estimateRates(rows,homeName,awayName,cutoff){
  return {lambdaHome,lambdaAway,source:'uploaded historical results CSV; smoothed team attack/defence Poisson baseline',matchesUsed:prior.length,homeAppearances:team[hn].n,awayAppearances:team[an].n,cutoff:cutoff||null,homeTeam:homeName,awayTeam:awayName,notices:['Results-only model: no xG, lineups, market odds, tactical or live-state features included.','CSV source and competition scope must be verified by the user.','This is not a calibrated probability or betting edge.']};
 }
 
+function inferFootballDataLeague(f){
+ const explicit=String($('esiHistoryLeague')?.value||'').trim().toUpperCase();
+ if(explicit)return explicit;
+ const id=String(f?.league_id||f?.leagueId||'');
+ if(id==='501')return 'SC0';
+ const name=String(f?.league?.name||f?.competition?.name||f?.league_name||f?.competition_name||f?.competition||'').toLowerCase();
+ const mappings=[[/scottish premiership|scotland premiership|premiership scotland/,'SC0'],[/premier league|english premier league/,'E0'],[/championship/,'E1'],[/bundesliga/,'D1'],[/serie a/,'I1'],[/la liga|primera division/,'SP1'],[/ligue 1/,'F1'],[/eredivisie/,'N1'],[/primeira liga/,'P1'],[/first division a|pro league/,'B1']];
+ const match=mappings.find(([re])=>re.test(name));return match?match[1]:'';
+}
+function applyHistoricalRates(home,away,sourceLabel){
+ try{
+  if(!historicalRows)throw new Error('No historical results loaded.');
+  const cutoff=$('esiHistoryCutoff')?.value||$('esiKickoff')?.value||'';
+  const estimate=estimateRates(historicalRows,home,away,cutoff);
+  $('esiLambdaHome').value=estimate.lambdaHome.toFixed(2);$('esiLambdaAway').value=estimate.lambdaAway.toFixed(2);
+  if($('lambdaHome'))$('lambdaHome').value=estimate.lambdaHome.toFixed(2);
+  if($('lambdaAway'))$('lambdaAway').value=estimate.lambdaAway.toFixed(2);
+  $('esiForecastSource').value=sourceLabel+'; '+estimate.matchesUsed+' prior matches; cutoff '+estimate.cutoff;
+  $('esiForecastNotes').value=(estimate.notices||[]).join(' ');
+  renderGrid();
+  if(typeof window.UFI_SCENARIO_RECALCULATE==='function')window.UFI_SCENARIO_RECALCULATE();
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates applied: home λ '+estimate.lambdaHome.toFixed(2)+', away λ '+estimate.lambdaAway.toFixed(2)+' from '+estimate.matchesUsed+' earlier matches; appearances '+estimate.homeAppearances+' / '+estimate.awayAppearances+'. Results-only baseline; not a calibrated probability or proven edge.';}
+  return {ok:true,estimate};
+ }catch(err){const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates not applied: '+err.message+' Existing λ values were left unchanged.';}return {ok:false,error:err.message};}
+}
+async function loadPublicHistoryAndEstimate(home,away,fixture){
+ const code=inferFootballDataLeague(fixture||{});
+ if(!code)throw new Error('Could not map this fixture to a supported public historical league. Choose the league code manually; rates remain unchanged.');
+ const select=$('esiHistoryLeague');if(select)select.value=code;
+ const data=await fetchFeed('/api/history/results?league='+encodeURIComponent(code)+'&seasons=5');
+ if(!data?.ok||!Array.isArray(data.data)||data.data.length<20)throw new Error('Public history returned too few usable results for '+code+'.');
+ historicalRows=data.data.map(r=>({date:r.date,home:r.home_team,away:r.away_team,hg:Number(r.home_goals),ag:Number(r.away_goals)}));
+ const el=$('esiRateStatus');if(el){el.className='notice good';el.textContent='Downloaded '+historicalRows.length+' historical results from '+code+' across '+(data.seasons_loaded||[]).length+' seasons. Source: '+(data.source_urls||[]).length+' public CSV files. Applying the pre-kickoff estimator…';}
+ const result=applyHistoricalRates(home,away,'Football-Data.co.uk '+code+'; '+(data.source_urls||[]).length+' CSV source(s); retrieved '+(data.fetched_at||'timestamp unavailable'));
+ if(!result.ok)throw new Error(result.error);
+ return result;
+}
 if(typeof window!=='undefined') window.UFIHistoricalRateEstimator={parseCsv,estimateRates};
 function renderGrid(){
  const home=($('esiHome').value||'Home').trim(), away=($('esiAway').value||'Away').trim();
