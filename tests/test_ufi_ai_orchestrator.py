@@ -29,7 +29,7 @@ class OrchestratorTests(unittest.TestCase):
 
     def test_falls_back_to_openrouter_if_gemini_fails(self):
         sources=[{"url":"https://example.com/report","timestamp":"2026-10-27T12:00:00Z","text":"A sourced fact."}]
-        expected={"status":"RESEARCH_LEADS","claims":[{"text":"A sourced fact.","source_url":sources[0]["url"],"source_timestamp":sources[0]["timestamp"]}],"verified":False}
+        expected={"status":"RESEARCH_LEADS","claims":[{"text":"A sourced fact.","source_url":sources[0]["url"],"source_timestamp":sources[0]["timestamp"]}],"verified":False,"provider":"OpenRouter"}
         with patch("tools.ufi_gemini_research.extract_research_brief",side_effect=RuntimeError("provider down")):
             with patch.object(orchestrator,"_openrouter_extract",return_value=expected):
                 result=orchestrator.research_with_failover("Extract sourced facts",sources)
