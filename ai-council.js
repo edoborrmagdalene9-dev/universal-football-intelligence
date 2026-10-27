@@ -16,6 +16,7 @@ const SYSTEM_RULES = [
 "Output JSON only with keys: overall_status, summary, traps (array of objects with selection, concern, evidence_level, action), missing_evidence, model_limitations, replacement_readiness, disagreements, questions_to_verify. Keep concise. Advisory only; no guaranteed win."
 ].join("\n");
 const providers = () => [
+ {id:'UFI Server (Gemini to OpenRouter)',key:'server',model:'server-side failover',run:serverCouncil},
  {id:'Gemini',key:$('aiGeminiKey')?.value.trim(),model:$('aiGeminiModel')?.value.trim(),run:gemini},
  {id:'Groq',key:$('aiGroqKey')?.value.trim(),model:$('aiGroqModel')?.value.trim(),run:groq},
  {id:'OpenRouter',key:$('aiOpenRouterKey')?.value.trim(),model:$('aiOpenRouterModel')?.value.trim(),run:openrouter},
@@ -33,6 +34,13 @@ async function readJson(res) {
  const txt=await res.text(); let data; try{data=JSON.parse(txt)}catch{throw new Error('Non-JSON response (HTTP '+res.status+').')}
  if(!res.ok) throw new Error((data.error?.message||data.message||'HTTP '+res.status).slice(0,240));
  return data;
+}
+async function serverCouncil(p,prompt) {
+ const url='https://universal-football-intelligence.onrender.com/api/ai/council';
+ const res=await fetchWithTimeout(url,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({prompt})},35000);
+ const data=await readJson(res);
+ if(!data.ok || !data.text) throw new Error((data.errors||[data.note||'Server-side AI council unavailable']).join('; ').slice(0,240));
+ return data.text;
 }
 async function gemini(p,prompt) {
  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(p.model)+':generateContent?key='+encodeURIComponent(p.key);
@@ -91,6 +99,18 @@ async function testConfiguredProviders(){
  if(status)status.textContent=lines.join(' | ');
  if(button){button.disabled=false;button.textContent='Test configured API keys';}
 }
+async function fetchFixtureEvidence(ctx) {
+ const match=ctx?.selectedMatch||ctx?.scenario||{};
+ const home=match.home||match.home_team_name||'';
+ const away=match.away||match.away_team_name||'';
+ if(!home||!away) return null;
+ const params=new URLSearchParams({home:String(home),away:String(away),competition:String(match.competition||''),date:String(match.date||'')});
+ try {
+  const res=await fetchWithTimeout('https://universal-football-intelligence.onrender.com/api/ai/research-fixture?'+params.toString(),{headers:{Accept:'application/json'},cache:'no-store'},35000);
+  const data=await readJson(res);
+  return {...data,usedForProbabilities:false,note:'Source research is advisory. It cannot alter score probabilities or bypass UFI deterministic gates.'};
+ } catch(e) { return {status:'NEEDS_DATA',verified:false,claims:[],reason:'Automated fixture research unavailable: '+String(e?.message||e).slice(0,180),usedForProbabilities:false}; }
+}
 async function runCouncil() {
  const status=$('aiCouncilStatus');
  const buttons=[$('runAiCouncil'),$('runAiCouncilScenario')].filter(Boolean);
@@ -101,6 +121,9 @@ async function runCouncil() {
  if(status)status.textContent='Collecting UFI structures and querying three models in parallel…';
  const ctx=window.UFI_AI_CONTEXT();
  const slipText=$('slipInput')?.value||'';
+ if(status) status.textContent='Fetching timestamped fixture research, then running the AI council…';
+ const automatedResearch=await fetchFixtureEvidence(ctx);
+ if(automatedResearch) ctx.automatedResearch=automatedResearch;
  const prompt=promptFor(ctx,slipText);
  const first=configured.slice(0,3), backup=configured.slice(3);
  const settled=await Promise.all(first.map(async p=>{try{return {provider:p.id,model:p.model,status:'success',text:await p.run(p,prompt)}}catch(e){return {provider:p.id,model:p.model,status:'failed',error:String(e?.message||e)}}}));
