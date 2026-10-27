@@ -1,0 +1,37 @@
+name: UFI live brain worker (manual validation only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run worker tests
+        run: python -m unittest tests.test_ufi_live_brain_worker -v
+      - name: Compile worker
+        run: python -m py_compile tools/ufi_live_brain_worker.py
+      - name: Run monitor only when explicitly enabled
+        if: ${{ vars.UFI_BRAIN_MANUAL_RUN == 'true' }}
+        env:
+          UFI_BACKEND_URL: ${{ vars.UFI_BACKEND_URL }}
+          UFI_STATE_DB: /tmp/ufi_brain_state.sqlite3
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+          ALERT_EMAIL_TO: ${{ vars.ALERT_EMAIL_TO }}
+          UFI_BOOKMAKER_ID: ${{ vars.UFI_BOOKMAKER_ID }}
+          UFI_OVER05_HT_MARKET_ID: ${{ vars.UFI_OVER05_HT_MARKET_ID }}
+        run: python tools/ufi_live_brain_worker.py
