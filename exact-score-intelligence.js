@@ -38,7 +38,7 @@ function parseCsv(text){
  if(field.length||row.length){row.push(field);rows.push(row)}
  if(!rows.length)throw new Error('CSV is empty.');
  const headers=rows.shift().map(x=>String(x).trim().toLowerCase());
- const idx={};headers.forEach((h,i)=>idx[h]=i);
+ const idx={};headers.forEach((h,i)=>{idx[h]=i;const aliases={hometeam:'home_team',awayteam:'away_team',fthg:'home_goals',ftag:'away_goals',hg:'home_goals',ag:'away_goals'};if(aliases[h])idx[aliases[h]]=i;});
  const required=['date','home_team','away_team','home_goals','away_goals'];
  if(required.some(k=>idx[k]===undefined))throw new Error('Required CSV columns: date,home_team,away_team,home_goals,away_goals.');
  return rows.map((r,n)=>{const x={date:String(r[idx.date]||'').trim(),home:String(r[idx.home_team]||'').trim(),away:String(r[idx.away_team]||'').trim(),hg:Number(r[idx.home_goals]),ag:Number(r[idx.away_goals])};
@@ -68,6 +68,43 @@ function estimateRates(rows,homeName,awayName,cutoff){
  return {lambdaHome,lambdaAway,source:'uploaded historical results CSV; smoothed team attack/defence Poisson baseline',matchesUsed:prior.length,homeAppearances:team[hn].n,awayAppearances:team[an].n,cutoff:cutoff||null,homeTeam:homeName,awayTeam:awayName,notices:['Results-only model: no xG, lineups, market odds, tactical or live-state features included.','CSV source and competition scope must be verified by the user.','This is not a calibrated probability or betting edge.']};
 }
 
+function inferFootballDataLeague(f){
+ const explicit=String($('esiHistoryLeague')?.value||'').trim().toUpperCase();
+ if(explicit)return explicit;
+ const id=String(f?.league_id||f?.leagueId||'');
+ if(id==='501')return 'SC0';
+ const name=String(f?.league?.name||f?.competition?.name||f?.league_name||f?.competition_name||f?.competition||'').toLowerCase();
+ const mappings=[[/scottish premiership|scotland premiership|premiership scotland/,'SC0'],[/premier league|english premier league/,'E0'],[/championship/,'E1'],[/bundesliga/,'D1'],[/serie a/,'I1'],[/la liga|primera division/,'SP1'],[/ligue 1/,'F1'],[/eredivisie/,'N1'],[/primeira liga/,'P1'],[/first division a|pro league/,'B1']];
+ const match=mappings.find(([re])=>re.test(name));return match?match[1]:'';
+}
+function applyHistoricalRates(home,away,sourceLabel){
+ try{
+  if(!historicalRows)throw new Error('No historical results loaded.');
+  const cutoff=$('esiHistoryCutoff')?.value||$('esiKickoff')?.value||'';
+  const estimate=estimateRates(historicalRows,home,away,cutoff);
+  $('esiLambdaHome').value=estimate.lambdaHome.toFixed(2);$('esiLambdaAway').value=estimate.lambdaAway.toFixed(2);
+  if($('lambdaHome'))$('lambdaHome').value=estimate.lambdaHome.toFixed(2);
+  if($('lambdaAway'))$('lambdaAway').value=estimate.lambdaAway.toFixed(2);
+  $('esiForecastSource').value=sourceLabel+'; '+estimate.matchesUsed+' prior matches; cutoff '+estimate.cutoff;
+  $('esiForecastNotes').value=(estimate.notices||[]).join(' ');
+  renderGrid();
+  if(typeof window.UFI_SCENARIO_RECALCULATE==='function')window.UFI_SCENARIO_RECALCULATE();
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates applied: home λ '+estimate.lambdaHome.toFixed(2)+', away λ '+estimate.lambdaAway.toFixed(2)+' from '+estimate.matchesUsed+' earlier matches; appearances '+estimate.homeAppearances+' / '+estimate.awayAppearances+'. Results-only baseline; not a calibrated probability or proven edge.';}
+  return {ok:true,estimate};
+ }catch(err){const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates not applied: '+err.message+' Existing λ values were left unchanged.';}return {ok:false,error:err.message};}
+}
+async function loadPublicHistoryAndEstimate(home,away,fixture){
+ const code=inferFootballDataLeague(fixture||{});
+ if(!code)throw new Error('Could not map this fixture to a supported public historical league. Choose the league code manually; rates remain unchanged.');
+ const select=$('esiHistoryLeague');if(select)select.value=code;
+ const data=await fetchFeed('/api/history/results?league='+encodeURIComponent(code)+'&seasons=5');
+ if(!data?.ok||!Array.isArray(data.data)||data.data.length<20)throw new Error('Public history returned too few usable results for '+code+'.');
+ historicalRows=data.data.map(r=>({date:r.date,home:r.home_team,away:r.away_team,hg:Number(r.home_goals),ag:Number(r.away_goals)}));
+ const el=$('esiRateStatus');if(el){el.className='notice good';el.textContent='Downloaded '+historicalRows.length+' historical results from '+code+' across '+(data.seasons_loaded||[]).length+' seasons. Source: '+(data.source_urls||[]).length+' public CSV files. Applying the pre-kickoff estimator…';}
+ const result=applyHistoricalRates(home,away,'Football-Data.co.uk '+code+'; '+(data.source_urls||[]).length+' CSV source(s); retrieved '+(data.fetched_at||'timestamp unavailable'));
+ if(!result.ok)throw new Error(result.error);
+ return result;
+}
 if(typeof window!=='undefined') window.UFIHistoricalRateEstimator={parseCsv,estimateRates};
 function renderGrid(){
  const home=($('esiHome').value||'Home').trim(), away=($('esiAway').value||'Away').trim();
@@ -116,6 +153,15 @@ $('esiHistoricalCsv')?.addEventListener('change',async e=>{
  try{historicalRows=parseCsv(await file.text());const el=$('esiRateStatus');if(el){el.textContent='Loaded '+historicalRows.length+' historical results. Team and date coverage will be checked when estimating rates.';el.className='notice good';}}
  catch(err){historicalRows=null;const el=$('esiRateStatus');if(el){el.textContent='CSV rejected: '+err.message;el.className='notice warning';}}
 });
+$('esiAutoHistory')?.addEventListener('click',async()=>{
+ const button=$('esiAutoHistory');if(button){button.disabled=true;button.textContent='Downloading public history…';}
+ try{
+  const fixture=window.UFI_SELECTED_PROVIDER_FIXTURE||{};
+  await loadPublicHistoryAndEstimate(($('esiHome')?.value||fixture.home||'').trim(),($('esiAway')?.value||fixture.away||'').trim(),fixture);
+ }catch(err){
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Public historical data unavailable: '+err.message+' No rate assumptions were changed.';}
+ }finally{if(button){button.disabled=false;button.textContent='Fetch public history + estimate λ';}}
+});
 $('esiEstimateRates')?.addEventListener('click',()=>{
  try{
   if(!historicalRows)throw new Error('Upload a valid historical results CSV first.');
@@ -132,7 +178,7 @@ $('esiEstimateRates')?.addEventListener('click',()=>{
 /* Optional secret-safe live provider proxy. The browser never receives the provider token. */
 const API_KEY = 'ufi_exact_score_api_base_v1';
 let feedTimer = null;
-const feedBase = () => String($('esiApiBase')?.value || '').trim().replace(/\/+$/, '');
+const feedBase = () => String($('esiApiBase')?.value || 'https://universal-football-intelligence.onrender.com').trim().replace(/\/+$/, '');
 function feedStatus(msg,bad=false){const el=$('esiFeedStatus');if(el){el.textContent=msg;el.className='notice '+(bad?'warning':'good')}}
 function safeBase(){
  const base=feedBase();
@@ -155,15 +201,46 @@ function unwrapRows(payload){
 }
 function getTeamNames(f){
  const participants=f?.participants||[];
- const names=participants.map(p=>p?.name||p?.participant?.name||p?.meta?.location).filter(Boolean);
- return {home:names[0]||f?.home_team||f?.name||'Home',away:names[1]||f?.away_team||'Away'};
+ const name=p=>p?.name||p?.participant?.name||'';
+ const location=p=>String(p?.meta?.location||p?.location||'').toLowerCase();
+ const home=participants.find(p=>location(p)==='home'||p?.meta?.is_home===true||p?.is_home===true);
+ const away=participants.find(p=>location(p)==='away'||p?.meta?.is_home===false||p?.is_home===false);
+ const names=participants.map(name).filter(Boolean);
+ return {home:name(home)||f?.home_team?.name||f?.home_team||names[0]||f?.name||'Home',
+         away:name(away)||f?.away_team?.name||f?.away_team||names.find(x=>x!==name(home))||'Away'};
 }
 function renderFeed(payload,label){
  const rows=unwrapRows(payload);
  const host=$('esiFeedOutput'); if(!host)return;
  if(!rows.length){host.innerHTML='<p class="muted">No fixture rows returned. Check provider coverage, date and subscription. Raw response metadata: '+esc(JSON.stringify({source:payload?.source,fetchedAt:payload?.fetchedAt,cacheHit:payload?.cacheHit}).slice(0,500))+'</p>';return}
  host.innerHTML='<p class="muted">Source: '+esc(payload?.source||'provider')+' · fetched '+esc(payload?.fetchedAt?new Date(payload.fetchedAt*1000).toISOString():'time unavailable')+' · '+esc(label)+' · '+rows.length+' row(s). Click a row to copy its team names into the scenario.</p><table><thead><tr><th>Fixture</th><th>Status</th><th>Score</th><th>Fixture ID</th></tr></thead><tbody>'+rows.slice(0,100).map(f=>{const n=getTeamNames(f);const id=f?.id??f?.fixture_id??'';const status=f?.state?.name||f?.state?.short_name||f?.status||'Unknown';const scores=Array.isArray(f?.scores)?f.scores.map(s=>s?.score?.goals??s?.score??'').filter(x=>x!=='').join(' - '):((f?.home_score??'?')+' - '+(f?.away_score??'?'));return '<tr><td><button class="button small esiFixturePick" data-home="'+esc(n.home)+'" data-away="'+esc(n.away)+'" data-id="'+esc(id)+'">'+esc(n.home+' vs '+n.away)+'</button></td><td>'+esc(status)+'</td><td>'+esc(scores)+'</td><td>'+esc(id)+'</td></tr>'}).join('')+'</tbody></table><details><summary>Inspect source response</summary><pre>'+esc(JSON.stringify(payload,null,2).slice(0,20000))+'</pre></details>';
- host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',()=>{$('esiHome').value=b.dataset.home;$('esiAway').value=b.dataset.away;if($('esiProviderFixtureId'))$('esiProviderFixtureId').value=b.dataset.id||'';feedStatus('Fixture selected. Team names are populated; goal rates are NOT inferred from this feed yet. Load historical results and validate a model before using probabilities.');}));
+ host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',async()=>{
+  const home=b.dataset.home,away=b.dataset.away,id=b.dataset.id||'';
+  $('esiHome').value=home;$('esiAway').value=away;
+  if($('scenarioHomeName'))$('scenarioHomeName').value=home;
+  if($('scenarioAwayName'))$('scenarioAwayName').value=away;
+  if($('esiProviderFixtureId'))$('esiProviderFixtureId').value=id;
+  const selected=rows.find(f=>String(f?.id??f?.fixture_id??'')===String(id))||{};
+  const kick=selected.starting_at||selected.kickoff||selected.start_time||'';
+  if(kick&&$('esiKickoff')){const d=new Date(String(kick).replace(' ','T')+(String(kick).includes('Z')?'':'Z'));if(!Number.isNaN(+d))$('esiKickoff').value=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+  if(kick&&$('esiHistoryCutoff'))$('esiHistoryCutoff').value=String(kick).slice(0,10);
+  const context={id,league_id:selected.league_id||selected.leagueId||null,home,away,competition:selected.league?.name||selected.competition?.name||selected.competition||'',kickoff:kick,source:payload?.source||'provider',fetchedAt:payload?.fetchedAt||null,selectedAt:new Date().toISOString()};
+  window.UFI_SELECTED_PROVIDER_FIXTURE=context;
+  document.dispatchEvent(new CustomEvent('ufi:provider-fixture-selected',{detail:context}));
+  feedStatus('Fixture selected from '+context.source+'. Checking historical results before setting λ…');
+  if(historicalRows){
+   applyHistoricalRates(home,away,'Uploaded historical results CSV');
+   feedStatus('Fixture identity loaded. Existing estimator applied only prior results; verify competition coverage, calibration, odds and lineup gates.');
+   return;
+  }
+  try{
+   await loadPublicHistoryAndEstimate(home,away,context);
+   feedStatus('Fixture and public historical baseline loaded. Score grids recalculated; other evidence and market gates still apply.');
+  }catch(err){
+   const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Automatic historical estimate unavailable: '+err.message+' No default λ was relabelled as fixture-specific.';}
+   feedStatus('Fixture identity loaded; historical λ unavailable. Existing default rates remain illustrative only. '+err.message,true);
+  }
+ }));
 }
 async function loadLive(){
  try{const data=await fetchFeed('/api/live');renderFeed(data,'live matches');if(typeof window!=='undefined'&&typeof CustomEvent!=='undefined')window.dispatchEvent(new CustomEvent('ufi:live-feed',{detail:data}));feedStatus('Live feed refreshed. Scores/events are sourced data; exact-score live probabilities remain unavailable until the conditional model is validated.');}
@@ -183,7 +260,9 @@ $('esiLoadFixtures')?.addEventListener('click',loadDateFixtures);
 $('esiLoadFixtureDetails')?.addEventListener('click',loadFixtureDetails);
 $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedTimer);feedTimer=null;feedStatus('Automatic refresh stopped.')});
 try{const savedBase=localStorage.getItem(API_KEY);if(savedBase&&$('esiApiBase'))$('esiApiBase').value=savedBase;}catch(_){}
-if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
+if($('esiApiBase')&&!$('esiApiBase').value)$('esiApiBase').value='https://universal-football-intelligence.onrender.com';
+function ufiLagosDate(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Lagos',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+if($('esiFeedDate'))$('esiFeedDate').value=ufiLagosDate();
 
 
 /* Multi-provider feed console: keys remain exclusively on the backend. */

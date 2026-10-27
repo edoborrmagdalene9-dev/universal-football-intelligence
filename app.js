@@ -225,6 +225,7 @@ $('subList').addEventListener('click',e=>{const b=e.target.closest('[data-del-su
 function poisson(l,k){let p=Math.exp(-l);for(let i=1;i<=k;i++)p*=l/i;return p}
 function scenarioCalc(){const h=Number($('lambdaHome').value),a=Number($('lambdaAway').value),cap=Number($('scoreCap').value);if(!Number.isFinite(h)||!Number.isFinite(a)||h<0||a<0||h>12||a>12){notice('scenarioStatus','Expected goals must be between 0 and 12.','warning');return null}let grid=[],mass=0,hw=0,d=0,aw=0,over15=0,over25=0,over35=0,btts=0;for(let i=0;i<=cap;i++)for(let j=0;j<=cap;j++){const p=poisson(h,i)*poisson(a,j);grid.push({h:i,a:j,p});mass+=p;if(i>j)hw+=p;else if(i===j)d+=p;else aw+=p;if(i+j>1)over15+=p;if(i+j>2)over25+=p;if(i+j>3)over35+=p;if(i>0&&j>0)btts+=p}grid.sort((x,y)=>y.p-x.p);const norm=x=>x/mass;const out={home:$('scenarioHomeName').value.trim()||'Home',away:$('scenarioAwayName').value.trim()||'Away',matchId:String(chosenMatch()?.match_id??''),lambdaHome:h,lambdaAway:a,cap,mass,homeWin:norm(hw),draw:norm(d),awayWin:norm(aw),over15:norm(over15),over25:norm(over25),over35:norm(over35),btts:norm(btts),grid,top:grid[0],label:$('scenarioLabel').value.trim(),caveats:$('scenarioCaveats').value.trim(),checks:['checkLineup','checkVenue','checkRecent','checkOpponent','checkMarket','checkUncertainty'].filter(id=>$(id).checked)};S.scenario=out;return out}
 $('runScenario').onclick=()=>{const s=scenarioCalc();if(!s)return;[['probHome',s.homeWin],['probDraw',s.draw],['probAway',s.awayWin],['probOver15',s.over15],['probOver25',s.over25],['probOver35',s.over35],['probBtts',s.btts]].forEach(([id,v])=>$(id).textContent=pct(v));$('probTopScore').textContent=s.top.h+'–'+s.top.a;$('scoreGrid').innerHTML='<table><thead><tr><th>Score</th><th>Probability (normalized grid)</th><th>Visual</th></tr></thead><tbody>'+s.grid.slice(0,35).map(x=>'<tr><td>'+esc(s.home)+' '+x.h+'–'+x.a+' '+esc(s.away)+'</td><td>'+pct(x.p/s.mass)+'</td><td><div style="height:7px;background:#243b2b;border-radius:6px;min-width:90px;overflow:hidden"><div style="height:100%;width:'+Math.max(1,x.p/s.grid[0].p*100)+'%;background:#83f3ac"></div></div></td></tr>').join('')+'</tbody></table>';$('scenarioStatus').textContent='Grid mass represented: '+pct(s.mass)+'. Tail omitted by cap: '+pct(Math.max(0,1-s.mass))+'. Probabilities normalized within grid; baseline assumes independent Poisson goals and does not incorporate all tactical/game-state effects.';addActivity('Calculated scenario for '+s.home+' vs '+s.away);toast('Scenario grid calculated.')};
+window.UFI_SCENARIO_RECALCULATE=()=>{const b=$('runScenario');if(b)b.click();};
 $('saveForecast').onclick=()=>{const s=S.scenario||scenarioCalc();if(!s)return;$('btMatch').value=s.home+' vs '+s.away;$('btMethod').value='Independent Poisson baseline'+(s.label?' / '+s.label:'');$('btHome').value=(100*s.homeWin).toFixed(2);$('btDraw').value=(100*s.draw).toFixed(2);$('btAway').value=(100*s.awayWin).toFixed(2);$('btNotes').value='λ home='+s.lambdaHome+', away='+s.lambdaAway+'; cap='+s.cap+'; grid mass='+(100*s.mass).toFixed(2)+'%; caveats: '+s.caveats+'; checks completed: '+s.checks.join(', ');go('backtest');toast('Forecast copied to ledger form. Select actual result when known.')};
 function normalizeTeamName(value){
  return String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
@@ -826,7 +827,40 @@ window.UFI_ATTACH_AI_COUNCIL = result => {
  persist();
 };
 
+async function initUfiTelemetry(){
+ try{
+  const response=await fetch('https://universal-football-intelligence.onrender.com/api/analytics/config',{headers:{Accept:'application/json'},cache:'no-store'});
+  if(!response.ok)return;
+  const cfg=await response.json();
+  if(!cfg.configured||!cfg.projectToken||!cfg.apiHost)return;
+  if(!window.posthog){
+   const script=document.createElement('script');
+   script.src=cfg.apiHost.replace(/\/$/,'')+'/static/array.js';
+   script.async=true;
+   script.onload=()=>startPosthog(cfg);
+   script.onerror=()=>{};
+   document.head.appendChild(script);
+  }else startPosthog(cfg);
+ }catch(_){}
+}
+function startPosthog(cfg){
+ try{
+  if(!window.posthog||window.__ufiPosthogStarted)return;
+  window.__ufiPosthogStarted=true;
+  window.posthog.init(cfg.projectToken,{api_host:cfg.apiHost,autocapture:false,capture_pageview:true,
+   disable_session_recording:true,persistence:'memory',person_profiles:'never',
+   loaded:function(ph){
+    ph.capture('ufi_app_loaded',{app_version:'2026-10-27',telemetry_scope:'anonymous product health'});
+    const allowed=new Set(['runAiCouncil','runAiCouncilScenario','runScenario','runLiveBrain','runExactScore','runMarketAudit','testAiProviders','loadFixtures','refreshLive']);
+    document.addEventListener('click',function(event){
+     const el=event.target&&event.target.closest?event.target.closest('button,[role="button"]'):null;
+     if(el&&allowed.has(el.id))ph.capture('ufi_action',{action:el.id});
+    },{passive:true});
+   }});
+ }catch(_){}
+}
 renderAllSaved();renderManualSelections();
+initUfiTelemetry();
 if(location.protocol==='file:')$('netState').textContent='Local file mode';
 else $('netState').textContent='Ready';
 })();
