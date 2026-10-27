@@ -153,6 +153,15 @@ $('esiHistoricalCsv')?.addEventListener('change',async e=>{
  try{historicalRows=parseCsv(await file.text());const el=$('esiRateStatus');if(el){el.textContent='Loaded '+historicalRows.length+' historical results. Team and date coverage will be checked when estimating rates.';el.className='notice good';}}
  catch(err){historicalRows=null;const el=$('esiRateStatus');if(el){el.textContent='CSV rejected: '+err.message;el.className='notice warning';}}
 });
+$('esiAutoHistory')?.addEventListener('click',async()=>{
+ const button=$('esiAutoHistory');if(button){button.disabled=true;button.textContent='Downloading public history…';}
+ try{
+  const fixture=window.UFI_SELECTED_PROVIDER_FIXTURE||{};
+  await loadPublicHistoryAndEstimate(($('esiHome')?.value||fixture.home||'').trim(),($('esiAway')?.value||fixture.away||'').trim(),fixture);
+ }catch(err){
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Public historical data unavailable: '+err.message+' No rate assumptions were changed.';}
+ }finally{if(button){button.disabled=false;button.textContent='Fetch public history + estimate λ';}}
+});
 $('esiEstimateRates')?.addEventListener('click',()=>{
  try{
   if(!historicalRows)throw new Error('Upload a valid historical results CSV first.');
