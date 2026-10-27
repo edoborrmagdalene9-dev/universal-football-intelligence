@@ -330,6 +330,14 @@ def handle_extra_route(route, query):
                     "completion_tokens": usage.get("completion_tokens"),
                     "total_tokens": usage.get("total_tokens")},
                 "note": "Text generation only. This response is not independently verified and is not itself a football prediction."}, False
+    if route == "/api/analytics/config":
+        token = os.getenv("POSTHOG_API_KEY", "").strip()
+        host = os.getenv("POSTHOG_HOST", "https://us.i.posthog.com").strip().rstrip("/")
+        if not host.startswith("https://"):
+            host = "https://us.i.posthog.com"
+        return {"ok": True, "configured": bool(token), "projectToken": token if token else None,
+                "apiHost": host, "autocapture": False, "sessionRecording": False,
+                "note": "Public PostHog project token is exposed only for browser event ingestion; no private credentials are returned."}, False
     if route == "/api/ai/status":
         return {"ok": True,
                 "providers": {
