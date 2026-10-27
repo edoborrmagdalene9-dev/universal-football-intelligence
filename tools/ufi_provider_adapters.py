@@ -330,4 +330,31 @@ def handle_extra_route(route, query):
                     "completion_tokens": usage.get("completion_tokens"),
                     "total_tokens": usage.get("total_tokens")},
                 "note": "Text generation only. This response is not independently verified and is not itself a football prediction."}, False
+    if route == "/api/ai/status":
+        return {"ok": True,
+                "providers": {
+                    "gemini": {"configured": bool(os.getenv("GEMINI_API_KEY", "").strip()), "role": "primary"},
+                    "openrouter": {"configured": bool(os.getenv("OPENROUTER_API_KEY", "").strip()), "role": "fallback"}},
+                "secretValuesReturned": False,
+                "note": "Configuration only; actual provider connectivity is checked during a research request."}, False
+    if route == "/api/ai/research":
+        raw_question = (query.get("question") or [""])[0].strip()
+        raw_sources = (query.get("source_material") or [""])[0]
+        if not raw_question:
+            raise AdapterError("question is required.")
+        if not raw_sources:
+            return {"status": "NEEDS_DATA", "claims": [], "verified": False,
+                    "reason": "source_material is required; no live facts will be invented."}, False
+        try:
+            source_material = json.loads(raw_sources)
+        except (TypeError, ValueError):
+            raise AdapterError("source_material must be URL-encoded JSON array.") from None
+        try:
+            try:
+                from .ufi_ai_orchestrator import research_with_failover
+            except ImportError:
+                from ufi_ai_orchestrator import research_with_failover
+            return {"ok": True, **research_with_failover(raw_question, source_material)}, False
+        except ValueError as exc:
+            raise AdapterError(str(exc)) from None
     return None
