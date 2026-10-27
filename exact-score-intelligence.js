@@ -201,8 +201,13 @@ function unwrapRows(payload){
 }
 function getTeamNames(f){
  const participants=f?.participants||[];
- const names=participants.map(p=>p?.name||p?.participant?.name||p?.meta?.location).filter(Boolean);
- return {home:names[0]||f?.home_team||f?.name||'Home',away:names[1]||f?.away_team||'Away'};
+ const name=p=>p?.name||p?.participant?.name||'';
+ const location=p=>String(p?.meta?.location||p?.location||'').toLowerCase();
+ const home=participants.find(p=>location(p)==='home'||p?.meta?.is_home===true||p?.is_home===true);
+ const away=participants.find(p=>location(p)==='away'||p?.meta?.is_home===false||p?.is_home===false);
+ const names=participants.map(name).filter(Boolean);
+ return {home:name(home)||f?.home_team?.name||f?.home_team||names[0]||f?.name||'Home',
+         away:name(away)||f?.away_team?.name||f?.away_team||names.find(x=>x!==name(home))||'Away'};
 }
 function renderFeed(payload,label){
  const rows=unwrapRows(payload);
