@@ -99,6 +99,18 @@ async function testConfiguredProviders(){
  if(status)status.textContent=lines.join(' | ');
  if(button){button.disabled=false;button.textContent='Test configured API keys';}
 }
+async function fetchFixtureEvidence(ctx) {
+ const match=ctx?.selectedMatch||ctx?.scenario||{};
+ const home=match.home||match.home_team_name||'';
+ const away=match.away||match.away_team_name||'';
+ if(!home||!away) return null;
+ const params=new URLSearchParams({home:String(home),away:String(away),competition:String(match.competition||''),date:String(match.date||'')});
+ try {
+  const res=await fetchWithTimeout('https://universal-football-intelligence.onrender.com/api/ai/research-fixture?'+params.toString(),{headers:{Accept:'application/json'},cache:'no-store'},35000);
+  const data=await readJson(res);
+  return {...data,usedForProbabilities:false,note:'Source research is advisory. It cannot alter score probabilities or bypass UFI deterministic gates.'};
+ } catch(e) { return {status:'NEEDS_DATA',verified:false,claims:[],reason:'Automated fixture research unavailable: '+String(e?.message||e).slice(0,180),usedForProbabilities:false}; }
+}
 async function runCouncil() {
  const status=$('aiCouncilStatus');
  const buttons=[$('runAiCouncil'),$('runAiCouncilScenario')].filter(Boolean);
@@ -109,6 +121,9 @@ async function runCouncil() {
  if(status)status.textContent='Collecting UFI structures and querying three models in parallel…';
  const ctx=window.UFI_AI_CONTEXT();
  const slipText=$('slipInput')?.value||'';
+ if(status) status.textContent='Fetching timestamped fixture research, then running the AI council…';
+ const automatedResearch=await fetchFixtureEvidence(ctx);
+ if(automatedResearch) ctx.automatedResearch=automatedResearch;
  const prompt=promptFor(ctx,slipText);
  const first=configured.slice(0,3), backup=configured.slice(3);
  const settled=await Promise.all(first.map(async p=>{try{return {provider:p.id,model:p.model,status:'success',text:await p.run(p,prompt)}}catch(e){return {provider:p.id,model:p.model,status:'failed',error:String(e?.message||e)}}}));
