@@ -337,6 +337,18 @@ def handle_extra_route(route, query):
                     "openrouter": {"configured": bool(os.getenv("OPENROUTER_API_KEY", "").strip()), "role": "fallback"}},
                 "secretValuesReturned": False,
                 "note": "Configuration only; actual provider connectivity is checked during a research request."}, False
+    if route == "/api/ai/council":
+        raw_prompt = (query.get("prompt") or [""])[0]
+        if not raw_prompt.strip():
+            raise AdapterError("prompt is required.")
+        try:
+            try:
+                from .ufi_ai_orchestrator import review_with_failover
+            except ImportError:
+                from ufi_ai_orchestrator import review_with_failover
+            return review_with_failover(raw_prompt), False
+        except ValueError as exc:
+            raise AdapterError(str(exc)) from None
     if route == "/api/ai/research":
         raw_question = (query.get("question") or [""])[0].strip()
         raw_sources = (query.get("source_material") or [""])[0]
