@@ -213,7 +213,9 @@ $('esiLoadFixtures')?.addEventListener('click',loadDateFixtures);
 $('esiLoadFixtureDetails')?.addEventListener('click',loadFixtureDetails);
 $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedTimer);feedTimer=null;feedStatus('Automatic refresh stopped.')});
 try{const savedBase=localStorage.getItem(API_KEY);if(savedBase&&$('esiApiBase'))$('esiApiBase').value=savedBase;}catch(_){}
-if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
+if($('esiApiBase')&&!$('esiApiBase').value)$('esiApiBase').value='https://universal-football-intelligence.onrender.com';
+function ufiLagosDate(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Lagos',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+if($('esiFeedDate'))$('esiFeedDate').value=ufiLagosDate();
 
 
 /* Multi-provider feed console: keys remain exclusively on the backend. */
