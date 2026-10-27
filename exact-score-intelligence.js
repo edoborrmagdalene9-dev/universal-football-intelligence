@@ -38,7 +38,7 @@ function parseCsv(text){
  if(field.length||row.length){row.push(field);rows.push(row)}
  if(!rows.length)throw new Error('CSV is empty.');
  const headers=rows.shift().map(x=>String(x).trim().toLowerCase());
- const idx={};headers.forEach((h,i)=>idx[h]=i);
+ const idx={};headers.forEach((h,i)=>{idx[h]=i;const aliases={hometeam:'home_team',awayteam:'away_team',fthg:'home_goals',ftag:'away_goals,hg:'home_goals',ag:'away_goals'};if(aliases[h])idx[aliases[h]]=i;});
  const required=['date','home_team','away_team','home_goals','away_goals'];
  if(required.some(k=>idx[k]===undefined))throw new Error('Required CSV columns: date,home_team,away_team,home_goals,away_goals.');
  return rows.map((r,n)=>{const x={date:String(r[idx.date]||'').trim(),home:String(r[idx.home_team]||'').trim(),away:String(r[idx.away_team]||'').trim(),hg:Number(r[idx.home_goals]),ag:Number(r[idx.away_goals])};
