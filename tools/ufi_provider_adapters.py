@@ -278,4 +278,56 @@ def handle_extra_route(route, query):
         return calculate_ev(query),False
     if route == "/api/arbitrage":
         return calculate_arbitrage(query),False
+    if route == "/api/openrouter/status":
+        return {"ok": True, "provider": "OpenRouter",
+                "configured": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
+                "model": os.getenv("OPENROUTER_MODEL", "openrouter/auto"),
+                "secretValuesReturned": False,
+                "note": "Configuration status only; this route does not test provider connectivity."}, False
+    if route == "/api/openrouter/chat":
+        key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        if not key:
+            raise AdapterError("OPENROUTER_API_KEY is not configured on the server.")
+        raw_messages = (query.get("messages") or [""])[0]
+        if not raw_messages:
+            raise AdapterError("messages is required as URL-encoded JSON.")
+        try:
+            messages = json.loads(raw_messages)
+        except (TypeError, ValueError):
+            raise AdapterError("messages must be a URL-encoded JSON array.") from None
+        if (not isinstance(messages, list) or not messages or
+                any(not isinstance(m, dict) or m.get("role") not in ("system", "user", "assistant")
+                    or not isinstance(m.get("content"), str) for m in messages)):
+            raise AdapterError("messages must be a non-empty array of role/content objects.")
+        # Bound payloads and reject unsupported roles to keep the public endpoint predictable.
+        if len(messages) > 20 or sum(len(m["content"]) for m in messages) > 24000:
+            raise AdapterError("messages exceed the request size limit.")
+        model = (query.get("model") or [os.getenv("OPENROUTER_MODEL", "openrouter/auto")])[0].strip()
+        if not model or len(model) > 160:
+            raise AdapterError("model is invalid.")
+        body = json.dumps({"model": model, "messages": messages, "temperature": 0.2,
+                           "max_tokens": 1800}).encode("utf-8")
+        request = urllib.request.Request(
+            "https://openrouter.ai/api/v1/chat/completions", data=body, method="POST",
+            headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
+                     "Accept": "application/json", "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", ""),
+                     "X-Title": "Universal Football Intelligence"})
+        try:
+            with urllib.request.urlopen(request, timeout=25) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            # Do not return upstream bodies that could contain request details or secrets.
+            raise AdapterError("OpenRouter returned HTTP %s; check server-side key, model access and quota." % exc.code) from None
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise AdapterError("OpenRouter request failed safely: " + type(exc).__name__) from None
+        choices = payload.get("choices") if isinstance(payload, dict) else None
+        if not choices or not isinstance(choices[0].get("message"), dict):
+            raise AdapterError("OpenRouter response did not contain a usable assistant message.")
+        usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+        return {"ok": True, "provider": "OpenRouter", "model": payload.get("model", model),
+                "message": choices[0]["message"], "usage": {
+                    "prompt_tokens": usage.get("prompt_tokens"),
+                    "completion_tokens": usage.get("completion_tokens"),
+                    "total_tokens": usage.get("total_tokens")},
+                "note": "Text generation only. This response is not independently verified and is not itself a football prediction."}, False
     return None
