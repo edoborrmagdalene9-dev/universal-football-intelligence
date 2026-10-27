@@ -23,6 +23,89 @@ function grid(h,a,cap=7){
  rows.sort((x,y)=>y.p-x.p);
  return {rows,mass,tail:Math.max(0,1-mass),h,a};
 }
+
+/* Source-backed fallback: estimate team goal rates from a user-supplied historical results CSV.
+   This deliberately refuses to guess when history/cutoff/coverage is inadequate. */
+function parseCsv(text){
+ const rows=[];let row=[],field='',quoted=false;
+ for(let i=0;i<text.length;i++){const ch=text[i],next=text[i+1];
+  if(ch==='"'&&quoted&&next==='"'){field+='"';i++}
+  else if(ch==='"')quoted=!quoted;
+  else if(ch===','&&!quoted){row.push(field);field=''}
+  else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&next==='\n')i++;row.push(field);if(row.some(v=>String(v).trim()))rows.push(row);row=[];field=''}
+  else field+=ch;
+ }
+ if(field.length||row.length){row.push(field);rows.push(row)}
+ if(!rows.length)throw new Error('CSV is empty.');
+ const headers=rows.shift().map(x=>String(x).trim().toLowerCase());
+ const idx={};headers.forEach((h,i)=>{idx[h]=i;const aliases={hometeam:'home_team',awayteam:'away_team',fthg:'home_goals',ftag:'away_goals',hg:'home_goals',ag:'away_goals'};if(aliases[h])idx[aliases[h]]=i;});
+ const required=['date','home_team','away_team','home_goals','away_goals'];
+ if(required.some(k=>idx[k]===undefined))throw new Error('Required CSV columns: date,home_team,away_team,home_goals,away_goals.');
+ return rows.map((r,n)=>{const x={date:String(r[idx.date]||'').trim(),home:String(r[idx.home_team]||'').trim(),away:String(r[idx.away_team]||'').trim(),hg:Number(r[idx.home_goals]),ag:Number(r[idx.away_goals])};
+  if(!x.date||!x.home||!x.away||!Number.isInteger(x.hg)||!Number.isInteger(x.ag)||x.hg<0||x.ag<0)throw new Error('Invalid or missing match data on CSV row '+(n+2)+'.');
+  if(Number.isNaN(Date.parse(x.date)))throw new Error('Unrecognized date on CSV row '+(n+2)+'.');
+  return x;
+ }).sort((a,b)=>Date.parse(a.date)-Date.parse(b.date));
+}
+function normTeam(s){return String(s||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ')}
+function estimateRates(rows,homeName,awayName,cutoff){
+ const hn=normTeam(homeName),an=normTeam(awayName);if(!hn||!an||hn===an)throw new Error('Enter two distinct team names first.');
+ if(!cutoff||Number.isNaN(Date.parse(cutoff)))throw new Error('Set a valid forecast kickoff/cutoff date to prevent future-result leakage.');
+ const prior=rows.filter(r=>Date.parse(r.date)<Date.parse(cutoff));
+ if(prior.length<20)throw new Error('Need at least 20 earlier matches before the forecast cutoff; found '+prior.length+'.');
+ const team={};
+ let homeGoals=0,awayGoals=0;
+ for(const r of prior){homeGoals+=r.hg;awayGoals+=r.ag;
+  for(const [name,gf,ga] of [[r.home,r.hg,r.ag],[r.away,r.ag,r.hg]]){const k=normTeam(name);if(!team[k])team[k]={name,gf:0,ga:0,n:0};team[k].gf+=gf;team[k].ga+=ga;team[k].n++;}
+ }
+ if(!team[hn]||!team[an])throw new Error('One or both teams have no history before the cutoff in this CSV.');
+ if(team[hn].n<3||team[an].n<3)throw new Error('Need at least 3 prior appearances per team. Found '+homeName+': '+team[hn].n+', '+awayName+': '+team[an].n+'.');
+ const baseGF=(homeGoals+awayGoals)/(2*prior.length), baseHome=homeGoals/prior.length, baseAway=awayGoals/prior.length, shrink=5;
+ const rate=t=>({attack:((t.gf+shrink*baseGF)/(t.n+shrink))/baseGF,defence:((t.ga+shrink*baseGF)/(t.n+shrink))/baseGF});
+ const h=rate(team[hn]),a=rate(team[an]);
+ const lambdaHome=Math.max(.05,Math.min(6,baseHome*h.attack*a.defence));
+ const lambdaAway=Math.max(.05,Math.min(6,baseAway*a.attack*h.defence));
+ return {lambdaHome,lambdaAway,source:'uploaded historical results CSV; smoothed team attack/defence Poisson baseline',matchesUsed:prior.length,homeAppearances:team[hn].n,awayAppearances:team[an].n,cutoff:cutoff||null,homeTeam:homeName,awayTeam:awayName,notices:['Results-only model: no xG, lineups, market odds, tactical or live-state features included.','CSV source and competition scope must be verified by the user.','This is not a calibrated probability or betting edge.']};
+}
+
+function inferFootballDataLeague(f){
+ const explicit=String($('esiHistoryLeague')?.value||'').trim().toUpperCase();
+ if(explicit)return explicit;
+ const id=String(f?.league_id||f?.leagueId||'');
+ if(id==='501')return 'SC0';
+ const name=String(f?.league?.name||f?.competition?.name||f?.league_name||f?.competition_name||f?.competition||'').toLowerCase();
+ const mappings=[[/scottish premiership|scotland premiership|premiership scotland/,'SC0'],[/premier league|english premier league/,'E0'],[/championship/,'E1'],[/bundesliga/,'D1'],[/serie a/,'I1'],[/la liga|primera division/,'SP1'],[/ligue 1/,'F1'],[/eredivisie/,'N1'],[/primeira liga/,'P1'],[/first division a|pro league/,'B1']];
+ const match=mappings.find(([re])=>re.test(name));return match?match[1]:'';
+}
+function applyHistoricalRates(home,away,sourceLabel){
+ try{
+  if(!historicalRows)throw new Error('No historical results loaded.');
+  const cutoff=$('esiHistoryCutoff')?.value||$('esiKickoff')?.value||'';
+  const estimate=estimateRates(historicalRows,home,away,cutoff);
+  $('esiLambdaHome').value=estimate.lambdaHome.toFixed(2);$('esiLambdaAway').value=estimate.lambdaAway.toFixed(2);
+  if($('lambdaHome'))$('lambdaHome').value=estimate.lambdaHome.toFixed(2);
+  if($('lambdaAway'))$('lambdaAway').value=estimate.lambdaAway.toFixed(2);
+  $('esiForecastSource').value=sourceLabel+'; '+estimate.matchesUsed+' prior matches; cutoff '+estimate.cutoff;
+  $('esiForecastNotes').value=(estimate.notices||[]).join(' ');
+  renderGrid();
+  if(typeof window.UFI_SCENARIO_RECALCULATE==='function')window.UFI_SCENARIO_RECALCULATE();
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates applied: home λ '+estimate.lambdaHome.toFixed(2)+', away λ '+estimate.lambdaAway.toFixed(2)+' from '+estimate.matchesUsed+' earlier matches; appearances '+estimate.homeAppearances+' / '+estimate.awayAppearances+'. Results-only baseline; not a calibrated probability or proven edge.';}
+  return {ok:true,estimate};
+ }catch(err){const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates not applied: '+err.message+' Existing λ values were left unchanged.';}return {ok:false,error:err.message};}
+}
+async function loadPublicHistoryAndEstimate(home,away,fixture){
+ const code=inferFootballDataLeague(fixture||{});
+ if(!code)throw new Error('Could not map this fixture to a supported public historical league. Choose the league code manually; rates remain unchanged.');
+ const select=$('esiHistoryLeague');if(select)select.value=code;
+ const data=await fetchFeed('/api/history/results?league='+encodeURIComponent(code)+'&seasons=5');
+ if(!data?.ok||!Array.isArray(data.data)||data.data.length<20)throw new Error('Public history returned too few usable results for '+code+'.');
+ historicalRows=data.data.map(r=>({date:r.date,home:r.home_team,away:r.away_team,hg:Number(r.home_goals),ag:Number(r.away_goals)}));
+ const el=$('esiRateStatus');if(el){el.className='notice good';el.textContent='Downloaded '+historicalRows.length+' historical results from '+code+' across '+(data.seasons_loaded||[]).length+' seasons. Source: '+(data.source_urls||[]).length+' public CSV files. Applying the pre-kickoff estimator…';}
+ const result=applyHistoricalRates(home,away,'Football-Data.co.uk '+code+'; '+(data.source_urls||[]).length+' CSV source(s); retrieved '+(data.fetched_at||'timestamp unavailable'));
+ if(!result.ok)throw new Error(result.error);
+ return result;
+}
+if(typeof window!=='undefined') window.UFIHistoricalRateEstimator={parseCsv,estimateRates};
 function renderGrid(){
  const home=($('esiHome').value||'Home').trim(), away=($('esiAway').value||'Away').trim();
  const h=num('esiLambdaHome'), a=num('esiLambdaAway'), odds=num('esiOdds'), k=clamp(Math.floor(num('esiTopK')||5),1,12);
@@ -62,11 +145,40 @@ $('esiExportCsv')?.addEventListener('click',()=>{const rows=[['type','createdAt'
 $('esiClear')?.addEventListener('click',()=>{if(!confirm('Delete the local exact-score ledger? Export a backup first if needed.'))return;ledger=[];save();renderLedger();status('Local exact-score ledger cleared.')});
 renderLedger();
 
+
+/* Historical-results λ estimator. No default rates are silently relabelled as team-specific. */
+let historicalRows = null;
+$('esiHistoricalCsv')?.addEventListener('change',async e=>{
+ const file=e.target.files?.[0];if(!file)return;
+ try{historicalRows=parseCsv(await file.text());const el=$('esiRateStatus');if(el){el.textContent='Loaded '+historicalRows.length+' historical results. Team and date coverage will be checked when estimating rates.';el.className='notice good';}}
+ catch(err){historicalRows=null;const el=$('esiRateStatus');if(el){el.textContent='CSV rejected: '+err.message;el.className='notice warning';}}
+});
+$('esiAutoHistory')?.addEventListener('click',async()=>{
+ const button=$('esiAutoHistory');if(button){button.disabled=true;button.textContent='Downloading public history…';}
+ try{
+  const fixture=window.UFI_SELECTED_PROVIDER_FIXTURE||{};
+  await loadPublicHistoryAndEstimate(($('esiHome')?.value||fixture.home||'').trim(),($('esiAway')?.value||fixture.away||'').trim(),fixture);
+ }catch(err){
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Public historical data unavailable: '+err.message+' No rate assumptions were changed.';}
+ }finally{if(button){button.disabled=false;button.textContent='Fetch public history + estimate λ';}}
+});
+$('esiEstimateRates')?.addEventListener('click',()=>{
+ try{
+  if(!historicalRows)throw new Error('Upload a valid historical results CSV first.');
+  const cutoff=$('esiHistoryCutoff')?.value||$('esiKickoff')?.value||'';
+  const r=estimateRates(historicalRows,$('esiHome').value,$('esiAway').value,cutoff);
+  $('esiLambdaHome').value=r.lambdaHome.toFixed(2);$('esiLambdaAway').value=r.lambdaAway.toFixed(2);
+  $('esiForecastSource').value=r.source+'; '+r.matchesUsed+' earlier matches; cutoff '+(r.cutoff||'not set');
+  $('esiForecastNotes').value=(r.notices||[]).join(' ');
+  const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates applied: λ home '+r.lambdaHome.toFixed(2)+', away '+r.lambdaAway.toFixed(2)+'; '+r.matchesUsed+' prior matches; appearances '+r.homeAppearances+' / '+r.awayAppearances+'. Results-only baseline; verify competition coverage and cutoff. No xG/lineup/odds/live calibration.';}
+  renderGrid();
+ }catch(err){const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Rates not applied: '+err.message;} }
+});
+
 /* Optional secret-safe live provider proxy. The browser never receives the provider token. */
 const API_KEY = 'ufi_exact_score_api_base_v1';
 let feedTimer = null;
-const DEFAULT_API_BASE = 'https://universal-football-intelligence.onrender.com';
-const feedBase = () => String($('esiApiBase')?.value || DEFAULT_API_BASE).trim().replace(/\/+$/, '');
+const feedBase = () => String($('esiApiBase')?.value || 'https://universal-football-intelligence.onrender.com').trim().replace(/\/+$/, '');
 function feedStatus(msg,bad=false){const el=$('esiFeedStatus');if(el){el.textContent=msg;el.className='notice '+(bad?'warning':'good')}}
 function safeBase(){
  const base=feedBase();
@@ -88,23 +200,47 @@ function unwrapRows(payload){
  return [];
 }
 function getTeamNames(f){
- if(f?.homeTeam||f?.awayTeam)return {home:f.homeTeam||'Home',away:f.awayTeam||'Away'};
  const participants=f?.participants||[];
- const homeParticipant=participants.find(p=>String(p?.meta?.location||p?.location||'').toLowerCase()==='home');
- const awayParticipant=participants.find(p=>String(p?.meta?.location||p?.location||'').toLowerCase()==='away');
- const nameOf=p=>p?.name||p?.participant?.name||'';
- const home=nameOf(homeParticipant)||f?.home_team||f?.homeTeam;
- const away=nameOf(awayParticipant)||f?.away_team||f?.awayTeam;
- if(home||away)return {home:home||'Home',away:away||'Away'};
- const names=participants.map(nameOf).filter(Boolean);
- return {home:names[0]||f?.name||'Home',away:names[1]||'Away'};
+ const name=p=>p?.name||p?.participant?.name||'';
+ const location=p=>String(p?.meta?.location||p?.location||'').toLowerCase();
+ const home=participants.find(p=>location(p)==='home'||p?.meta?.is_home===true||p?.is_home===true);
+ const away=participants.find(p=>location(p)==='away'||p?.meta?.is_home===false||p?.is_home===false);
+ const names=participants.map(name).filter(Boolean);
+ return {home:name(home)||f?.home_team?.name||f?.home_team||names[0]||f?.name||'Home',
+         away:name(away)||f?.away_team?.name||f?.away_team||names.find(x=>x!==name(home))||'Away'};
 }
 function renderFeed(payload,label){
  const rows=unwrapRows(payload);
  const host=$('esiFeedOutput'); if(!host)return;
- if(!rows.length){host.innerHTML='<p class="muted">No fixture rows returned. Check provider coverage, date and subscription. Raw response metadata: '+esc(JSON.stringify({source:payload?.source,fetchedAt:payload?.fetchedAt,cacheHit:payload?.cacheHit}).slice(0,500))+'</p>'+(payload?.fallbackUsed?'<p class="notice warning">Fallback checked: '+esc(payload?.fallbackReason||'primary source returned no records')+'. '+esc(payload?.note||'No rows are available from the fallback source right now.')+'</p>':'');return}
- host.innerHTML='<p class="muted">Source: '+esc(payload?.source||'provider')+' · fetched '+esc(payload?.fetchedAt?new Date(payload.fetchedAt*1000).toISOString():'time unavailable')+' · '+esc(label)+' · '+rows.length+' row(s). Click a row to copy its team names into the scenario.</p>'+(payload?.fallbackUsed?'<p class="notice warning">Fallback feed: '+esc(payload?.fallbackReason||'primary source returned no records')+'. Missing scores, events, lineups and statistics remain unknown.</p>':'')+'<table><thead><tr><th>Fixture</th><th>Status</th><th>Score</th><th>Fixture ID</th></tr></thead><tbody>'+rows.slice(0,100).map((f,rowIndex)=>{const n=getTeamNames(f);const id=f?.id??f?.fixture_id??f?.fixtureId??'';const st=f?.status;const status=f?.state?.name||f?.state?.short_name||(st&&typeof st==='object'?(st.ended?'Finished':st.started?'Live':'Scheduled'):st)||'Unknown';let scores='? - ?';if(Array.isArray(f?.scores)){const current=f.scores.filter(s=>/^(CURRENT|FT|FULL_TIME|FINAL)$/i.test(String(s?.description||s?.type?.name||'')));const use=current.length?current:f.scores;const sideGoal=(side)=>{const row=use.find(s=>String(s?.score?.participant||s?.participant||'').toLowerCase()===side);return row?.score?.goals??row?.goals};const h=sideGoal('home'),a=sideGoal('away');if(h!=null&&a!=null)scores=h+' - '+a;else{const vals=use.map(s=>s?.score?.goals??s?.score??'').filter(x=>x!=='');if(vals.length)scores=vals.join(' - ')}}else if(f?.score&&typeof f.score==='object'){const h=f.score.home??f.score.homeScore??f.score.home_score;const a=f.score.away??f.score.awayScore??f.score.away_score;if(h!=null&&a!=null)scores=h+' - '+a}else if(f?.score!=null)scores=String(f.score);else if(f?.home_score!=null||f?.away_score!=null)scores=(f.home_score??'?')+' - '+(f.away_score??'?');return '<tr><td><button class="button small esiFixturePick" data-home="'+esc(n.home)+'" data-away="'+esc(n.away)+'" data-id="'+esc(id)+'" data-row="'+rowIndex+'">'+esc(n.home+' vs '+n.away)+'</button></td><td>'+esc(status)+'</td><td>'+esc(scores)+'</td><td>'+esc(id)+'</td></tr>'}).join('')+'</tbody></table><details><summary>Inspect source response</summary><pre>'+esc(JSON.stringify(payload,null,2).slice(0,20000))+'</pre></details>';
- host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',()=>{const fixture=rows[Number(b.dataset.row)];$('esiHome').value=b.dataset.home;$('esiAway').value=b.dataset.away;if($('esiProviderFixtureId'))$('esiProviderFixtureId').value=b.dataset.id||'';if(typeof window!=='undefined'&&typeof CustomEvent!=='undefined')window.dispatchEvent(new CustomEvent('ufi:fixture-selected',{detail:{fixture,source:payload?.source||'provider',fallbackUsed:!!payload?.fallbackUsed}}));feedStatus('Fixture selected. Team names and sourced score/state fields are shared with connected engines when available; xG, player profiles and tactical inputs remain unfilled unless the source provides them.');}));
+ if(!rows.length){host.innerHTML='<p class="muted">No fixture rows returned. Check provider coverage, date and subscription. Raw response metadata: '+esc(JSON.stringify({source:payload?.source,fetchedAt:payload?.fetchedAt,cacheHit:payload?.cacheHit}).slice(0,500))+'</p>';return}
+ host.innerHTML='<p class="muted">Source: '+esc(payload?.source||'provider')+' · fetched '+esc(payload?.fetchedAt?new Date(payload.fetchedAt*1000).toISOString():'time unavailable')+' · '+esc(label)+' · '+rows.length+' row(s). Click a row to copy its team names into the scenario.</p><table><thead><tr><th>Fixture</th><th>Status</th><th>Score</th><th>Fixture ID</th></tr></thead><tbody>'+rows.slice(0,100).map(f=>{const n=getTeamNames(f);const id=f?.id??f?.fixture_id??'';const status=f?.state?.name||f?.state?.short_name||f?.status||'Unknown';const scores=Array.isArray(f?.scores)?f.scores.map(s=>s?.score?.goals??s?.score??'').filter(x=>x!=='').join(' - '):((f?.home_score??'?')+' - '+(f?.away_score??'?'));return '<tr><td><button class="button small esiFixturePick" data-home="'+esc(n.home)+'" data-away="'+esc(n.away)+'" data-id="'+esc(id)+'">'+esc(n.home+' vs '+n.away)+'</button></td><td>'+esc(status)+'</td><td>'+esc(scores)+'</td><td>'+esc(id)+'</td></tr>'}).join('')+'</tbody></table><details><summary>Inspect source response</summary><pre>'+esc(JSON.stringify(payload,null,2).slice(0,20000))+'</pre></details>';
+ host.querySelectorAll('.esiFixturePick').forEach(b=>b.addEventListener('click',async()=>{
+  const home=b.dataset.home,away=b.dataset.away,id=b.dataset.id||'';
+  $('esiHome').value=home;$('esiAway').value=away;
+  if($('scenarioHomeName'))$('scenarioHomeName').value=home;
+  if($('scenarioAwayName'))$('scenarioAwayName').value=away;
+  if($('esiProviderFixtureId'))$('esiProviderFixtureId').value=id;
+  const selected=rows.find(f=>String(f?.id??f?.fixture_id??'')===String(id))||{};
+  const kick=selected.starting_at||selected.kickoff||selected.start_time||'';
+  if(kick&&$('esiKickoff')){const d=new Date(String(kick).replace(' ','T')+(String(kick).includes('Z')?'':'Z'));if(!Number.isNaN(+d))$('esiKickoff').value=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+  if(kick&&$('esiHistoryCutoff'))$('esiHistoryCutoff').value=String(kick).slice(0,10);
+  const context={id,league_id:selected.league_id||selected.leagueId||null,home,away,competition:selected.league?.name||selected.competition?.name||selected.competition||'',kickoff:kick,source:payload?.source||'provider',fetchedAt:payload?.fetchedAt||null,selectedAt:new Date().toISOString()};
+  window.UFI_SELECTED_PROVIDER_FIXTURE=context;
+  document.dispatchEvent(new CustomEvent('ufi:provider-fixture-selected',{detail:context}));
+  feedStatus('Fixture selected from '+context.source+'. Checking historical results before setting λ…');
+  if(historicalRows){
+   applyHistoricalRates(home,away,'Uploaded historical results CSV');
+   feedStatus('Fixture identity loaded. Existing estimator applied only prior results; verify competition coverage, calibration, odds and lineup gates.');
+   return;
+  }
+  try{
+   await loadPublicHistoryAndEstimate(home,away,context);
+   feedStatus('Fixture and public historical baseline loaded. Score grids recalculated; other evidence and market gates still apply.');
+  }catch(err){
+   const el=$('esiRateStatus');if(el){el.className='notice warning';el.textContent='Automatic historical estimate unavailable: '+err.message+' No default λ was relabelled as fixture-specific.';}
+   feedStatus('Fixture identity loaded; historical λ unavailable. Existing default rates remain illustrative only. '+err.message,true);
+  }
+ }));
 }
 async function loadLive(){
  try{const data=await fetchFeed('/api/live');renderFeed(data,'live matches');if(typeof window!=='undefined'&&typeof CustomEvent!=='undefined')window.dispatchEvent(new CustomEvent('ufi:live-feed',{detail:data}));feedStatus('Live feed refreshed. Scores/events are sourced data; exact-score live probabilities remain unavailable until the conditional model is validated.');}
@@ -115,7 +251,7 @@ async function loadDateFixtures(){
  catch(e){feedStatus('Fixture list unavailable: '+e.message,true)}
 }
 async function loadFixtureDetails(){
- const id=String($('esiProviderFixtureId')?.value||'').trim();if(!/^\d+$/.test(id))return feedStatus('This selected fixture ID is not a numeric Sportmonks ID. The normalized fallback source does not expose Sportmonks fixture details; choose a numeric Sportmonks fixture ID to use this detail lookup.',true);
+ const id=String($('esiProviderFixtureId')?.value||'').trim();if(!/^\\d+$/.test(id))return feedStatus('Choose a fixture row or enter a numeric provider fixture ID.',true);
  try{const data=await fetchFeed('/api/fixture?id='+encodeURIComponent(id));const host=$('esiFeedOutput');if(host)host.innerHTML='<p class="muted">Detailed provider response · '+esc(data?.source||'provider')+' · '+esc(data?.fetchedAt?new Date(data.fetchedAt*1000).toISOString():'timestamp unavailable')+'</p><pre>'+esc(JSON.stringify(data,null,2).slice(0,30000))+'</pre>';feedStatus('Fixture detail loaded. Check source timestamps and missing fields; no model probability is claimed from raw events alone.');}
  catch(e){feedStatus('Fixture details unavailable: '+e.message,true)}
 }
@@ -123,17 +259,62 @@ $('esiConnectFeed')?.addEventListener('click',()=>{const base=safeBase();if(!bas
 $('esiLoadFixtures')?.addEventListener('click',loadDateFixtures);
 $('esiLoadFixtureDetails')?.addEventListener('click',loadFixtureDetails);
 $('esiStopFeed')?.addEventListener('click',()=>{if(feedTimer)clearInterval(feedTimer);feedTimer=null;feedStatus('Automatic refresh stopped.')});
-try{const savedBase=localStorage.getItem(API_KEY);const candidate=String(savedBase||'').trim();const isPlaceholder=!candidate||/your-ufi-backend\.example/i.test(candidate);const isHttps=/^https:\/\//i.test(candidate);const resolvedBase=isPlaceholder||!isHttps?DEFAULT_API_BASE:candidate.replace(/\/+$/,'');if($('esiApiBase'))$('esiApiBase').value=resolvedBase;if(resolvedBase!==candidate)localStorage.setItem(API_KEY,resolvedBase);}catch(_){if($('esiApiBase'))$('esiApiBase').value=DEFAULT_API_BASE;}
-if($('esiFeedDate'))$('esiFeedDate').value=new Date().toISOString().slice(0,10);
+try{const savedBase=localStorage.getItem(API_KEY);if(savedBase&&$('esiApiBase'))$('esiApiBase').value=savedBase;}catch(_){}
+if($('esiApiBase')&&!$('esiApiBase').value)$('esiApiBase').value='https://universal-football-intelligence.onrender.com';
+function ufiLagosDate(){return new Intl.DateTimeFormat('en-CA',{timeZone:'Africa/Lagos',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+if($('esiFeedDate'))$('esiFeedDate').value=ufiLagosDate();
 
-// Verify the configured HTTPS backend on page load without consuming odds-provider quota.
-if($('esiApiBase')){
- fetchFeed('/api/providers/status').then(data=>{
-  const providers=data?.providers||{};
-  const configured=Object.entries(providers).filter(([name,p])=>name!=='openMeteo'&&p?.configured).map(([name])=>name);
-  const missing=Object.entries(providers).filter(([name,p])=>name!=='openMeteo'&&!p?.configured).map(([name])=>name);
-  feedStatus('UFI HTTPS backend connected. '+(configured.length?'Configured providers: '+configured.join(', ')+'. ':'')+(missing.length?'Provider keys not configured: '+missing.join(', ')+'. ':'')+'Open-Meteo is available without a key. Health check does not verify provider connectivity or model accuracy.');
- }).catch(e=>feedStatus('UFI backend connection check failed: '+e.message,true));
+
+/* Multi-provider feed console: keys remain exclusively on the backend. */
+function mountMultiProviderConsole(){
+ const host=$('liveMarketShockPanel');
+ if(!host || $('ufiMultiProviderPanel')) return;
+ host.insertAdjacentHTML('beforeend',`
+ <article class="panel panel-wide" id="ufiMultiProviderPanel">
+  <div class="panel-head"><div><div class="eyebrow">MULTI-PROVIDER DATA ROUTER</div><h3>Odds & weather source console</h3></div><span class="tag">SERVER-SIDE KEYS</span></div>
+  <p class="muted">Uses the HTTPS backend URL from Exact-score intelligence. Keys are never entered into this page. Provider responses are shown with provenance; they are not automatically treated as calibrated model inputs.</p>
+  <div class="form-grid three">
+   <label>SportsGameOdds league ID<input id="ufiSgoLeague" value="EPL"></label>
+   <label>The Odds API sport key<input id="ufiOddsSport" value="soccer_epl"></label>
+   <label>Odds market<input id="ufiOddsMarket" value="h2h"></label>
+   <label>Odds region<input id="ufiOddsRegion" value="uk"></label>
+   <label>Weather latitude<input id="ufiWeatherLat" type="number" step="0.0001" value="6.5244"></label>
+   <label>Weather longitude<input id="ufiWeatherLon" type="number" step="0.0001" value="3.3792"></label>
+  </div>
+  <div class="button-row">
+   <button class="button" id="ufiProviderStatus">Check configured providers</button>
+   <button class="button" id="ufiProviderHealth">Test live API connections (uses quota)</button>
+   <button class="button primary" id="ufiMatchContextLoad">Load normalized match context</button>
+   <button class="button" id="ufiSgoLoad">Load SportsGameOdds</button>
+   <button class="button" id="ufiOddsLoad">Load The Odds API</button>
+   <button class="button" id="ufiSharpLoad">Load SharpAPI</button>
+   <button class="button" id="ufiWeatherLoad">Load WeatherAPI</button>
+  </div>
+  <div id="ufiProviderStatusText" class="notice">Provider requests have not been run.</div>
+  <pre id="ufiProviderOutput" class="table-wrap" style="max-height:28rem;overflow:auto;white-space:pre-wrap">No provider response yet.</pre>
+ </article>`);
+ const out=$('ufiProviderOutput'), status=$('ufiProviderStatusText');
+ const run=async path=>{
+  const base=safeBase(); if(!base)return;
+  status.textContent='Requesting '+path+' …';
+  try{
+   const data=await fetchFeed(path);
+   if(path.startsWith('/api/matches') && typeof window!=='undefined' && typeof CustomEvent!=='undefined'){
+    window.dispatchEvent(new CustomEvent('ufi:match-context',{detail:data}));
+   }
+   out.textContent=JSON.stringify(data,null,2).slice(0,40000);
+   status.textContent='Response received. Verify source timestamp, provider coverage and data freshness before use.';
+   status.className='notice good';
+  }catch(e){status.textContent='Provider unavailable: '+e.message;status.className='notice warning';out.textContent='No usable response. Missing data remains unknown.';}
+ };
+ $('ufiProviderStatus')?.addEventListener('click',()=>run('/api/providers/status'));
+ $('ufiProviderHealth')?.addEventListener('click',()=>run('/api/providers/health?providers=sportsgameodds,theoddsapi,weatherapi,sharpapi,openmeteo&sport='+encodeURIComponent($('ufiOddsSport').value||'soccer_epl')+'&q='+encodeURIComponent(($('ufiWeatherLat').value||'6.5244')+','+($('ufiWeatherLon').value||'3.3792'))));
+ $('ufiMatchContextLoad')?.addEventListener('click',()=>run('/api/matches?sportID=SOCCER&leagueID='+encodeURIComponent($('ufiSgoLeague').value||'EPL')+'&sport='+encodeURIComponent($('ufiOddsSport').value||'soccer_epl')+'&regions='+encodeURIComponent($('ufiOddsRegion').value||'uk')+'&markets='+encodeURIComponent($('ufiOddsMarket').value||'h2h')));
+ $('ufiSgoLoad')?.addEventListener('click',()=>run('/api/odds/sportsgameodds?sportID=SOCCER&leagueID='+encodeURIComponent($('ufiSgoLeague').value||'EPL')+'&oddsAvailable=true&limit=50'));
+ $('ufiOddsLoad')?.addEventListener('click',()=>run('/api/odds/the-odds-api?sport='+encodeURIComponent($('ufiOddsSport').value||'soccer_epl')+'&regions='+encodeURIComponent($('ufiOddsRegion').value||'uk')+'&markets='+encodeURIComponent($('ufiOddsMarket').value||'h2h')));
+ $('ufiSharpLoad')?.addEventListener('click',()=>run('/api/odds/sharpapi'));
+ $('ufiWeatherLoad')?.addEventListener('click',()=>run('/api/weather/weatherapi?q='+encodeURIComponent(($('ufiWeatherLat').value||'6.5244')+','+($('ufiWeatherLon').value||'3.3792'))));
 }
+mountMultiProviderConsole();
 
 })();

@@ -26,6 +26,56 @@ const BASE='https://raw.githubusercontent.com/statsbomb/open-data/master/data/';
 const $=id=>document.getElementById(id);
 const STORE='ufi_workspace_v2';
 const S={competitions:[],matches:[],liveFixtures:[],events:[],lineups:[],lineupsMatchId:null,selectedMatch:null,scenario:null,manualSelections:[],activity:[],players:[],subs:[],contexts:[],notes:[],backtests:[],slips:[],playerEventMatches:[],riskAudits:[],lastRiskAudit:null,lastSlip:null};
+/* UFI canonical match-context bridge
+   Converts provider-normalized fixtures into the existing slip-matching workspace.
+   Unknown scores/events/lineups/statistics remain unknown; no synthetic fields are added. */
+function ingestCanonicalMatchContext(payload){
+ const records=Array.isArray(payload)?payload:(Array.isArray(payload?.data)?payload.data:[]);
+ const incoming=records.filter(r=>r&&r.homeTeam&&r.awayTeam).map(r=>({
+  id:r.fixtureId||[r.homeTeam,r.awayTeam,r.kickoff].join('|'),
+  matchId:r.fixtureId||null,
+  date:r.kickoff||null,
+  homeTeam:String(r.homeTeam),
+  awayTeam:String(r.awayTeam),
+  competition:r.competition||null,
+  status:r.status?.ended===true?'finished':(r.status?.started===true?'live':(r.status?.started===false?'scheduled':'unknown')),
+  score:r.score??null,
+  markets:Array.isArray(r.odds)?r.odds:(r.odds?[r.odds]:[]),
+  oddsTimestamp:r.timestamps?.providerUpdatedAt||r.timestamps?.fetchedAt||null,
+  source:'ufi-multi-provider-feed',
+  sourceProvider:r.sources?.fixture||r.sources?.odds||payload?.source||'configured provider',
+  quality:r.quality||{},
+  providerRecord:r
+ }));
+ if(!incoming.length){
+  const msg='Provider response received, but no records had both home and away teams. Check provider coverage and league filters.';
+  if($('liveFixtureOutput'))notice('liveFixtureOutput',msg,'warning');
+  console.warn('UFI canonical match-context bridge:',msg,payload);
+  return {accepted:0,records:records.length};
+ }
+ const key=m=>[normalizeTeamName(m.homeTeam),normalizeTeamName(m.awayTeam),String(m.date||'').slice(0,10)].join('|');
+ const merged=new Map((S.liveFixtures||[]).map(m=>[key(m),m]));
+ incoming.forEach(m=>merged.set(key(m),m));
+ S.liveFixtures=[...merged.values()].sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+ if($('liveFixtureOutput')){
+  const missing=incoming.reduce((n,m)=>n+(m.quality?.missingRequiredFields?.length||0),0);
+  notice('liveFixtureOutput','Multi-provider feed ingested: '+incoming.length+' fixtures from '+[...new Set(incoming.map(m=>m.sourceProvider))].join(', ')+'. Unknown score/lineup/event/stat fields were not fabricated. Review each fixture and source freshness before use.','good');
+ }
+ if(typeof addActivity==='function')addActivity('Ingested '+incoming.length+' normalized fixtures from UFI provider feed');
+ if(typeof runSlipFixtureMatching==='function'&&S.manualSelections?.length)runSlipFixtureMatching();
+ return {accepted:incoming.length,records:records.length};
+}
+window.addEventListener('ufi:match-context',function(event){
+ try{
+  const result=ingestCanonicalMatchContext(event.detail);
+  window.UFI_LAST_PROVIDER_INGEST={...result,at:new Date().toISOString(),source:event.detail?.source||'multi-provider'};
+ }catch(error){
+  console.error('UFI provider-context ingestion failed:',error);
+  if($('liveFixtureOutput'))notice('liveFixtureOutput','Provider data arrived but could not be merged: '+(error?.message||String(error)),'error');
+ }
+});
+window.UFIIngestCanonicalMatchContext=ingestCanonicalMatchContext;
+
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const now=()=>new Date().toISOString();
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2800)}
@@ -175,6 +225,7 @@ $('subList').addEventListener('click',e=>{const b=e.target.closest('[data-del-su
 function poisson(l,k){let p=Math.exp(-l);for(let i=1;i<=k;i++)p*=l/i;return p}
 function scenarioCalc(){const h=Number($('lambdaHome').value),a=Number($('lambdaAway').value),cap=Number($('scoreCap').value);if(!Number.isFinite(h)||!Number.isFinite(a)||h<0||a<0||h>12||a>12){notice('scenarioStatus','Expected goals must be between 0 and 12.','warning');return null}let grid=[],mass=0,hw=0,d=0,aw=0,over15=0,over25=0,over35=0,btts=0;for(let i=0;i<=cap;i++)for(let j=0;j<=cap;j++){const p=poisson(h,i)*poisson(a,j);grid.push({h:i,a:j,p});mass+=p;if(i>j)hw+=p;else if(i===j)d+=p;else aw+=p;if(i+j>1)over15+=p;if(i+j>2)over25+=p;if(i+j>3)over35+=p;if(i>0&&j>0)btts+=p}grid.sort((x,y)=>y.p-x.p);const norm=x=>x/mass;const out={home:$('scenarioHomeName').value.trim()||'Home',away:$('scenarioAwayName').value.trim()||'Away',matchId:String(chosenMatch()?.match_id??''),lambdaHome:h,lambdaAway:a,cap,mass,homeWin:norm(hw),draw:norm(d),awayWin:norm(aw),over15:norm(over15),over25:norm(over25),over35:norm(over35),btts:norm(btts),grid,top:grid[0],label:$('scenarioLabel').value.trim(),caveats:$('scenarioCaveats').value.trim(),checks:['checkLineup','checkVenue','checkRecent','checkOpponent','checkMarket','checkUncertainty'].filter(id=>$(id).checked)};S.scenario=out;return out}
 $('runScenario').onclick=()=>{const s=scenarioCalc();if(!s)return;[['probHome',s.homeWin],['probDraw',s.draw],['probAway',s.awayWin],['probOver15',s.over15],['probOver25',s.over25],['probOver35',s.over35],['probBtts',s.btts]].forEach(([id,v])=>$(id).textContent=pct(v));$('probTopScore').textContent=s.top.h+'–'+s.top.a;$('scoreGrid').innerHTML='<table><thead><tr><th>Score</th><th>Probability (normalized grid)</th><th>Visual</th></tr></thead><tbody>'+s.grid.slice(0,35).map(x=>'<tr><td>'+esc(s.home)+' '+x.h+'–'+x.a+' '+esc(s.away)+'</td><td>'+pct(x.p/s.mass)+'</td><td><div style="height:7px;background:#243b2b;border-radius:6px;min-width:90px;overflow:hidden"><div style="height:100%;width:'+Math.max(1,x.p/s.grid[0].p*100)+'%;background:#83f3ac"></div></div></td></tr>').join('')+'</tbody></table>';$('scenarioStatus').textContent='Grid mass represented: '+pct(s.mass)+'. Tail omitted by cap: '+pct(Math.max(0,1-s.mass))+'. Probabilities normalized within grid; baseline assumes independent Poisson goals and does not incorporate all tactical/game-state effects.';addActivity('Calculated scenario for '+s.home+' vs '+s.away);toast('Scenario grid calculated.')};
+window.UFI_SCENARIO_RECALCULATE=()=>{const b=$('runScenario');if(b)b.click();};
 $('saveForecast').onclick=()=>{const s=S.scenario||scenarioCalc();if(!s)return;$('btMatch').value=s.home+' vs '+s.away;$('btMethod').value='Independent Poisson baseline'+(s.label?' / '+s.label:'');$('btHome').value=(100*s.homeWin).toFixed(2);$('btDraw').value=(100*s.draw).toFixed(2);$('btAway').value=(100*s.awayWin).toFixed(2);$('btNotes').value='λ home='+s.lambdaHome+', away='+s.lambdaAway+'; cap='+s.cap+'; grid mass='+(100*s.mass).toFixed(2)+'%; caveats: '+s.caveats+'; checks completed: '+s.checks.join(', ');go('backtest');toast('Forecast copied to ledger form. Select actual result when known.')};
 function normalizeTeamName(value){
  return String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\b(fc|cf|sc|afc|club|football|soccer)\b/g,' ').replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
@@ -202,7 +253,7 @@ function resolveSlipFixture(row){
  if(all.length===1){
   const m=all[0],parsed=parseFixtureText(raw),h=normalizeTeamName(m.home_team?.home_team_name);
   const orientation=normalizeTeamName(parsed.homeText).includes(h)?'home-away':(normalizeTeamName(parsed.awayText).includes(h)?'away-home':'verify-orientation');
-  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',reason:m.source==='live-fixture-feed'?'Matched to a current/upcoming public fixture feed. Confirm competition, kickoff, exact SportyBet market and odds.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
+  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',reason:(m.source==='live-fixture-feed'||m.source==='ufi-multi-provider-feed')?'Matched to a current/upcoming provider fixture feed. Confirm competition, kickoff, source freshness, and exact bookmaker market/price before acting.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
  }
  if(all.length>1)return {status:'ambiguous',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'Multiple fixtures match these team names. Add the date/competition and resolve manually.'};
  return {status:(S.liveFixtures.length||S.matches.length)?'not-found-in-loaded-list':'no-fixtures-loaded',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:(S.liveFixtures.length||S.matches.length)?'No matching fixture found in the current feed or loaded historical list.':'Load current fixtures before fixture matching.'};
@@ -776,7 +827,40 @@ window.UFI_ATTACH_AI_COUNCIL = result => {
  persist();
 };
 
+async function initUfiTelemetry(){
+ try{
+  const response=await fetch('https://universal-football-intelligence.onrender.com/api/analytics/config',{headers:{Accept:'application/json'},cache:'no-store'});
+  if(!response.ok)return;
+  const cfg=await response.json();
+  if(!cfg.configured||!cfg.projectToken||!cfg.apiHost)return;
+  if(!window.posthog){
+   const script=document.createElement('script');
+   script.src=cfg.apiHost.replace(/\/$/,'')+'/static/array.js';
+   script.async=true;
+   script.onload=()=>startPosthog(cfg);
+   script.onerror=()=>{};
+   document.head.appendChild(script);
+  }else startPosthog(cfg);
+ }catch(_){}
+}
+function startPosthog(cfg){
+ try{
+  if(!window.posthog||window.__ufiPosthogStarted)return;
+  window.__ufiPosthogStarted=true;
+  window.posthog.init(cfg.projectToken,{api_host:cfg.apiHost,autocapture:false,capture_pageview:true,
+   disable_session_recording:true,persistence:'memory',person_profiles:'never',
+   loaded:function(ph){
+    ph.capture('ufi_app_loaded',{app_version:'2026-10-27',telemetry_scope:'anonymous product health'});
+    const allowed=new Set(['runAiCouncil','runAiCouncilScenario','runScenario','runLiveBrain','runExactScore','runMarketAudit','testAiProviders','loadFixtures','refreshLive']);
+    document.addEventListener('click',function(event){
+     const el=event.target&&event.target.closest?event.target.closest('button,[role="button"]'):null;
+     if(el&&allowed.has(el.id))ph.capture('ufi_action',{action:el.id});
+    },{passive:true});
+   }});
+ }catch(_){}
+}
 renderAllSaved();renderManualSelections();
+initUfiTelemetry();
 if(location.protocol==='file:')$('netState').textContent='Local file mode';
 else $('netState').textContent='Ready';
 })();

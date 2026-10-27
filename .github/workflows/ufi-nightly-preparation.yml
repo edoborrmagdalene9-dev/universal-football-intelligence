@@ -1,0 +1,46 @@
+name: UFI nightly Nigeria-time preparation
+on:
+  workflow_dispatch:
+  schedule:
+    # 20:00 UTC is 21:00 in Africa/Lagos (WAT, UTC+1).
+    - cron: "0 20 * * *"
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Restore operations SQLite state
+        uses: actions/cache/restore@v4
+        with:
+          path: ufi_operations.sqlite3
+          key: ufi-operations-db-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ufi-operations-db-
+      - name: Prepare next-day fixture report
+        env:
+          UFI_BACKEND_URL: https://universal-football-intelligence.onrender.com
+          UFI_OPERATIONS_DB: ufi_operations.sqlite3
+          UFI_NIGHTLY_REPORT: artifacts/ufi-nightly-report.json
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python tools/ufi_nightly_runner.py
+      - name: Save updated operations SQLite state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ufi_operations.sqlite3
+          key: ufi-operations-db-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload preparation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ufi-nightly-report-${{ github.run_id }}
+          path: artifacts/ufi-nightly-report.json
+          if-no-files-found: warn
+          retention-days: 30
