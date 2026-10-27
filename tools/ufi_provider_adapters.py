@@ -330,6 +330,30 @@ def handle_extra_route(route, query):
                     "completion_tokens": usage.get("completion_tokens"),
                     "total_tokens": usage.get("total_tokens")},
                 "note": "Text generation only. This response is not independently verified and is not itself a football prediction."}, False
+    if route == "/api/models/score":
+        home = (query.get("home") or [""])[0].strip()
+        away = (query.get("away") or [""])[0].strip()
+        league = (query.get("league") or [""])[0].strip().upper()
+        cutoff = (query.get("date") or [""])[0].strip()
+        seasons = (query.get("seasons") or ["5"])[0]
+        if not home or not away or not league:
+            raise AdapterError("home, away and a supported league code are required.")
+        try:
+            try:
+                from .ufi_historical_results import load_football_data_results
+                from .ufi_score_models import predict_fixture
+            except ImportError:
+                from ufi_historical_results import load_football_data_results
+                from ufi_score_models import predict_fixture
+            historical = load_football_data_results(league, seasons)
+            result = predict_fixture(historical.get("data", []), home, away, cutoff or None)
+            return {"ok": True, "source": historical.get("source"), "league_code": league,
+                    "source_urls": historical.get("source_urls", []), "fetched_at": historical.get("fetched_at"),
+                    "source_record_count": historical.get("record_count", 0), **result}, False
+        except ValueError as exc:
+            raise AdapterError(str(exc)) from None
+        except Exception as exc:
+            raise AdapterError("Score model failed safely ("+type(exc).__name__+").") from None
     if route == "/api/history/results":
         league = (query.get("league") or [""])[0].strip().upper()
         seasons = (query.get("seasons") or ["5"])[0]
