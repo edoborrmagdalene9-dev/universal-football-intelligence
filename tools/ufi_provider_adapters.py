@@ -337,6 +337,23 @@ def handle_extra_route(route, query):
                     "openrouter": {"configured": bool(os.getenv("OPENROUTER_API_KEY", "").strip()), "role": "fallback"}},
                 "secretValuesReturned": False,
                 "note": "Configuration only; actual provider connectivity is checked during a research request."}, False
+    if route == "/api/ai/research-fixture":
+        home = (query.get("home") or [""])[0].strip()
+        away = (query.get("away") or [""])[0].strip()
+        competition = (query.get("competition") or [""])[0].strip()
+        match_date = (query.get("date") or [""])[0].strip()
+        if not home or not away:
+            raise AdapterError("home and away are required.")
+        try:
+            try:
+                from .ufi_ai_orchestrator import research_fixture_with_failover
+            except ImportError:
+                from ufi_ai_orchestrator import research_fixture_with_failover
+            return {"ok": True, **research_fixture_with_failover(home, away, competition, match_date)}, False
+        except ValueError as exc:
+            raise AdapterError(str(exc)) from None
+        except RuntimeError as exc:
+            raise AdapterError(str(exc)) from None
     if route == "/api/ai/council":
         raw_prompt = (query.get("prompt") or [""])[0]
         if not raw_prompt.strip():
