@@ -256,12 +256,18 @@ def handle_extra_route(route, query):
     # Optional Gemini research endpoints. They accept only caller-supplied source
     # material; they do not claim to browse or independently verify team news.
     if route == "/api/gemini/status":
-        from ufi_gemini_research import gemini_configured
+        try:
+            from ufi_gemini_research import gemini_configured
+        except ImportError:
+            from tools.ufi_gemini_research import gemini_configured
         return {"ok": True, "provider": "Gemini", "configured": gemini_configured(),
                 "model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
                 "note": "Configured is not a connectivity test; no secret values are returned."}, False
     if route == "/api/gemini/research":
-        from ufi_gemini_research import extract_research_brief, GeminiResearchError
+        try:
+            from ufi_gemini_research import extract_research_brief, GeminiResearchError
+        except ImportError:
+            from tools.ufi_gemini_research import extract_research_brief, GeminiResearchError
         question = (query.get("question") or [""])[0].strip()
         if not question:
             raise AdapterError("question is required.")
