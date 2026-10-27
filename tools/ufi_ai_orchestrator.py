@@ -73,7 +73,17 @@ def fetch_firecrawl_sources(query: str, limit: int=5, timeout: float=25.0) -> li
         with urllib.request.urlopen(req,timeout=timeout) as response:
             payload=json.loads(response.read().decode())
     except Exception as exc:
-        raise RuntimeError("Firecrawl source search failed ("+type(exc).__name__+").") from None
+        firecrawl_error=type(exc).__name__
+        try:
+            try:
+                from .ufi_gdelt_sources import fetch_gdelt_sources
+            except ImportError:
+                from ufi_gdelt_sources import fetch_gdelt_sources
+            fallback=fetch_gdelt_sources(query,limit=min(5,int(limit)),timeout=min(10.0,timeout))
+            if fallback:return fallback
+        except Exception as fallback_exc:
+            raise RuntimeError("Firecrawl and GDELT source search failed ("+firecrawl_error+" / "+type(fallback_exc).__name__+").") from None
+        raise RuntimeError("Firecrawl source search failed and GDELT returned no readable sources ("+firecrawl_error+").") from None
     data=payload.get("data",[]) if isinstance(payload,dict) else []
     if isinstance(data,dict):
         data=data.get("web",[])+data.get("news",[])
