@@ -37,4 +37,12 @@ class CouncilFailoverTests(unittest.TestCase):
         with self.assertRaises(adapters.AdapterError):
             adapters.handle_extra_route("/api/ai/council",{})
 
+    def test_firecrawl_failure_uses_gdelt_fallback(self):
+        source={"url":"https://example.com/report","timestamp":"2026-10-27T15:00:00Z","retrieved_at":"2026-10-27T15:00:00Z","source_name":"Example","text":"A sourced headline."}
+        with patch("tools.ufi_ai_orchestrator.urllib.request.urlopen",side_effect=URLError("firecrawl unavailable")):
+            with patch("tools.ufi_gdelt_sources.fetch_gdelt_sources",return_value=[source]):
+                result=orchestrator.fetch_firecrawl_sources("Home FC Away FC news")
+        self.assertEqual(len(result),1)
+        self.assertEqual(result[0]["url"],"https://example.com/report")
+        self.assertEqual(result[0]["text"],"A sourced headline.")
 if __name__=="__main__":unittest.main()
