@@ -16,6 +16,7 @@ const SYSTEM_RULES = [
 "Output JSON only with keys: overall_status, summary, traps (array of objects with selection, concern, evidence_level, action), missing_evidence, model_limitations, replacement_readiness, disagreements, questions_to_verify. Keep concise. Advisory only; no guaranteed win."
 ].join("\n");
 const providers = () => [
+ {id:'UFI Server (Gemini to OpenRouter)',key:'server',model:'server-side failover',run:serverCouncil},
  {id:'Gemini',key:$('aiGeminiKey')?.value.trim(),model:$('aiGeminiModel')?.value.trim(),run:gemini},
  {id:'Groq',key:$('aiGroqKey')?.value.trim(),model:$('aiGroqModel')?.value.trim(),run:groq},
  {id:'OpenRouter',key:$('aiOpenRouterKey')?.value.trim(),model:$('aiOpenRouterModel')?.value.trim(),run:openrouter},
@@ -33,6 +34,13 @@ async function readJson(res) {
  const txt=await res.text(); let data; try{data=JSON.parse(txt)}catch{throw new Error('Non-JSON response (HTTP '+res.status+').')}
  if(!res.ok) throw new Error((data.error?.message||data.message||'HTTP '+res.status).slice(0,240));
  return data;
+}
+async function serverCouncil(p,prompt) {
+ const url='https://universal-football-intelligence.onrender.com/api/ai/council';
+ const res=await fetchWithTimeout(url,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({prompt})},35000);
+ const data=await readJson(res);
+ if(!data.ok || !data.text) throw new Error((data.errors||[data.note||'Server-side AI council unavailable']).join('; ').slice(0,240));
+ return data.text;
 }
 async function gemini(p,prompt) {
  const url='https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(p.model)+':generateContent?key='+encodeURIComponent(p.key);
