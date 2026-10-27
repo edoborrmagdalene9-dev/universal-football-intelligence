@@ -5,11 +5,13 @@ on:
     branches: [feature/ufi-operations-brain]
     paths:
       - 'tools/ufi_operations_brain.py'
+      - 'tools/ufi_operations_scheduler.py'
       - 'tests/test_ufi_operations_brain.py'
       - '.github/workflows/ufi-operations-brain-regression.yml'
   pull_request:
     paths:
       - 'tools/ufi_operations_brain.py'
+      - 'tools/ufi_operations_scheduler.py'
       - 'tests/test_ufi_operations_brain.py'
       - '.github/workflows/ufi-operations-brain-regression.yml'
   workflow_dispatch:
@@ -26,7 +28,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile additive operations module
-        run: python -m py_compile tools/ufi_operations_brain.py tests/test_ufi_operations_brain.py
+      - name: Compile additive operations modules
+        run: python -m py_compile tools/ufi_operations_brain.py tools/ufi_operations_scheduler.py tests/test_ufi_operations_brain.py
       - name: Run operations brain regression tests
         run: python -m unittest tests.test_ufi_operations_brain -v
