@@ -1,7 +1,7 @@
 """Daily UFI fixture preparation runner. Fail-closed: discovery is not a prediction or bet approval."""
 from __future__ import annotations
 import json, os, urllib.error, urllib.parse, urllib.request
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 try:
@@ -83,6 +83,16 @@ def main():
         rows=_rows(payload)
         source=str(payload.get("source","unknown")) if isinstance(payload,dict) else "unknown"
         fetched=payload.get("fetchedAt") or payload.get("fetched_at") if isinstance(payload,dict) else None
+        age_seconds=None
+        try:
+            if isinstance(fetched,(int,float)):
+                age_seconds=max(0.0,datetime.now(timezone.utc).timestamp()-float(fetched))
+            elif isinstance(fetched,str):
+                stamp=datetime.fromisoformat(fetched.replace("Z","+00:00"))
+                if stamp.tzinfo is None: raise ValueError("timestamp has no timezone")
+                age_seconds=(datetime.now(timezone.utc)-stamp.astimezone(timezone.utc)).total_seconds()
+        except (TypeError,ValueError,OverflowError):
+            age_seconds=None
         for raw in rows:
             item=_fixture(raw)
             if not item["id"] or not item["home"] or not item["away"]:
