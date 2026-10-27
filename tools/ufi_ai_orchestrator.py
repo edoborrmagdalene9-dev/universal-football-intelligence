@@ -58,6 +58,60 @@ def _openrouter_extract(question: str, sources: list[dict[str, Any]], timeout: f
             "provider":"OpenRouter","verified":False,
             "note":"Fallback provider used. Claims remain unverified leads; sources and timestamps must be independently validated."}
 
+def fetch_firecrawl_sources(query: str, limit: int=5, timeout: float=25.0) -> list[dict[str, Any]]:
+    """Fetch recent web evidence with Firecrawl Search; sources remain unverified until checked."""
+    if not isinstance(query,str) or not query.strip():
+        raise ValueError("search query is required.")
+    key=os.getenv("FIRECRAWL_API_KEY","").strip()
+    body=json.dumps({"query":query.strip()[:1000],"limit":max(1,min(5,int(limit))),
+                     "sources":["web","news"],"tbs":"qdr:w",
+                     "scrapeOptions":{"formats":["markdown"]}}).encode()
+    headers={"Content-Type":"application/json","Accept":"application/json"}
+    if key: headers["Authorization"]="Bearer "+key
+    req=urllib.request.Request("https://api.firecrawl.dev/v2/search",data=body,method="POST",headers=headers)
+    try:
+        with urllib.request.urlopen(req,timeout=timeout) as response:
+            payload=json.loads(response.read().decode())
+    except Exception as exc:
+        raise RuntimeError("Firecrawl source search failed ("+type(exc).__name__+").") from None
+    data=payload.get("data",[]) if isinstance(payload,dict) else []
+    if isinstance(data,dict):
+        data=data.get("web",[])+data.get("news",[])
+    now=datetime.now(timezone.utc).isoformat()
+    sources=[]
+    if isinstance(data,list):
+        for item in data:
+            if not isinstance(item,dict): continue
+            url=item.get("url")
+            meta=item.get("metadata") if isinstance(item.get("metadata"),dict) else {}
+            content=item.get("markdown") or item.get("description") or item.get("snippet")
+            if not isinstance(url,str) or not url.startswith(("https://","http://")) or not isinstance(content,str) or not content.strip():
+                continue
+            published=meta.get("publishedTime") or meta.get("publishedDate") or item.get("publishedDate") or item.get("published_time")
+            sources.append({"url":url,"timestamp":str(published or now),"retrieved_at":now,
+                            "published_at":published,"source_name":item.get("title") or meta.get("title") or "",
+                            "text":content[:12000]})
+    # Deduplicate URLs without silently replacing source metadata.
+    unique=[]
+    seen=set()
+    for source in sources:
+        if source["url"] in seen: continue
+        seen.add(source["url"]); unique.append(source)
+    return unique[:5]
+
+def research_fixture_with_failover(home: str, away: str, competition: str="", date_text: str="") -> dict[str, Any]:
+    home=str(home or "").strip(); away=str(away or "").strip()
+    if not home or not away:
+        raise ValueError("home and away team names are required.")
+    query='"'+home+'" "'+away+'" football team news lineup injury suspension '+str(competition or "")+" "+str(date_text or "")
+    sources=fetch_firecrawl_sources(query)
+    if not sources:
+        return {"status":"NEEDS_DATA","claims":[],"provider":None,"verified":False,
+                "reason":"Firecrawl returned no timestamped, URL-linked source material."}
+    result=research_with_failover("Extract current, source-supported team news, lineup, injury, suspension, tactical, referee and weather claims for "+home+" vs "+away+". Preserve conflicts and missing information.",sources)
+    return {**result,"fixture":{"home":home,"away":away,"competition":competition,"date":date_text},
+            "source_count":len(sources),"sources":[{"url":s["url"],"title":s.get("source_name"),"published_at":s.get("published_at"),"retrieved_at":s.get("retrieved_at")} for s in sources]}
+
 def research_with_failover(question: str, source_material: Any, timeout: float=20.0) -> dict[str, Any]:
     """Gemini primary; OpenRouter fallback only on provider/configuration failure."""
     if not isinstance(question,str) or not question.strip():
