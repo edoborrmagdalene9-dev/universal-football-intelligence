@@ -826,7 +826,40 @@ window.UFI_ATTACH_AI_COUNCIL = result => {
  persist();
 };
 
+async function initUfiTelemetry(){
+ try{
+  const response=await fetch('https://universal-football-intelligence.onrender.com/api/analytics/config',{headers:{Accept:'application/json'},cache:'no-store'});
+  if(!response.ok)return;
+  const cfg=await response.json();
+  if(!cfg.configured||!cfg.projectToken||!cfg.apiHost)return;
+  if(!window.posthog){
+   const script=document.createElement('script');
+   script.src=cfg.apiHost.replace(/\/$/,'')+'/static/array.js';
+   script.async=true;
+   script.onload=()=>startPosthog(cfg);
+   script.onerror=()=>{};
+   document.head.appendChild(script);
+  }else startPosthog(cfg);
+ }catch(_){}
+}
+function startPosthog(cfg){
+ try{
+  if(!window.posthog||window.__ufiPosthogStarted)return;
+  window.__ufiPosthogStarted=true;
+  window.posthog.init(cfg.projectToken,{api_host:cfg.apiHost,autocapture:false,capture_pageview:true,
+   disable_session_recording:true,persistence:'memory',person_profiles:'never',
+   loaded:function(ph){
+    ph.capture('ufi_app_loaded',{app_version:'2026-10-27',telemetry_scope:'anonymous product health'});
+    const allowed=new Set(['runAiCouncil','runAiCouncilScenario','runScenario','runLiveBrain','runExactScore','runMarketAudit','testAiProviders','loadFixtures','refreshLive']);
+    document.addEventListener('click',function(event){
+     const el=event.target&&event.target.closest?event.target.closest('button,[role="button"]'):null;
+     if(el&&allowed.has(el.id))ph.capture('ufi_action',{action:el.id});
+    },{passive:true});
+   }});
+ }catch(_){}
+}
 renderAllSaved();renderManualSelections();
+initUfiTelemetry();
 if(location.protocol==='file:')$('netState').textContent='Local file mode';
 else $('netState').textContent='Ready';
 })();
