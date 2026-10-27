@@ -103,8 +103,10 @@ def main():
                 decision=store.qualify(item,"correct_score",prompt_pass=None,rule_id=None,
                     required_data_present=bool(fetched),data_age_seconds=0 if fetched else None,
                     max_data_age_seconds=3600)
-                item["status"]="WAIT" if decision.status!="QUALIFIED_FOR_REVIEW" else "QUALIFIED_FOR_REVIEW"
                 item["reasons"]=list(decision.reasons)
+                hard_cut=any("blacklisted" in reason.lower() or "fixture identity incomplete" in reason.lower()
+                             for reason in item["reasons"])
+                item["status"]="REJECTED" if hard_cut else ("WAIT" if decision.status!="QUALIFIED_FOR_REVIEW" else "QUALIFIED_FOR_REVIEW")
             item["source"]=source
             item["source_fetched_at"]=fetched
             item["verified_prediction"]=False
