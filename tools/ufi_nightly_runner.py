@@ -1,6 +1,7 @@
 """Daily UFI fixture preparation runner. Fail-closed: discovery is not a prediction or bet approval."""
 from __future__ import annotations
 import json, os, urllib.error, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta, datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -93,26 +94,59 @@ def main():
                 age_seconds=(datetime.now(timezone.utc)-stamp.astimezone(timezone.utc)).total_seconds()
         except (TypeError,ValueError,OverflowError):
             age_seconds=None
-        for raw in rows:
+        def process_fixture(raw):
             item=_fixture(raw)
             if not item["id"] or not item["home"] or not item["away"]:
-                item["status"]="WAIT"
+                item["status"]="REJECTED"
                 item["reasons"]=["fixture identity incomplete"]
+                item["research"]={"status":"NEEDS_DATA","claims":[],"reason":"Fixture identity incomplete."}
             else:
-                # The shared user prompt and validated rulebook are required; never approve merely because fixtures were found.
                 decision=store.qualify(item,"correct_score",prompt_pass=None,rule_id=None,
-                    required_data_present=bool(fetched),data_age_seconds=0 if fetched else None,
+                    required_data_present=bool(fetched),data_age_seconds=age_seconds,
                     max_data_age_seconds=3600)
                 item["reasons"]=list(decision.reasons)
                 hard_cut=any("blacklisted" in reason.lower() or "fixture identity incomplete" in reason.lower()
                              for reason in item["reasons"])
-                item["status"]="REJECTED" if hard_cut else ("WAIT" if decision.status!="QUALIFIED_FOR_REVIEW" else "QUALIFIED_FOR_REVIEW")
+                item["status"]="REJECTED" if hard_cut else "WAIT"
+                item["research"]={"status":"NEEDS_DATA","claims":[],"reason":"Research not yet requested."}
+                item["verified_prediction"]=False
             item["source"]=source
             item["source_fetched_at"]=fetched
-            item["verified_prediction"]=False
-            report["fixtures"].append(item)
+            return item
+        processed=[]
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures=[pool.submit(process_fixture,raw) for raw in rows]
+            for future in as_completed(futures):
+                try: processed.append(future.result())
+                except Exception as exc:
+                    processed.append({"status":"WAIT","reasons":["fixture processing error: "+type(exc).__name__],"verified_prediction":False})
+        processed.sort(key=lambda x:(str(x.get("kickoff") or ""),str(x.get("home") or "")))
+        # Research every discovered fixture, with bounded concurrency and a per-request timeout at the backend.
+        def research_fixture(item):
+            if not item.get("home") or not item.get("away") or item.get("status")=="REJECTED":
+                return item
+            params=urllib.parse.urlencode({"home":item["home"],"away":item["away"],"competition":item.get("competition",""),"date":target})
+            try:
+                evidence=_get("/api/ai/research-fixture?"+params)
+                item["research"]=evidence
+                item["source_urls"]=[x.get("url") for x in evidence.get("sources",[]) if isinstance(x,dict) and x.get("url")]
+                item["research_status"]=evidence.get("status","NEEDS_DATA")
+                if not item["source_urls"]:
+                    item["reasons"].append("no URL-linked research sources returned")
+                item["verified_prediction"]=False
+                # Never promote a candidate on AI research alone. The existing shared prompt,
+                # validated historical rule, model probabilities, market odds and live confirmation remain required.
+            except Exception as exc:
+                item["research"]={"status":"NEEDS_DATA","claims":[],"reason":"Research fetch failed ("+type(exc).__name__+")."}
+                item["research_status"]="NEEDS_DATA"
+                item["reasons"].append("automated research unavailable")
+            return item
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures=[pool.submit(research_fixture,item) for item in processed]
+            report["fixtures"]=[future.result() for future in as_completed(futures)]
+        report["fixtures"].sort(key=lambda x:(str(x.get("kickoff") or ""),str(x.get("home") or "")))
         report["status"]="complete" if rows else "partial"
-        report["note"]="Fixture discovery only. No probabilities, correct scores, or bet recommendations were fabricated. All markets remain on WAIT until source evidence, the shared filtering prompt, validated rules, model outputs, market odds, and live confirmation are wired and pass."
+        report["note"]="Automatic fixture discovery and AI-assisted source triage completed where available. AI claims remain unverified; this nightly runner does not yet produce calibrated exact-score probabilities or market odds. Candidates remain WAIT until the shared filtering prompt, validated historical rule, model probabilities, exact-market odds/EV and live confirmation pass."
         store.finish_phase(phase,report["status"],{"target_date":target,"fixture_count":len(rows),"source":source},now.date().isoformat())
     except Exception as exc:
         report["status"]="failed"
