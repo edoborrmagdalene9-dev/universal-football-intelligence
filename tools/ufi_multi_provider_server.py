@@ -195,6 +195,29 @@ def _integrated_get_payload(route, query):
         raise exc
 legacy.get_payload = _integrated_get_payload
 
+# Optional telemetry; missing monitoring keys never block application requests.
+try:
+    from .ufi_observability import emit_request as _emit_telemetry
+except ImportError:
+    try:
+        from ufi_observability import emit_request as _emit_telemetry
+    except ImportError:
+        _emit_telemetry = None
+
+_unobserved_get_payload = legacy.get_payload
+def _observed_get_payload(route, query):
+    started = time.monotonic()
+    try:
+        result = _unobserved_get_payload(route, query)
+    except Exception as exc:
+        if _emit_telemetry:
+            _emit_telemetry(route, "error", (time.monotonic()-started)*1000, type(exc).__name__)
+        raise
+    if _emit_telemetry:
+        _emit_telemetry(route, "ok", (time.monotonic()-started)*1000)
+    return result
+legacy.get_payload = _observed_get_payload
+
 if __name__ == "__main__":
     if not legacy.TOKEN:
         print("INFO: SPORTMONKS_API_TOKEN is unset; Sportmonks routes will report unavailable.")
