@@ -186,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
         if origin and origin == ALLOWED_ORIGIN:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
-        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -218,6 +218,36 @@ class Handler(BaseHTTPRequestHandler):
         except ProviderError as exc:
             status = 400 if "must use" in str(exc) or "must be" in str(exc) or "Unknown endpoint" in str(exc) else 502
             self._json(status, {"ok": False, "error": str(exc)})
+
+    def do_POST(self):
+        origin = self.headers.get("Origin")
+        if not origin_allowed(origin):
+            self._json(403, {"ok": False, "error": "Origin not allowed"})
+            return
+        if rate_limited(self.client_address[0]):
+            self._json(429, {"ok": False, "error": "Rate limit exceeded; retry shortly."})
+            return
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path != "/api/ai/council":
+            self._json(405, {"ok": False, "error": "POST is only supported for /api/ai/council"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 2 or length > 40000:
+                self._json(413, {"ok": False, "error": "Request body must be between 2 and 40000 bytes"})
+                return
+            body = self.rfile.read(length)
+            data = json.loads(body.decode("utf-8"))
+            prompt = data.get("prompt") if isinstance(data, dict) else None
+            if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 28000:
+                self._json(400, {"ok": False, "error": "prompt is required and must be at most 28000 characters"})
+                return
+            payload, _ = get_payload(parsed.path, {"prompt": [prompt]})
+            self._json(200, payload)
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+            self._json(400, {"ok": False, "error": "Request body must be valid JSON"})
+        except ProviderError as exc:
+            self._json(502, {"ok": False, "error": str(exc)})
 
     def log_message(self, fmt, *args):
         # Avoid logging query strings or secrets.
