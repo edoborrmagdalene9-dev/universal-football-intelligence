@@ -105,6 +105,32 @@ async function loadPublicHistoryAndEstimate(home,away,fixture){
  if(!result.ok)throw new Error(result.error);
  return result;
 }
+async function runServerScoreModel(home,away,fixture,applyToInputs=true){
+ const output=$('esiServerModelOutput');
+ const code=inferFootballDataLeague(fixture||{});
+ if(!code){if(output){output.className='notice warning';output.textContent='No model output: choose a supported historical league code first. No λ values were changed; market status remains WAIT.';}return {ok:false,reason:'league code unavailable'};}
+ const cutoff=String(fixture?.kickoff||$('esiKickoff')?.value||$('esiHistoryCutoff')?.value||ufiLagosDate()).slice(0,10);
+ if(output){output.className='notice';output.textContent='Loading '+code+' public history and running chronological Poisson/Dixon–Coles validation…';}
+ try{
+  const params=new URLSearchParams({home:String(home),away:String(away),league:code,date:cutoff,seasons:'5'});
+  const result=await fetchFeed('/api/models/score?'+params.toString());
+  if(result.status!=='model_output'){if(output){output.className='notice warning';output.textContent='No fixture-specific prediction: '+String(result.reason||'insufficient history')+' Training matches: '+String(result.training_matches??0)+'. No default λ was changed. Market gate: WAIT.';}return {ok:false,result};}
+  const rates=result.rate_estimate||{};
+  if(applyToInputs){
+   $('esiLambdaHome').value=Number(rates.lambdaHome).toFixed(2);$('esiLambdaAway').value=Number(rates.lambdaAway).toFixed(2);
+   if($('lambdaHome'))$('lambdaHome').value=Number(rates.lambdaHome).toFixed(2);if($('lambdaAway'))$('lambdaAway').value=Number(rates.lambdaAway).toFixed(2);
+   $('esiForecastSource').value='Football-Data.co.uk '+code+'; '+result.training_matches+' prior matches; cutoff '+cutoff;
+   $('esiForecastNotes').value='Dixon–Coles rho '+Number(result.dixon_coles?.rho||0).toFixed(2)+'; market gate remains WAIT until exact-score odds/EV/live confirmation.';
+   renderGrid();if(typeof window.UFI_SCENARIO_RECALCULATE==='function')window.UFI_SCENARIO_RECALCULATE();
+  }
+  const showGrid=(name,title)=>{const model=result.models?.[name];if(!model)return '';const rows=(model.top_scores||[]).map(x=>'<tr><td>'+x.home+'–'+x.away+'</td><td>'+pct(x.p)+'</td><td>'+(x.fair_odds?Number(x.fair_odds).toFixed(2):'—')+'</td></tr>').join('');return '<h3>'+title+'</h3><table><thead><tr><th>Score</th><th>Model probability</th><th>Model fair odds</th></tr></thead><tbody>'+rows+'</tbody></table>';};
+  const metrics=result.historical_backtest?.metrics||{};
+  const metricTable=Object.keys(metrics).map(name=>{const m=metrics[name]||{};return '<tr><td>'+esc(name.replaceAll('_',' '))+'</td><td>'+String(m.n??0)+'</td><td>'+(m.exactScoreBrier==null?'—':Number(m.exactScoreBrier).toFixed(4))+'</td><td>'+(m.exactScoreLogLoss==null?'—':Number(m.exactScoreLogLoss).toFixed(4))+'</td><td>'+(m.oneXTwoBrier==null?'—':Number(m.oneXTwoBrier).toFixed(4))+'</td><td>'+(m.oneXTwoLogLoss==null?'—':Number(m.oneXTwoLogLoss).toFixed(4))+'</td></tr>';}).join('');
+  const urls=(result.source_urls||[]).map(url=>'<li><a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+esc(url)+'</a></li>').join('');
+  if(output){output.className='notice good';output.innerHTML='<p><b>'+esc(home)+' vs '+esc(away)+'</b> · league '+esc(code)+' · cutoff '+esc(cutoff)+'</p><p>Training rows: '+result.training_matches+'; source rows loaded: '+result.source_record_count+'; λH '+Number(rates.lambdaHome).toFixed(2)+' / λA '+Number(rates.lambdaAway).toFixed(2)+'; fitted rho '+Number(result.dixon_coles?.rho||0).toFixed(2)+' ('+(result.dixon_coles?.fitted?'fit':'not fit')+').</p>'+showGrid('independent_poisson','Independent Poisson top scores')+showGrid('dixon_coles','Dixon–Coles top scores')+'<h3>Chronological unseen-match diagnostics</h3><p>Evaluated '+String(result.historical_backtest?.evaluated_matches??0)+' matches; test dates '+esc(String(result.historical_backtest?.test_start||'—'))+' to '+esc(String(result.historical_backtest?.test_end||'—'))+'.</p><div class="table-wrap"><table><thead><tr><th>Model</th><th>N</th><th>Exact-score Brier ↓</th><th>Exact-score log loss ↓</th><th>1X2 Brier ↓</th><th>1X2 log loss ↓</th></tr></thead><tbody>'+metricTable+'</tbody></table></div><p><b>Market gate: WAIT.</b> These historical results do not establish future profitability. Exact-score odds, de-vigged prices, calibration gates and live confirmation are not checked by this endpoint.</p><details><summary>Historical source URLs</summary><ul>'+urls+'</ul></details>';}
+  return {ok:true,result};
+ }catch(err){if(output){output.className='notice warning';output.textContent='Score model unavailable: '+String(err?.message||err).slice(0,220)+'. No market was approved.';}return {ok:false,error:String(err?.message||err)};}
+}
 if(typeof window!=='undefined') window.UFIHistoricalRateEstimator={parseCsv,estimateRates};
 function renderGrid(){
  const home=($('esiHome').value||'Home').trim(), away=($('esiAway').value||'Away').trim();
