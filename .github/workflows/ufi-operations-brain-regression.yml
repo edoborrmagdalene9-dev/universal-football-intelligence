@@ -2,11 +2,15 @@ name: UFI Operations Brain Regression
 
 on:
   push:
-    branches: [feature/ufi-operations-brain]
+    branches: [feature/ufi-operations-brain, feature/ufi-gemini-research-blacklist-integration]
     paths:
       - 'tools/ufi_operations_brain.py'
       - 'tools/ufi_operations_scheduler.py'
+      - 'tools/ufi_gemini_research.py'
+      - 'tests/test_ufi_gemini_research.py'
       - 'tests/test_ufi_operations_brain.py'
+      - 'tools/ufi_gemini_research.py'
+      - 'tests/test_ufi_gemini_research.py'
       - '.github/workflows/ufi-operations-brain-regression.yml'
   pull_request:
     paths:
@@ -29,6 +33,6 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile additive operations modules
-        run: python -m py_compile tools/ufi_operations_brain.py tools/ufi_operations_scheduler.py tests/test_ufi_operations_brain.py
+        run: python -m py_compile tools/ufi_operations_brain.py tools/ufi_operations_scheduler.py tools/ufi_gemini_research.py tests/test_ufi_operations_brain.py tests/test_ufi_gemini_research.py
       - name: Run operations brain regression tests
-        run: python -m unittest tests.test_ufi_operations_brain -v
+        run: python -m unittest tests.test_ufi_operations_brain tests.test_ufi_gemini_research -v
