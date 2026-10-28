@@ -115,6 +115,19 @@ def _fallback_date_fixtures(query):
             "note":"Odds-only fixture fallback. Scores, events, lineups and statistics are intentionally unknown."},False
 
 def _integrated_get_payload(route, query):
+    # Additive end-to-end route: source fixture -> historical model, with evidence gates.
+    if route == "/api/pipeline/predict":
+        try:
+            try:
+                from .ufi_end_to_end_pipeline import generate_fixture_pipeline
+                from .ufi_prediction_api import generate_score_prediction
+            except ImportError:
+                from ufi_end_to_end_pipeline import generate_fixture_pipeline
+                from ufi_prediction_api import generate_score_prediction
+            return generate_fixture_pipeline(query, _original_get_payload, generate_score_prediction), False
+        except ValueError as exc:
+            raise legacy.ProviderError(str(exc)) from exc
+
     # Expose the existing historical Poisson/Dixon-Coles model through an additive API route.
     # This route deliberately keeps the market gate at WAIT until odds are independently validated.
     if route == "/api/models/score":
