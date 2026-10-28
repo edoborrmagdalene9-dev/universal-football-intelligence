@@ -150,7 +150,7 @@ def chronological_backtest(rows,test_fraction=0.2,max_test=100):
             "metrics":{name:_metrics(values) for name,values in metrics.items()},
             "warning":"Metrics are historical diagnostics, not proof of future profitability. Exact-score Brier is the multiclass scoreline-grid Brier; model comparison uses the same evaluated matches."}
 
-def predict_fixture(rows,home,away,cutoff_date=None):
+def predict_fixture(rows,home,away,cutoff_date=None,include_backtest=True):
     if not cutoff_date:
         cutoff_date=datetime.now(ZoneInfo("Africa/Lagos")).date().isoformat()
     prior=_valid_rows(rows,cutoff=cutoff_date)
@@ -168,7 +168,7 @@ def predict_fixture(rows,home,away,cutoff_date=None):
             "training_matches":len(prior),"rate_estimate":rates,"dixon_coles":rho,
             "models":{"independent_poisson":{"top_scores":top(independent),"one_x_two":_outcome_probs(independent)},
                       "dixon_coles":{"top_scores":top(dc),"one_x_two":_outcome_probs(dc)}},
-            "historical_backtest":chronological_backtest(prior),
+            "historical_backtest":(chronological_backtest(prior) if include_backtest else {"status":"not_run_for_latency","reason":"Chronological holdout backtesting is available on request but is skipped for interactive prediction latency."}),
             "market_gate":"WAIT","market_gate_reason":"Exact-score odds, de-vigged market probabilities, calibrated EV and live confirmation have not been checked by this endpoint.",
             "source_urls":sorted({r.get("source_url") for r in prior if r.get("source_url")}),
             "warning":"Model outputs are not calibrated betting advice. Independent Poisson and Dixon-Coles are tested against historical baselines; no profit or win-rate guarantee."}
