@@ -45,6 +45,7 @@ class PredictionApiTests(unittest.TestCase):
         self.assertEqual(result["model"]["models"]["independent_poisson"]["top_scores"][0]["home"], 1)
         historical.assert_called_once_with("E0", 5)
         predict.assert_called_once()
+        self.assertFalse(predict.call_args.kwargs["include_backtest"])
 
     @patch("tools.ufi_prediction_api.predict_fixture")
     @patch("tools.ufi_prediction_api._historical_data")
