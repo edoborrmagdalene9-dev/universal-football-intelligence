@@ -78,20 +78,31 @@ def generate_score_prediction(query: dict[str, list[str]]) -> dict[str, Any]:
     historical = _historical_data(league, seasons)
     rows = historical.get("data") or []
     model = predict_fixture(rows, home, away, cutoff_date=cutoff)
+    status = model.get("status", "NEEDS_DATA")
     return {
-        "ok": model.get("status") == "model_output",
+        # ok means the request was processed; status separately says whether the
+        # historical sample was sufficient to generate fixture-specific output.
+        "ok": True,
+        "status": status,
         "source": historical.get("source"),
         "fetched_at": historical.get("fetched_at"),
         "cache_hit": historical.get("cache_hit", False),
         "league_code": league,
         "requested_seasons": seasons,
+        "source_record_count": historical.get("record_count", len(rows)),
         "historical_record_count": historical.get("record_count", len(rows)),
         "historical_seasons_loaded": historical.get("seasons_loaded", []),
+        "source_urls": historical.get("source_urls", []),
         "historical_source_urls": historical.get("source_urls", []),
         "historical_issues": historical.get("issues", []),
+        "rate_estimate": model.get("rate_estimate", {}),
+        "training_matches": model.get("training_matches", 0),
+        "dixon_coles": model.get("dixon_coles", {}),
+        "models": model.get("models", {}),
+        "historical_backtest": model.get("historical_backtest"),
+        "reason": model.get("reason") or (model.get("rate_estimate") or {}).get("reason"),
+        "market_gate": "WAIT",
         "model": model,
-        "status": model.get("status", "NEEDS_DATA"),
-        "market_gate": model.get("market_gate", "WAIT"),
         "note": (
             "This endpoint returns an experimental historical Poisson/Dixon-Coles "
             "distribution, not a guaranteed score or betting signal. Exact-score "
