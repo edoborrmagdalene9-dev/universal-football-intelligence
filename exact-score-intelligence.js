@@ -220,6 +220,7 @@ async function fetchFeed(path){
  const body=await response.json(); if(body && body.ok===false) throw new Error(body.error||'Provider error');
  return body;
 }
+
 function unwrapRows(payload){
  const root=payload?.data;
  if(Array.isArray(root)) return root;
