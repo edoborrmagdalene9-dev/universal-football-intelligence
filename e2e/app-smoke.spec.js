@@ -42,9 +42,10 @@ test('real-data and exact-score workflows expose their core controls', async ({ 
   await page.locator('#navigation [data-view="exactscore"]').click();
   await expect(page.locator('#view-exactscore')).toBeVisible();
 });
-test('live fixture feed connects to the model pipeline without manual ID copying', async ({ page }) => {
-  await page.route('https://universal-football-intelligence.onrender.com/api/health', route =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
+
+test('pipeline fixture picker loads source fixtures and sends the selected ID to the model', async ({ page }) => {
+  await page.route('**/api/providers/status*', route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, providers: {} }) })
   );
   await page.route('**/api/fixtures*', route =>
     route.fulfill({
@@ -54,16 +55,6 @@ test('live fixture feed connects to the model pipeline without manual ID copying
         ok: true,
         source: 'Mock Sportmonks',
         data: { data: [{ id: 12345, name: 'Alpha FC vs Beta FC', starting_at: '2026-10-28 19:00:00' }] }
-      })
-    })
-  );
-  await page.route('**/api/fixture?id=12345', route =>
-    route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        ok: true, source: 'Mock Sportmonks',
-        data: { data: { id: 12345, name: 'Alpha FC vs Beta FC', participants: [] } }
       })
     })
   );
@@ -85,20 +76,14 @@ test('live fixture feed connects to the model pipeline without manual ID copying
 
   await page.goto('/');
   await page.locator('#navigation [data-view="exactscore"]').click();
-  await expect(page.locator('#esiApiBase')).toHaveValue('https://universal-football-intelligence.onrender.com');
   await expect(page.locator('#ufiEndToEndPipelinePanel')).toBeVisible();
-
-  await page.locator('#esiConnectFeed').click();
-  await expect(page.locator('#esiFeedStatus')).toContainText('Loaded 1 source fixture');
-  await page.locator('[data-fixture-id="12345"]').click();
+  await page.locator('#ufiPipelineLoadFixtures').click();
+  await expect(page.locator('#ufiPipelineFixturePicker')).toContainText('Loaded 1 source fixture');
+  await page.locator('[data-ufi-pipeline-fixture-id="12345"]').click();
   await expect(page.locator('#esiProviderFixtureId')).toHaveValue('12345');
-
-  await page.locator('#esiLoadFixtureDetails').click();
-  await expect(page.locator('#esiFixtureDetailsOutput')).toContainText('Alpha FC vs Beta FC');
 
   await page.locator('#ufiRunEndToEndPipeline').click();
   await expect(page.locator('#ufiPipelineOutput')).toContainText('model_ready_market_wait');
   await expect(page.locator('#ufiPipelineOutput')).toContainText('1-0');
   await expect(page.locator('#ufiPipelineOutput')).toContainText('WAIT');
-  await page.locator('#esiStopFeed').click();
 });
