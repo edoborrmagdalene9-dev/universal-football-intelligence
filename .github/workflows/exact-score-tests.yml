@@ -38,5 +38,7 @@ jobs:
         run: node --test tests/crainee-subconscious-narrative-engine.test.cjs
       - name: Syntax-check connected pipeline UI
         run: node --check ufi-end-to-end-pipeline.js
+      - name: Test privacy-conscious frontend PostHog telemetry
+        run: node --test tests/posthog-frontend-telemetry.test.cjs
       - name: Test existing Python suite
         run: python -m unittest discover -s tests -p "test_*.py" -v
