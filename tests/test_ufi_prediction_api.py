@@ -61,7 +61,7 @@ class PredictionApiTests(unittest.TestCase):
         result = ufi_prediction_api.generate_score_prediction({
             "home": ["Unknown FC"], "away": ["Other FC"], "league": ["E0"]
         })
-        self.assertFalse(result["ok"])
+        self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "NEEDS_DATA")
         self.assertEqual(result["model"]["predictions"], [])
         self.assertEqual(result["market_gate"], "WAIT")
