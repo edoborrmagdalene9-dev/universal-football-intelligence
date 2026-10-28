@@ -77,7 +77,8 @@ def generate_score_prediction(query: dict[str, list[str]]) -> dict[str, Any]:
 
     historical = _historical_data(league, seasons)
     rows = historical.get("data") or []
-    model = predict_fixture(rows, home, away, cutoff_date=cutoff)
+    include_backtest = _value(query, "include_backtest").lower() in {"1", "true", "yes"}
+    model = predict_fixture(rows, home, away, cutoff_date=cutoff, include_backtest=include_backtest)
     status = model.get("status", "NEEDS_DATA")
     return {
         # ok means the request was processed; status separately says whether the
