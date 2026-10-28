@@ -46,7 +46,7 @@ test('live fixture feed connects to the model pipeline without manual ID copying
   await page.route('https://universal-football-intelligence.onrender.com/api/health', route =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) })
   );
-  await page.route(/\\/api\\/fixtures\\?date=/, route =>
+  await page.route('**/api/fixtures*', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -57,7 +57,7 @@ test('live fixture feed connects to the model pipeline without manual ID copying
       })
     })
   );
-  await page.route(/\\/api\\/fixture\\?id=12345$/, route =>
+  await page.route('**/api/fixture?id=12345', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -67,7 +67,7 @@ test('live fixture feed connects to the model pipeline without manual ID copying
       })
     })
   );
-  await page.route(/\\/api\\/pipeline\\/predict\\?/, route =>
+  await page.route('**/api/pipeline/predict*', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -85,7 +85,7 @@ test('live fixture feed connects to the model pipeline without manual ID copying
 
   await page.goto('/');
   await page.locator('#navigation [data-view="liveengine"]').click();
-  await expect(page.locator('#esiApiBase')).toHaveValue(/universal-football-intelligence\\.onrender\\.com/);
+  await expect(page.locator('#esiApiBase')).toHaveValue('https://universal-football-intelligence.onrender.com');
   await expect(page.locator('#ufiEndToEndPipelinePanel')).toBeVisible();
 
   await page.locator('#esiConnectFeed').click();
