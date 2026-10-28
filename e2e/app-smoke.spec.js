@@ -84,7 +84,7 @@ test('live fixture feed connects to the model pipeline without manual ID copying
   );
 
   await page.goto('/');
-  await page.locator('#navigation [data-view="liveengine"]').click();
+  await page.locator('#navigation [data-view="exactscore"]').click();
   await expect(page.locator('#esiApiBase')).toHaveValue('https://universal-football-intelligence.onrender.com');
   await expect(page.locator('#ufiEndToEndPipelinePanel')).toBeVisible();
 
