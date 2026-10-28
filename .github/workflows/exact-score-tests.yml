@@ -24,5 +24,19 @@ jobs:
         run: node --test tests/universal-match-state-engine.test.cjs
       - name: Test live market shock and historical backtest UI
         run: node --test tests/live-market-shock-backtest.test.cjs
+      - name: Test 5400 bookmaker-edge gate
+        run: node --test tests/bookie-edge-5400.test.cjs
+      - name: Test Crainee squad/referee chaos gate
+        run: node --test tests/crainee-chaos-gate.test.cjs
+      - name: Test Crainee Tactical Surprise Engine
+        run: node --test tests/crainee-tactical-surprise-engine.test.cjs
+      - name: Test Crainee Unconventional Outcome Engine
+        run: node --test tests/crainee-unconventional-outcome-engine.test.cjs
+      - name: Test Crainee Background Break Engine
+        run: node --test tests/crainee-background-break-engine.test.cjs
+      - name: Test Crainee Subconscious Narrative Engine
+        run: node --test tests/crainee-subconscious-narrative-engine.test.cjs
+      - name: Syntax-check connected pipeline UI
+        run: node --check ufi-end-to-end-pipeline.js
       - name: Test existing Python suite
         run: python -m unittest discover -s tests -p "test_*.py" -v
