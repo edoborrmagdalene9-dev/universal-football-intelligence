@@ -17,6 +17,7 @@
 <button class="nav-item" data-view="exactscore"><span>◎</span> Exact-score intelligence</button>
 <button class="nav-item" data-view="liveengine"><span>⚡</span> Live chaos engine</button>
 <button class="nav-item" data-view="universalengine"><span>🌐</span> Universal event & trap engine</button>
+<button class="nav-item" data-view="bookieedge"><span>⏱</span> 5400 Bookie-Edge Gate</button>
 <button class="nav-item" data-view="slips"><span>▤</span> Slip & odds lab</button>
 <button class="nav-item" data-view="backtest"><span>↗</span> Backtesting</button>
 <button class="nav-item" data-view="library"><span>▧</span> Research library</button>
@@ -59,6 +60,33 @@
 <div class="panel"><h2>1X2 & goal-market summaries</h2><div class="outcome-grid"><div><span>Home win</span><b id="probHome">—</b></div><div><span>Draw</span><b id="probDraw">—</b></div><div><span>Away win</span><b id="probAway">—</b></div><div><span>Over 1.5</span><b id="probOver15">—</b></div><div><span>Over 2.5</span><b id="probOver25">—</b></div><div><span>Over 3.5</span><b id="probOver35">—</b></div><div><span>Both score</span><b id="probBtts">—</b></div><div><span>Most likely score</span><b id="probTopScore">—</b></div></div><h3>Scoreline probability table</h3><div id="scoreGrid" class="table-wrap"></div></div></div>
 <div class="panel panel-wide"><div class="panel-head"><div><div class="eyebrow">MULTI-MODEL REVIEW</div><h2>AI council — prediction challenge</h2></div><span class="tag">ADVISORY ONLY</span></div><p class="muted">Runs up to three configured AI providers in parallel, then uses spare providers as fallbacks. It reads UFI's match/events/lineups, scenario assumptions, player and substitute notes, team context, slip audit, forecast ledger and research notes. It can challenge a prediction; it cannot manufacture data or override the deterministic risk gate.</p><div class="button-row"><button id="runAiCouncilScenario" class="button primary">Run AI council on current prediction</button></div><div id="aiCouncilScenarioOutput" class="notice ai-council">Configure provider keys in Slip & odds lab, then run the council here to challenge the current scenario.</div></div><div class="panel"><h2>Scenario assumptions checklist</h2><div class="checklist"><label><input type="checkbox" id="checkLineup"> Starting lineup confirmed</label><label><input type="checkbox" id="checkVenue"> Home/away context checked</label><label><input type="checkbox" id="checkRecent"> Recent match sample checked</label><label><input type="checkbox" id="checkOpponent"> Opponent strength considered</label><label><input type="checkbox" id="checkMarket"> Market price compared independently</label><label><input type="checkbox" id="checkUncertainty"> Uncertainty and missing data noted</label></div><label>Scenario caveats<textarea id="scenarioCaveats" placeholder="What could make these assumptions wrong?"></textarea></label></div>
 </section>
+<section class="view" id="view-bookieedge">
+<div class="page-header"><div><div class="eyebrow">MARKET MICROSTRUCTURE · 90-MINUTE SURVIVAL GATE</div><h1>5400 Bookie-Edge Gate</h1><p class="muted">Reject weak, stale, overpriced or poorly supported selections. This is a conservative screening gate, not proof a bookmaker is trapping you or that a surviving selection will win.</p></div></div>
+<div class="panel"><div class="panel-head"><div><div class="eyebrow">CORE RULE</div><h2>5400 checkpoints ≠ 5400 independent confirmations</h2></div><span class="tag">EXPERIMENTAL FILTER</span></div>
+<p>5400 seconds represents 90 minutes. The gate uses match time to set the expected number of elapsed checkpoints (60 per minute) and continuously reevaluates fresh inputs when the app receives them. Repeating the same unchanged odds 5400 times does not create evidence. A candidate must pass every hard gate below; otherwise it is discarded or marked insufficient data.</p>
+<div class="form-grid four">
+<label>Match minute<input id="beMinute" type="number" min="0" max="130" value="0"></label>
+<label>Maximum odds age (seconds)<input id="beMaxAge" type="number" min="1" value="15"></label>
+<label>Minimum estimated net EV (%)<input id="beMinEV" type="number" value="3" step="0.5"></label>
+<label>Maximum probability uncertainty (percentage points)<input id="beMaxUncertainty" type="number" min="0" max="100" value="8"></label>
+<label>Minimum independent validation matches<input id="beMinSamples" type="number" min="0" value="200"></label>
+<label>Required market-data snapshots<input id="beMinSnapshots" type="number" min="1" value="3"></label>
+<label>Minimum model probability (%)<input id="beMinProbability" type="number" min="0" max="100" value="5"></label>
+<label>Minimum conservative edge vs market (percentage points)<input id="beMinEdge" type="number" value="1" step="0.5"></label>
+</div></div>
+<div class="panel"><div class="panel-head"><div><div class="eyebrow">CANDIDATES</div><h2>Candidate evidence JSON</h2></div><button class="button" id="beExample">Load example</button></div>
+<p class="muted">Use decimal odds and probabilities from 0 to 1. Include a real ISO timestamp, independent out-of-sample sample count, snapshot count and uncertainty estimate. A source timestamp is required; browser capture time is not a substitute for source freshness.</p>
+<label>Candidate array<textarea id="beCandidates" rows="12" spellcheck="false" placeholder='[{"selection":"Home win","odds":2.4,"modelProbability":0.46,"marketProbability":0.41,"uncertainty":0.04,"sourceUpdatedAt":"2026-10-25T19:00:00Z","validationMatches":500,"snapshots":5}]'></textarea></label>
+<div class="button-row"><button class="button primary" id="beRun">Evaluate / discard candidates</button><button class="button" id="beClear">Clear</button></div><div id="beOutput" class="notice">Waiting for candidate data. No selection is approved by default.</div></div>
+<div class="panel"><div class="panel-head"><div><div class="eyebrow">SQUAD · REFEREE · MATCH PHASE</div><h2>Crainee Advanced Match Risk & Chaos Gate</h2></div><span class="tag">EXPERIMENTAL HEURISTIC</span></div>
+<p class="muted">Scores squad market-value/age/caps inputs, average referee whistle gaps and elapsed match time. This is a contextual risk heuristic, not a calibrated match-win probability. Missing player values use the stated defaults and are reported as assumptions.</p>
+<div class="form-grid two"><label>Current elapsed seconds<input id="caCurrentSecond" type="number" min="0" max="6000" value="0"></label><label>Available bankroll (₦)<input id="caBankroll" type="number" min="0" step="100" value="0"></label></div>
+<div class="form-grid two"><label>Home squad players JSON<textarea id="caHomeSquad" rows="8" spellcheck="false" placeholder='[{"name":"Player A","marketValue":25000000,"age":27,"caps":40}]'></textarea></label><label>Away squad players JSON<textarea id="caAwaySquad" rows="8" spellcheck="false" placeholder='[{"name":"Player B","marketValue":18000000,"age":25,"caps":25}]'></textarea></label></div>
+<div class="form-grid two"><label>Referee whistle-gap JSON<textarea id="caReferee" rows="3" spellcheck="false" placeholder='{"avgWhistleGap1to45":120,"avgWhistleGap45to90":85}'></textarea></label><label>Gate settings<p class="muted">Fixed experimental survival threshold: 0.25. Absolute stake cap: 5% of entered bankroll.</p><button class="button" id="caExample">Load hypothetical example</button></label></div>
+<div class="button-row"><button class="button primary" id="caRun">Evaluate match risk</button><button class="button" id="caClear">Clear inputs</button></div><div id="caOutput" class="notice">Waiting for squad and referee data. No match is cleared by default.</div>
+<p class="muted">The stake output is only a mathematical cap derived from this heuristic, not a recommendation to bet. Do not enter borrowed money or treat this score as proof of an edge.</p></div>
+<div class="panel"><div class="eyebrow">HOW TO READ THE GATE</div><ul><li><b>Net EV:</b> estimated model probability × decimal odds − 1, reduced by an uncertainty haircut.</li><li><b>Conservative edge:</b> lower-confidence model probability minus de-vigged market probability.</li><li><b>5400 survival:</b> checkpoints track elapsed match time; a candidate survives only if every hard data/edge rule passes on each fresh evaluation. Past checks cannot guarantee future stability.</li><li><b>Discard:</b> stale source timestamp, missing evidence, too few independent validation matches, excessive uncertainty, inadequate conservative edge or negative/insufficient net EV.</li></ul><p class="muted">Never interpret unavailable markets or sudden odds movement as proof of manipulation. The filter does not place bets and does not promise profit.</p></div>
+</section>
 <section class="view" id="view-slips">
 <div class="page-heading"><div><div class="eyebrow">05 / PRICE & RISK</div><h1>Slip & odds lab</h1><p>Parse pasted text, calculate implied probabilities and flag concentration/correlation risks.</p></div></div>
 <div class="notice warning">Booking-code decoding requires the bookmaker's own supported integration. This tool cannot guarantee resolution of arbitrary SportyBet codes or reliably OCR every screenshot.</div>
@@ -88,6 +116,17 @@
 <div class="form-grid three"><label>UFI backend HTTPS URL<input id="esiApiBase" type="url" placeholder="https://your-ufi-backend.example"></label><label>Fixture date<input id="esiFeedDate" type="date"></label><label>Provider fixture ID (optional)<input id="esiProviderFixtureId" inputmode="numeric" placeholder="ID from provider"></label></div>
 <div class="button-row"><button id="esiConnectFeed" class="button primary">Connect / refresh live feed</button><button id="esiLoadFixtures" class="button">Load fixtures by date</button><button id="esiLoadFixtureDetails" class="button">Load selected fixture details</button><button id="esiStopFeed" class="button">Stop auto-refresh</button></div>
 <div id="esiFeedStatus" class="notice">Not connected. After the backend is deployed, enter its HTTPS base URL and connect. Live data refreshes while this page remains open.</div><div id="esiFeedOutput" class="table-wrap"><p class="muted">No provider data loaded.</p></div></article>
+<article class="panel panel-wide" id="ufiEndToEndPipelinePanel">
+<div class="panel-head"><div><div class="eyebrow">CONNECTED WORKFLOW / EVIDENCE GATES</div><h2>End-to-end fixture → model pipeline</h2></div><span class="tag">ADDITIVE INTEGRATION</span></div>
+<p class="muted">Pass a real provider fixture into the existing historical score model. Choose the historical league code explicitly; provider league IDs are not silently mapped. This connects fixture ingestion to the baseline model without claiming that player/tactical features or exact-score odds are already validated.</p>
+<div class="form-grid three">
+<label>Historical league code<select id="ufiPipelineLeague"><option value="SC0">Scotland Premiership (SC0)</option><option value="E0">England Premier League (E0)</option><option value="E1">England Championship (E1)</option><option value="SP1">Spain La Liga (SP1)</option><option value="D1">Germany Bundesliga (D1)</option><option value="I1">Italy Serie A (I1)</option><option value="F1">France Ligue 1 (F1)</option></select></label>
+<label>Historical seasons<input id="ufiPipelineSeasons" type="number" min="1" max="8" step="1" value="3"></label>
+<div><button id="ufiRunEndToEndPipeline" class="button primary">Run connected fixture → model pipeline</button></div>
+</div>
+<div id="ufiPipelineStatus" class="notice">Load fixtures above, copy a numeric provider fixture ID into the fixture ID field, select the matching historical league code, then run the pipeline.</div>
+<pre id="ufiPipelineOutput" class="code-output" aria-live="polite">No pipeline run yet. The market gate will remain WAIT unless independent market and validation checks are satisfied.</pre>
+</article>
 <article class="panel panel-wide" id="liveMarketShockPanel">
 <div class="panel-head"><div><div class="eyebrow">LIVE MARKET SHOCK + SCORE-STATE RECALIBRATION</div><h2>Price movement circuit breaker</h2></div><span class="tag">SOURCE-TIMESTAMPED</span></div>
 <div class="panel" id="lmsWeatherPanel"><div class="panel-head"><div><div class="eyebrow">MATCH ENVIRONMENT</div><h3>Open-Meteo kickoff weather lookup</h3></div><span class="tag">NO API KEY</span></div>
@@ -193,6 +232,16 @@
 <script src="live-correct-score-chaos-engine.js?v=live-chaos-20261026-final-score-3"></script>
 <script src="universal-match-state-engine.js?v=universal-events-20261026-final-score-3"></script>
 <script src="live-market-shock-backtest.js?v=market-shock-20261026-backtest-3"></script>
+<script src="bookie-edge-5400.js?v=bookie-edge-20261025-2"></script>
+<script src="crainee-chaos-gate.js?v=crainee-20261025-1"></script>
+<script src="crainee-tactical-surprise-engine.js?v=tactical-surprise-20261025-1"></script>
+<script src="crainee-unconventional-outcome-engine.js?v=unconventional-20261025-1"></script>
+<script src="crainee-unconventional-outcome-ui.js?v=unconventional-ui-1"></script>
+<script src="crainee-background-break-engine.js?v=background-break-1"></script>
+<script src="crainee-background-break-ui.js?v=background-break-ui-1"></script>
+<script src="crainee-subconscious-narrative-engine.js?v=subconscious-20261025-1"></script>
+<script src="crainee-subconscious-narrative-ui.js?v=subconscious-ui-1"></script>
+<script src="ufi-end-to-end-pipeline.js?v=ufi-pipeline-20261028-1"></script>
 <script>
 /* Navigation safety net: keep page switching available even if another app module fails. */
 document.querySelectorAll('.nav-item').forEach(function(button){
