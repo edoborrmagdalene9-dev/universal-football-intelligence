@@ -220,6 +220,54 @@ async function fetchFeed(path){
  const body=await response.json(); if(body && body.ok===false) throw new Error(body.error||'Provider error');
  return body;
 }
+
+function localIsoDate(){
+ const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function renderHistoricalModel(payload){
+ const host=$('esiHistoricalModelOutput');if(!host)return;
+ const model=payload?.model||{},statusValue=payload?.status||model?.status||'unknown';
+ const rates=model?.rate_estimate||{};
+ const meta='<p class="muted">Source: '+esc(payload?.source||'unknown')+' · league '+esc(payload?.league_code||'unknown')+' · records '+esc(payload?.historical_record_count??'unknown')+' · seasons loaded '+esc((payload?.historical_seasons_loaded||[]).join(', ')||'none')+' · fetched '+esc(payload?.fetched_at||'time unavailable')+(payload?.cache_hit?' · cached':'')+'</p>';
+ if(statusValue!=='model_output'){
+  host.className='notice warning';host.innerHTML=meta+'<p><b>Prediction withheld: '+esc(statusValue)+'</b></p><p>'+esc(model?.reason||rates?.reason||'Insufficient source-backed history or team-venue coverage. No scoreline has been fabricated.')+'</p>';
+  if((payload?.historical_issues||[]).length)host.innerHTML+='<details><summary>Historical source issues</summary><pre>'+esc(JSON.stringify(payload.historical_issues,null,2))+'</pre></details>';
+  return;
+ }
+ const modelNames=[['independent_poisson','Independent Poisson'],['dixon_coles','Dixon–Coles']];
+ const tables=modelNames.map(([key,label])=>{
+  const value=model?.models?.[key];if(!value)return '';
+  const outcome=value.one_x_two||[];
+  const outcomes=outcome.length===3?'<p class="muted">1X2: Home '+pct(outcome[0])+' · Draw '+pct(outcome[1])+' · Away '+pct(outcome[2])+'</p>':'';
+  const scores=value.top_scores||[];
+  return '<h4>'+label+'</h4>'+outcomes+'<table><thead><tr><th>Rank</th><th>Scoreline</th><th>Probability</th><th>Fair odds</th></tr></thead><tbody>'+scores.slice(0,8).map((x,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+x.home+'–'+x.away+'</b></td><td>'+pct(x.p)+'</td><td>'+(x.fair_odds?Number(x.fair_odds).toFixed(2):'—')+'</td></tr>').join('')+'</tbody></table>';
+ }).join('');
+ host.className='notice good';
+ host.innerHTML=meta+'<p><b>Model run completed.</b> Estimated scoring rates: home λ '+Number(rates.lambdaHome).toFixed(3)+' · away λ '+Number(rates.lambdaAway).toFixed(3)+' · training matches '+esc(model.training_matches??'unknown')+'.</p>'+tables+'<p class="notice warning">Market gate: '+esc(payload.market_gate||'WAIT')+'. '+esc(payload.note||'No market edge or profit is implied.')+'</p>'+(model.historical_backtest?'<details><summary>Chronological backtest diagnostics</summary><pre>'+esc(JSON.stringify(model.historical_backtest,null,2).slice(0,12000))+'</pre></details>':'')+((payload.historical_issues||[]).length?'<details><summary>Historical source issues</summary><pre>'+esc(JSON.stringify(payload.historical_issues,null,2))+'</pre></details>':'');
+ if(Number.isFinite(Number(rates.lambdaHome))&&Number.isFinite(Number(rates.lambdaAway))){$('esiLambdaHome').value=Number(rates.lambdaHome).toFixed(2);$('esiLambdaAway').value=Number(rates.lambdaAway).toFixed(2);$('esiForecastSource').value=(payload.source||'historical source')+' · '+(payload.league_code||'')+' · '+(payload.fetched_at||'');}
+}
+async function runHistoricalModel(){
+ const home=String($('esiHome')?.value||'').trim(),away=String($('esiAway')?.value||'').trim();
+ const host=$('esiHistoricalModelOutput');if(!home||!away){if(host){host.className='notice warning';host.textContent='Enter both home and away team names first.';}return;}
+ const base=safeBase();if(!base)return;
+ const cutoff=String($('esiHistoricalCutoff')?.value||localIsoDate());
+ const params=new URLSearchParams({home,away,league:$('esiHistoricalLeague')?.value||'E0',seasons:$('esiHistoricalSeasons')?.value||'5',cutoff_date:cutoff});
+ if(host){host.className='notice';host.textContent='Loading dated historical results and generating the Poisson/Dixon–Coles grids…';}
+ const button=$('esiRunHistoricalModel');if(button){button.disabled=true;button.textContent='Generating…';}
+ try{
+  const response=await fetch(base+'/api/models/score?'+params.toString(),{headers:{Accept:'application/json'},cache:'no-store'});
+  const payload=await response.json().catch(()=>({error:'Backend returned invalid JSON.'}));
+  if(!response.ok)throw new Error(payload?.error||('Backend returned HTTP '+response.status));
+  renderHistoricalModel(payload);
+  if(payload?.status==='model_output'){addModelToStatus(payload);renderGrid();}
+ }catch(e){if(host){host.className='notice warning';host.textContent='Historical prediction failed: '+e.message+'. Existing manual scoreline calculator remains available.';}}
+ finally{if(button){button.disabled=false;button.textContent='Generate historical score prediction';}}
+}
+function addModelToStatus(payload){
+ const home=String($('esiHome')?.value||'Home').trim(),away=String($('esiAway')?.value||'Away').trim();
+ status('Historical model completed for '+home+' vs '+away+'. Review both model grids above; market gate remains WAIT until price and validation checks are supplied.');
+}
+$('esiRunHistoricalModel')?.addEventListener('click',runHistoricalModel);
 function unwrapRows(payload){
  const root=payload?.data;
  if(Array.isArray(root)) return root;
