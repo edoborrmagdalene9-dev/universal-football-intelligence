@@ -63,3 +63,5 @@ jobs:
           path: Universal_Football_Intelligence_ALL_BRANCHES.zip
           if-no-files-found: error
           retention-days: 14
+
+# Updated to ensure the backup workflow itself is present before its push trigger.
