@@ -36,5 +36,7 @@ jobs:
         run: node --test tests/crainee-background-break-engine.test.cjs
       - name: Test Crainee Subconscious Narrative Engine
         run: node --test tests/crainee-subconscious-narrative-engine.test.cjs
+      - name: Syntax-check additive end-to-end pipeline UI
+        run: node --check ufi-end-to-end-pipeline.js
       - name: Test existing Python suite
         run: python -m unittest discover -s tests -p "test_*.py" -v
