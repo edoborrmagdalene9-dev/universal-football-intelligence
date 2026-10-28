@@ -1,0 +1,65 @@
+name: UFI Full Repository Backup
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/ufi-full-backup.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository with complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build all-branches backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p backup-output/branch-snapshots
+          git clone --mirror "https://github.com/${GITHUB_REPOSITORY}.git" backup-output/ufi-mirror.git
+          git --git-dir=backup-output/ufi-mirror.git for-each-ref --format='%(refname:short)' refs/heads refs/tags | sort > backup-output/ALL_GIT_REFS.txt
+          while IFS= read -r ref; do
+            [ -n "$ref" ] || continue
+            safe=$(printf '%s' "$ref" | tr '/:' '__')
+            git --git-dir=backup-output/ufi-mirror.git archive --format=zip --output="backup-output/branch-snapshots/${safe}.zip" "$ref"
+          done < backup-output/ALL_GIT_REFS.txt
+          cat > backup-output/RENDER_SERVICE_CONFIG.txt <<'EOF'
+          Universal Football Intelligence — Render configuration snapshot
+          Service: universal-football-intelligence
+          Service ID: srv-dbfhd6ks728c73al0dkg
+          Workspace ID: tea-dbfh9mvb9u1s73cuv72g
+          Dashboard: https://dashboard.render.com/web/srv-dbfhd6ks728c73al0dkg
+          Public URL: https://universal-football-intelligence.onrender.com
+          Repository: https://github.com/edoborrmagdalene9-dev/universal-football-intelligence
+          Render branch: feature/5400-bookmaker-edge-gate
+          Runtime: Python
+          Build command: python -m compileall -q tools
+          Start command: python tools/ufi_multi_provider_server.py
+          Region: Singapore
+          Plan: Free
+          Auto-deploy: on commit
+          Latest observed deploy commit (2026-10-28): 3de6e328c18f2136f214a396b078b0e6d242ee18
+          Secret values are intentionally excluded. Back up/recreate them from Render Dashboard > service > Environment.
+          This manifest cannot export Render's live filesystem or secret values.
+          EOF
+          cat > backup-output/README.txt <<'EOF'
+          UFI complete source recovery archive.
+          ufi-mirror.git contains all Git refs and commit history at backup time.
+          branch-snapshots contains a source ZIP for every branch/tag ref listed in ALL_GIT_REFS.txt.
+          RENDER_SERVICE_CONFIG.txt records known deployment settings; it does not contain secret values.
+          EOF
+          cd backup-output
+          zip -qr ../Universal_Football_Intelligence_ALL_BRANCHES.zip .
+      - name: Upload complete backup ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Universal_Football_Intelligence_ALL_BRANCHES
+          path: Universal_Football_Intelligence_ALL_BRANCHES.zip
+          if-no-files-found: error
+          retention-days: 14
