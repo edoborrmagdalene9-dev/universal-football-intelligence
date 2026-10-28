@@ -1,0 +1,12 @@
+{
+  "name": "universal-football-intelligence",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Additive browser end-to-end tests for the existing Universal Football Intelligence app",
+  "scripts": {
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}
