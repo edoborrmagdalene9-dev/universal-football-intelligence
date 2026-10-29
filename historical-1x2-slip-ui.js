@@ -30,7 +30,8 @@ async function run(){
  catch(e){status(e.message,'error');return;}
  button.disabled=true;status('Running historical audit. The first request may download and cache the results archive.','warning');
  try{
-  const response=await fetch('/api/slip/historical-audit',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({picks})});
+  const apiOrigin=location.hostname.endsWith('github.io')?'https://universal-football-intelligence.onrender.com':'';
+  const response=await fetch(apiOrigin+'/api/slip/historical-audit',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify({picks})});
   const payload=await response.json().catch(()=>({}));
   if(!response.ok||!payload.ok)throw Error(payload.error||('Historical audit returned HTTP '+response.status));
   lastReport=payload.report;render(lastReport);
