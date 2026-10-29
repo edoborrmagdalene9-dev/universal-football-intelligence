@@ -167,7 +167,7 @@ def audit(rows, picks, min_team_sample=5):
             past_league = Counter(r["result"] for r in past)
         hp = Counter(r["result"] for r in past if r["home_key"] == home_key)
         ap = Counter(r["result"] for r in past if r["away_key"] == away_key)
-        prior = past_league or overall
+        prior = past_league or Counter(r["result"] for r in past)
         # Combine venue-relevant empirical evidence. Smoothed estimates are blended
         # with the competition baseline; this is a transparent screening baseline,
         # not a fitted or calibrated production forecast.
