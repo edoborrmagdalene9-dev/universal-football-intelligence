@@ -1,2 +1,3 @@
+# Dependencies for the additive historical 1X2 slip audit.
 pandas>=2.2,<3
 pyarrow>=17,<24
