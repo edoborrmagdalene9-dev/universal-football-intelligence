@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - "tools/historical_1x2_audit.py"
+      - "tools/ufi_live_data_proxy.py"
+      - "index.html"
+      - "historical-1x2-slip-ui.js"
+      - "requirements-historical-audit.txt"
+      - "docs/historical-1x2-slip-audit-deployment.md"
       - "tests/test_historical_1x2_audit.py"
       - ".github/workflows/historical-1x2-audit.yml"
   push:
