@@ -158,9 +158,10 @@ def audit(rows, picks, min_team_sample=5):
 
         # Do not leak matches played on/after the target date. For future fixtures,
         # this naturally uses all available archive records up to its data cutoff.
+        # Strict chronological cutoff: never backfill a historical fixture with
+        # matches played after kickoff. If the archive has no earlier records,
+        # return neutral/insufficient-history output rather than leaking the future.
         past = [r for r in rows if r["date"] < kickoff]
-        if not past:
-            past = [r for r in rows if r["date"] <= latest_date]
         past_league = Counter(r["result"] for r in past if not comp_key or r["competition_key"] == comp_key)
         if sum(past_league.values()) < 30:
             past_league = Counter(r["result"] for r in past)
