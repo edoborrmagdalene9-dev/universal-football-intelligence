@@ -59,5 +59,22 @@ class HistoricalAuditTests(unittest.TestCase):
         })
 
 
+    def test_never_uses_future_results_for_historical_fixture(self):
+        rows = [{
+            "date": date(2025, 1, 2), "home": "Future Home", "away": "Future Away",
+            "home_key": "future home", "away_key": "future away",
+            "competition": "Test League", "competition_key": "test league", "result": "H",
+        }]
+        picks = [{
+            "date": "2024-01-01", "competition": "Test League",
+            "home_team": "Future Home", "away_team": "Future Away", "selection": "Home",
+        }]
+        pick = module.audit(rows, picks)["picks"][0]
+        self.assertEqual(pick["screen"], "INSUFFICIENT_TEAM_HISTORY")
+        self.assertAlmostEqual(pick["p_home_baseline"], 1 / 3, places=3)
+        self.assertAlmostEqual(pick["p_draw_baseline"], 1 / 3, places=3)
+        self.assertAlmostEqual(pick["p_away_baseline"], 1 / 3, places=3)
+
+
 if __name__ == "__main__":
     unittest.main()
