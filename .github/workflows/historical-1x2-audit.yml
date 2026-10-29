@@ -1,0 +1,22 @@
+name: Historical 1X2 audit tests
+
+on:
+  pull_request:
+    paths:
+      - "tools/historical_1x2_audit.py"
+      - "tests/test_historical_1x2_audit.py"
+      - ".github/workflows/historical-1x2-audit.yml"
+  push:
+    branches:
+      - "feature/historical-1x2-slip-audit"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run offline unit tests
+        run: python -m unittest discover -s tests -p "test_historical_1x2_audit.py" -v
