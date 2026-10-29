@@ -9,6 +9,7 @@ on:
   push:
     branches:
       - "feature/historical-1x2-slip-audit"
+      - "feature/5400-bookmaker-edge-gate"
 
 jobs:
   unit-tests:
