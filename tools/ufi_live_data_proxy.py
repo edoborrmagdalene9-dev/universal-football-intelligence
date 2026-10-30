@@ -229,7 +229,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path not in ("/api/ai/council", "/api/slip/historical-audit"):
-            self._json(405, {"ok": False, "error": "Only supported POST routes are /api/ai/council and /api/slip/historical-audit"})
+            self._json(405, {"ok": False, "error": "only supported POST routes are /api/ai/council and /api/slip/historical-audit"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
