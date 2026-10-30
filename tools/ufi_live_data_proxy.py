@@ -228,8 +228,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(429, {"ok": False, "error": "Rate limit exceeded; retry shortly."})
             return
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path != "/api/ai/council":
-            self._json(405, {"ok": False, "error": "POST is only supported for /api/ai/council"})
+        if parsed.path not in ("/api/ai/council", "/api/slip/historical-audit"):
+            self._json(405, {"ok": False, "error": "only supported POST routes are /api/ai/council and /api/slip/historical-audit"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
@@ -238,12 +238,32 @@ class Handler(BaseHTTPRequestHandler):
                 return
             body = self.rfile.read(length)
             data = json.loads(body.decode("utf-8"))
-            prompt = data.get("prompt") if isinstance(data, dict) else None
-            if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 28000:
-                self._json(400, {"ok": False, "error": "prompt is required and must be at most 28000 characters"})
+            if parsed.path == "/api/ai/council":
+                prompt = data.get("prompt") if isinstance(data, dict) else None
+                if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 28000:
+                    self._json(400, {"ok": False, "error": "prompt is required and must be at most 28000 characters"})
+                    return
+                payload, _ = get_payload(parsed.path, {"prompt": [prompt]})
+                self._json(200, payload)
                 return
-            payload, _ = get_payload(parsed.path, {"prompt": [prompt]})
-            self._json(200, payload)
+            picks = data.get("picks") if isinstance(data, dict) else None
+            if not isinstance(picks, list) or not picks or len(picks) > 50:
+                self._json(400, {"ok": False, "error": "Provide 1–50 picks in the picks array."})
+                return
+            try:
+                try:
+                    from .historical_1x2_audit import audit, download_dataset, load_matches
+                except ImportError:
+                    from historical_1x2_audit import audit, download_dataset, load_matches
+                cache = os.getenv("UFI_HISTORICAL_CACHE", ".cache/ufi-historical")
+                parquet = download_dataset(__import__("pathlib").Path(cache))
+                rows = load_matches(parquet)
+                report = audit(rows, picks)
+                self._json(200, {"ok": True, "report": report})
+            except RuntimeError as exc:
+                self._json(503, {"ok": False, "error": str(exc), "code": "HISTORICAL_DEPENDENCY_OR_DATA_UNAVAILABLE"})
+            except (ValueError, OSError) as exc:
+                self._json(400, {"ok": False, "error": str(exc)})
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
             self._json(400, {"ok": False, "error": "Request body must be valid JSON"})
         except ProviderError as exc:

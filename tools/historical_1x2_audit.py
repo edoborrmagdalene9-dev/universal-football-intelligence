@@ -153,8 +153,8 @@ def audit(rows, picks, min_team_sample=5):
             raise ValueError("Every pick needs home_team and away_team.")
         try:
             kickoff = date.fromisoformat(str(pick.get("date", "")).strip()[:10])
-        except ValueError:
-            kickoff = date.max
+        except ValueError as exc:
+            raise ValueError("Every pick needs a valid date in YYYY-MM-DD format.") from exc
 
         # Do not leak matches played on/after the target date. For future fixtures,
         # this naturally uses all available archive records up to its data cutoff.
@@ -162,6 +162,7 @@ def audit(rows, picks, min_team_sample=5):
         # matches played after kickoff. If the archive has no earlier records,
         # return neutral/insufficient-history output rather than leaking the future.
         past = [r for r in rows if r["date"] < kickoff]
+        model_data_cutoff = str(max((r["date"] for r in past), default="NO_PRIOR_RESULTS"))
         past_league = Counter(r["result"] for r in past if not comp_key or r["competition_key"] == comp_key)
         if sum(past_league.values()) < 30:
             past_league = Counter(r["result"] for r in past)
@@ -202,6 +203,7 @@ def audit(rows, picks, min_team_sample=5):
             "home_team_historical_matches": sum(hp.values()),
             "away_team_historical_away_matches": sum(ap.values()),
             "historical_data_cutoff": str(latest_date),
+            "model_data_cutoff": model_data_cutoff,
             "screen": status,
             "reason": (
                 "Selected outcome has low baseline probability; investigate with current team news, "
@@ -218,6 +220,7 @@ def audit(rows, picks, min_team_sample=5):
         "attribution": ATTRIBUTION,
         "dataset_matches_loaded": len(rows),
         "historical_data_cutoff": str(latest_date),
+        "dataset_latest_date": str(latest_date),
         "picks_audited": len(results),
         "method": "Smoothed historical 1X2 outcome frequencies, competition prior + home-team record + away-team away record.",
         "limitations": [
