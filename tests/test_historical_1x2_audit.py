@@ -74,6 +74,19 @@ class HistoricalAuditTests(unittest.TestCase):
         self.assertAlmostEqual(pick["p_home_baseline"], 1 / 3, places=3)
         self.assertAlmostEqual(pick["p_draw_baseline"], 1 / 3, places=3)
         self.assertAlmostEqual(pick["p_away_baseline"], 1 / 3, places=3)
+        self.assertEqual(pick["model_data_cutoff"], "NO_PRIOR_RESULTS")
+
+    def test_invalid_fixture_date_is_rejected(self):
+        rows = [{
+            "date": date(2020, 1, 1), "home": "A", "away": "B",
+            "home_key": "a", "away_key": "b", "competition": "Test",
+            "competition_key": "test", "result": "H",
+        }]
+        with self.assertRaisesRegex(ValueError, "valid date in YYYY-MM-DD"):
+            module.audit(rows, [{
+                "date": "not-a-date", "competition": "Test",
+                "home_team": "A", "away_team": "B", "selection": "Home",
+            }])
 
 
 if __name__ == "__main__":
