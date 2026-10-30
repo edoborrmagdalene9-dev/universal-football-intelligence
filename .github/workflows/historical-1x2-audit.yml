@@ -14,6 +14,7 @@ on:
   push:
     branches:
       - "feature/historical-1x2-slip-audit"
+      - "feature/historical-slip-audit-ui"
       - "feature/5400-bookmaker-edge-gate"
 
 jobs:
