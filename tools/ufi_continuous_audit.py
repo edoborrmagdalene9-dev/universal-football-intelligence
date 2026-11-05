@@ -137,24 +137,113 @@ def _persist(result:dict[str,Any])->str:
         db.commit()
     return "sqlite_ephemeral_fallback"
 
+def _event_spec(s:dict[str,Any],f:dict[str,Any])->dict[str,Any]|None:
+    market,pick=_norm(s.get("market") or s.get("market_type")),_norm(s.get("selection"))
+    combined=market+" "+pick
+    m=re.search(r"\b(over|under)\s+(\d+)\s+(\d+)\b",combined)
+    if m:
+        return {"kind":"total","side":m.group(1),"line":float(m.group(2)+"."+m.group(3))}
+    if "btts" in combined or "both teams to score" in combined:
+        if pick.endswith(" no") or pick=="no" or "btts no" in combined: return {"kind":"btts","yes":False}
+        if pick.endswith(" yes") or pick=="yes" or "btts yes" in combined: return {"kind":"btts","yes":True}
+    if "double chance" in market or pick in {"12","1x","x2","home or away"}:
+        choice="12" if pick in {"12","home or away"} else pick
+        if choice in {"12","1x","x2"}: return {"kind":"double_chance","choice":choice}
+    if market in {"1x2","match result","full time result"}:
+        if pick in {"home","home win","1"}: return {"kind":"result","choice":"home"}
+        if pick in {"draw","x"}: return {"kind":"result","choice":"draw"}
+        if pick in {"away","away win","2"}: return {"kind":"result","choice":"away"}
+    if "multigoals 1 3" in market or "multi score 1 3" in market:
+        target=_norm(s.get("team") or s.get("selection_team"))
+        if target==_norm(f.get("home")): return {"kind":"multi_1_3","side":"home"}
+        if target==_norm(f.get("away")): return {"kind":"multi_1_3","side":"away"}
+    return None
+
+def _event_hit(spec:dict[str,Any],h:int,a:int)->bool:
+    kind=spec["kind"]
+    if kind=="total": return h+a>spec["line"] if spec["side"]=="over" else h+a<spec["line"]
+    if kind=="btts": return (h>0 and a>0) if spec["yes"] else (h==0 or a==0)
+    if kind=="double_chance":
+        return h!=a if spec["choice"]=="12" else h>=a if spec["choice"]=="1x" else a>=h
+    if kind=="result":
+        return h>a if spec["choice"]=="home" else h==a if spec["choice"]=="draw" else a>h
+    if kind=="multi_1_3": return 1<=h-a<=3 if spec["side"]=="home" else 1<=a-h<=3
+    return False
+
+def _market_correlations(selections:list[dict[str,Any]],f:dict[str,Any])->tuple[list[dict[str,Any]],set[int]]:
+    specs=[_event_spec(s,f) for s in selections]
+    e=f.get("evidence") if isinstance(f.get("evidence"),dict) else {}
+    lh,la=_num(e.get("home_xg")),_num(e.get("away_xg"))
+    weighted=lh is not None and la is not None and 0<=lh<=12 and 0<=la<=12
+    matrix=score_matrix(lh,la) if weighted else None
+    scores=[(h,a,(matrix[h][a] if weighted else 1.0)) for h in range(13) for a in range(13)]
+    conflicts=set()
+    output=[]
+    for i in range(len(selections)):
+        if specs[i] is None: continue
+        for j in range(i+1,len(selections)):
+            if specs[j] is None: continue
+            pa=pb=pab=0.0
+            for h,a,w in scores:
+                ha,hb=_event_hit(specs[i],h,a),_event_hit(specs[j],h,a)
+                if ha: pa+=w
+                if hb: pb+=w
+                if ha and hb: pab+=w
+            if not weighted:
+                # Uniform score enumeration is used only to prove logical overlap,
+                # never as a probability estimate.
+                denom=float(len(scores)); pa/=denom; pb/=denom; pab/=denom
+                p_a=p_b=p_ab=None
+            else:
+                p_a,p_b,p_ab=pa,pb,pab
+            if pa>0 and pb>0 and pab<=1e-12:
+                status="mutually_exclusive"
+                conflicts.update((i,j))
+            elif weighted and pa>0 and pb>0:
+                denom=math.sqrt(pa*(1-pa)*pb*(1-pb))
+                phi=(pab-pa*pb)/denom if denom>1e-12 else None
+                status="positive_association" if phi is not None and phi>0.1 else "negative_association" if phi is not None and phi< -0.1 else "compatible"
+            else:
+                phi=None
+                status="logically_compatible_probability_unavailable" if not weighted else "compatible"
+            output.append({"selection_indices":[i,j],
+                "selections":[selections[i].get("selection"),selections[j].get("selection")],
+                "markets":[selections[i].get("market") or selections[i].get("market_type"),
+                           selections[j].get("market") or selections[j].get("market_type")],
+                "relationship":status,"joint_probability":p_ab,"correlation_phi":phi,
+                "method":"independent_poisson_score_grid" if weighted else "logical_scoreline_enumeration_only",
+                "action":"quarantine_pair_for_review" if status=="mutually_exclusive" else "retain"})
+    return output,conflicts
+
 def audit_fixture(f:dict[str,Any],threshold:float)->dict[str,Any]:
-    faults=_mine_faults(f); mutex=_mutex(faults,f.get("evidence") or {})
-    selections=[]
-    for s in f["_selections"]:
+    faults=_mine_faults(f)
+    mutex=_mutex(faults,f.get("evidence") or {})
+    selections=f["_selections"]
+    correlations,conflict_indexes=_market_correlations(selections,f)
+    if conflict_indexes:
+        faults.append({"fault_id":f["fixture_id"]+":market_mutex_conflict","code":"market_mutex_conflict",
+                       "severity":"critical","detail":"Two selections on the same fixture are logically mutually exclusive.",
+                       "source_field":"selections","status":"quarantined",
+                       "selection_indices":sorted(conflict_indexes)})
+    evaluated=[]
+    for index,s in enumerate(selections):
         p,method=_market_probability(s,f); odds=_num(s.get("odds"))
         implied=1/odds if odds is not None and odds>1 else None
-        decision="NEEDS_DATA" if p is None or mutex else "DITCH" if p<threshold else "KEEP"
-        selections.append({"selection":s.get("selection"),"market":s.get("market") or s.get("market_type"),
+        decision="CONFLICT" if index in conflict_indexes else "NEEDS_DATA" if p is None or mutex else "DITCH" if p<threshold else "KEEP"
+        evaluated.append({"selection":s.get("selection"),"market":s.get("market") or s.get("market_type"),
             "odds":odds,"model_probability":p,"ditch_probability":1-p if p is not None else None,
             "break_even_probability":implied,"probability_edge_vs_raw_odds":p-implied if p is not None and implied is not None else None,
             "probability_method":method,"decision":decision,
-            "reason":"Hard contradiction in explicit match-state evidence; fixture quarantined." if mutex else "Below configured survival threshold." if decision=="DITCH" else
+            "correlation_conflicts":[c for c in correlations if c["relationship"]=="mutually_exclusive" and index in c["selection_indices"]],
+            "reason":"Mutually exclusive with another selection in this fixture; quarantine the pair." if decision=="CONFLICT" else
+                    "Hard contradiction in explicit match-state evidence; fixture quarantined." if mutex else
+                    "Below configured survival threshold." if decision=="DITCH" else
                     "Probability unavailable; not cleared." if decision=="NEEDS_DATA" else
                     "Meets threshold but remains subject to evidence and correlation gates."})
     return {"fixture_id":f["fixture_id"],"fixture":f["name"],"home":f["home"],"away":f["away"],
-            "fault_pocket":faults,"mutex":mutex,"selections":selections,
-            "status":"NEEDS_DATA" if any(x["decision"]=="NEEDS_DATA" for x in selections) else
-                     "DITCH" if any(x["decision"]=="DITCH" for x in selections) else "KEEP"}
+            "fault_pocket":faults,"mutex":mutex,"market_correlations":correlations,"selections":evaluated,
+            "status":"CONFLICT" if conflict_indexes else "NEEDS_DATA" if any(x["decision"]=="NEEDS_DATA" for x in evaluated) else
+                     "DITCH" if any(x["decision"]=="DITCH" for x in evaluated) else "KEEP"}
 
 async def _parallel(fixtures:list[dict[str,Any]],threshold:float)->list[dict[str,Any]]:
     sem=asyncio.Semaphore(32)
@@ -190,6 +279,7 @@ def audit_slip_payload(payload:dict[str,Any])->dict[str,Any]:
         "summary":{"keep":sum(x["decision"]=="KEEP" for f in results for x in f["selections"]),
                    "ditch":sum(x["decision"]=="DITCH" for f in results for x in f["selections"]),
                    "needs_data":sum(x["decision"]=="NEEDS_DATA" for f in results for x in f["selections"]),
+                   "conflict":sum(x["decision"]=="CONFLICT" for f in results for x in f["selections"]),
                    "fixtures_with_faults":sum(bool(f["fault_pocket"]) for f in results)},
         "limitations":["Only explicit market_probability or supplied xG creates probabilities.",
           "xG uses an independent-Poisson baseline, not a player/tactical calibrated model.",
