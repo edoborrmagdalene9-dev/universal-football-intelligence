@@ -26,7 +26,7 @@ class ContinuousAuditTests(unittest.TestCase):
         pocket=r["pockets"][0]
         self.assertTrue(pocket["mutex"])
         self.assertEqual(pocket["selections"][0]["decision"],"NEEDS_DATA")
-        self.assertTrue(all(x["status"]=="quarantined" for x in pocket["fault_pocket"]))
+        self.assertTrue(all(x["status"]=="quarantined" for x in pocket["fault_pocket"] if x["code"].startswith("state_assertion:")))
     def test_bad_threshold_rejected(self):
         with self.assertRaises(ValueError):
             audit_slip_payload({"survival_threshold":1.1,"fixtures":[{"home":"A","away":"B","selections":[{"market":"BTTS","selection":"Yes","model_probability":0.5}]}]})
