@@ -244,6 +244,18 @@ legacy.get_payload = _observed_get_payload
 
 class AuditHandler(legacy.Handler):
     """JSON POST adapter for the additive fixture-pocket audit endpoint."""
+    def _headers(self, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        origin = self.headers.get("Origin")
+        if origin and origin == legacy.ALLOWED_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path != "/api/audit/slip":
