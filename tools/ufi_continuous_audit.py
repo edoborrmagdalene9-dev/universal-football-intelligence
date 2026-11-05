@@ -91,6 +91,10 @@ def _mine_faults(f:dict[str,Any])->list[dict[str,Any]]:
     share=_num(e.get("attacker_goal_share"))
     if share is not None and share<0.55:
         add("low_attacking_zone_goal_share","medium","Less than 55% of supplied goal contribution is attributed to advanced attackers.","attacker_goal_share")
+    assertions=e.get("state_assertions") if isinstance(e.get("state_assertions"),list) else []
+    for assertion in assertions:
+        if isinstance(assertion,str) and _norm(assertion) in {"fixture not started","fixture final score recorded as live","explicit no goal events","explicit goal event recorded"}:
+            add("state_assertion:"+_norm(assertion).replace(" ","_"),"critical","Explicit structured match-state assertion; checked by mutex engine.","state_assertions")
     rows=e.get("goal_contributors")
     if isinstance(rows,list) and rows:
         goals=sum(max(0,_num(x.get("goals")) or 0) for x in rows if isinstance(x,dict))
@@ -110,6 +114,9 @@ def _mutex(faults:list[dict[str,Any]],e:dict[str,Any])->list[dict[str,Any]]:
           ("explicit_no_goal_events","explicit_goal_event_recorded")]
     for a,b in hard:
         if a in assertions and b in assertions:
+            for fault in faults:
+                if fault["code"] in {"state_assertion:"+a.replace(" ","_"),"state_assertion:"+b.replace(" ","_")}:
+                    fault["status"]="quarantined"
             pairs.append({"assertions":[a,b],"action":"quarantine_conflicting_state","reason":"Explicit structured match-state assertions conflict."})
     return pairs
 
@@ -136,12 +143,12 @@ def audit_fixture(f:dict[str,Any],threshold:float)->dict[str,Any]:
     for s in f["_selections"]:
         p,method=_market_probability(s,f); odds=_num(s.get("odds"))
         implied=1/odds if odds is not None and odds>1 else None
-        decision="NEEDS_DATA" if p is None else "DITCH" if p<threshold else "KEEP"
+        decision="NEEDS_DATA" if p is None or mutex else "DITCH" if p<threshold else "KEEP"
         selections.append({"selection":s.get("selection"),"market":s.get("market") or s.get("market_type"),
             "odds":odds,"model_probability":p,"ditch_probability":1-p if p is not None else None,
             "break_even_probability":implied,"probability_edge_vs_raw_odds":p-implied if p is not None and implied is not None else None,
             "probability_method":method,"decision":decision,
-            "reason":"Below configured survival threshold." if decision=="DITCH" else
+            "reason":"Hard contradiction in explicit match-state evidence; fixture quarantined." if mutex else "Below configured survival threshold." if decision=="DITCH" else
                     "Probability unavailable; not cleared." if decision=="NEEDS_DATA" else
                     "Meets threshold but remains subject to evidence and correlation gates."})
     return {"fixture_id":f["fixture_id"],"fixture":f["name"],"home":f["home"],"away":f["away"],
