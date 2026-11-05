@@ -21,6 +21,12 @@ class ContinuousAuditTests(unittest.TestCase):
         r=audit_slip_payload({"fixtures":[{"home":"A","away":"B","selections":[{"market":"BTTS","selection":"Yes","model_probability":0.4}]}]})
         self.assertEqual(r["pockets"][0]["selections"][0]["decision"],"DITCH")
         self.assertAlmostEqual(r["pockets"][0]["selections"][0]["ditch_probability"],0.6)
+    def test_explicit_hard_mutex_quarantines_fixture_faults(self):
+        r=audit_slip_payload({"fixtures":[{"home":"A","away":"B","evidence":{"state_assertions":["fixture_not_started","fixture_final_score_recorded_as_live"]},"selections":[{"market":"BTTS","selection":"Yes","model_probability":0.8}]}]})
+        pocket=r["pockets"][0]
+        self.assertTrue(pocket["mutex"])
+        self.assertEqual(pocket["selections"][0]["decision"],"NEEDS_DATA")
+        self.assertTrue(all(x["status"]=="quarantined" for x in pocket["fault_pocket"]))
     def test_bad_threshold_rejected(self):
         with self.assertRaises(ValueError):
             audit_slip_payload({"survival_threshold":1.1,"fixtures":[{"home":"A","away":"B","selections":[{"market":"BTTS","selection":"Yes","model_probability":0.5}]}]})
