@@ -27,6 +27,16 @@ class ContinuousAuditTests(unittest.TestCase):
         self.assertTrue(pocket["mutex"])
         self.assertEqual(pocket["selections"][0]["decision"],"NEEDS_DATA")
         self.assertTrue(all(x["status"]=="quarantined" for x in pocket["fault_pocket"] if x["code"].startswith("state_assertion:")))
+    def test_opposite_goal_totals_are_detected_as_mutex(self):
+        r=audit_slip_payload({"fixtures":[{"home":"A","away":"B","selections":[{"market":"Total Goals","selection":"Over 1.5"},{"market":"Total Goals","selection":"Under 1.5"}]}]})
+        pocket=r["pockets"][0]
+        self.assertEqual(pocket["status"],"CONFLICT")
+        self.assertEqual(pocket["market_correlations"][0]["relationship"],"mutually_exclusive")
+        self.assertEqual({x["decision"] for x in pocket["selections"]},{"CONFLICT"})
+    def test_over_15_and_btts_yes_can_coexist(self):
+        r=audit_slip_payload({"fixtures":[{"home":"A","away":"B","selections":[{"market":"Over 1.5 Goals","selection":"Over 1.5"},{"market":"BTTS","selection":"Yes"}]}]})
+        self.assertNotEqual(r["pockets"][0]["status"],"CONFLICT")
+        self.assertNotEqual(r["pockets"][0]["market_correlations"][0]["relationship"],"mutually_exclusive")
     def test_bad_threshold_rejected(self):
         with self.assertRaises(ValueError):
             audit_slip_payload({"survival_threshold":1.1,"fixtures":[{"home":"A","away":"B","selections":[{"market":"BTTS","selection":"Yes","model_probability":0.5}]}]})
