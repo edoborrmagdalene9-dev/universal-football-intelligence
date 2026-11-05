@@ -113,7 +113,7 @@ def _mutex(faults:list[dict[str,Any]],e:dict[str,Any])->list[dict[str,Any]]:
     hard=[("fixture_not_started","fixture_final_score_recorded_as_live"),
           ("explicit_no_goal_events","explicit_goal_event_recorded")]
     for a,b in hard:
-        if a in assertions and b in assertions:
+        if _norm(a) in assertions and _norm(b) in assertions:
             for fault in faults:
                 if fault["code"] in {"state_assertion:"+a.replace(" ","_"),"state_assertion:"+b.replace(" ","_")}:
                     fault["status"]="quarantined"
