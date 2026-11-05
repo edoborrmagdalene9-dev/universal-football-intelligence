@@ -189,6 +189,7 @@ def _market_correlations(selections:list[dict[str,Any]],f:dict[str,Any])->tuple[
                 if ha: pa+=w
                 if hb: pb+=w
                 if ha and hb: pab+=w
+            phi=None
             if not weighted:
                 # Uniform score enumeration is used only to prove logical overlap,
                 # never as a probability estimate.
