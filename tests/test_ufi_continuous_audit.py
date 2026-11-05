@@ -16,7 +16,7 @@ class ContinuousAuditTests(unittest.TestCase):
     def test_tactical_tension_is_not_false_mutex(self):
         r=audit_slip_payload({"fixtures":[{"home":"A","away":"B","evidence":{"passive_build_up":True,"high_transition_rate":0.8},"selections":[{"market":"BTTS","selection":"Yes","model_probability":0.6}]}]})
         self.assertEqual(r["pockets"][0]["mutex"],[])
-        self.assertEqual(len(r["pockets"][0]["fault_pocket"]),2)
+        self.assertTrue({"passive_build_up","high_transition_environment"}.issubset({x["code"] for x in r["pockets"][0]["fault_pocket"]}))
     def test_low_probability_is_ditched(self):
         r=audit_slip_payload({"fixtures":[{"home":"A","away":"B","selections":[{"market":"BTTS","selection":"Yes","model_probability":0.4}]}]})
         self.assertEqual(r["pockets"][0]["selections"][0]["decision"],"DITCH")
