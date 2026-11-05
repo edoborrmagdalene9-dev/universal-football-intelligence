@@ -242,8 +242,41 @@ def _observed_get_payload(route, query):
     return result
 legacy.get_payload = _observed_get_payload
 
+class AuditHandler(legacy.Handler):
+    """JSON POST adapter for the additive fixture-pocket audit endpoint."""
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path != "/api/audit/slip":
+            self._json(404, {"ok": False, "error": "Unknown POST endpoint."})
+            return
+        if not legacy.origin_allowed(self.headers.get("Origin")):
+            self._json(403, {"ok": False, "error": "Origin not allowed"})
+            return
+        if legacy.rate_limited(self.client_address[0]):
+            self._json(429, {"ok": False, "error": "Rate limit exceeded; retry shortly."})
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 1_000_000:
+                self._json(413, {"ok": False, "error": "Request body must be between 1 byte and 1 MB."})
+                return
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            try:
+                from .ufi_continuous_audit import audit_slip_payload
+            except ImportError:
+                from ufi_continuous_audit import audit_slip_payload
+            self._json(200, audit_slip_payload(payload))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._json(400, {"ok": False, "error": "Body must be valid UTF-8 JSON."})
+        except ValueError as exc:
+            self._json(400, {"ok": False, "error": str(exc)})
+        except Exception as exc:
+            print("UFI audit request failed safely: " + type(exc).__name__, flush=True)
+            self._json(500, {"ok": False, "error": "Audit failed; inspect server diagnostics without sharing secrets."})
+
+
 if __name__ == "__main__":
     if not legacy.TOKEN:
         print("INFO: SPORTMONKS_API_TOKEN is unset; Sportmonks routes will report unavailable.")
     print(f"UFI multi-provider proxy listening on 0.0.0.0:{legacy.PORT}")
-    ThreadingHTTPServer(("0.0.0.0",legacy.PORT),legacy.Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0",legacy.PORT),AuditHandler).serve_forever()
