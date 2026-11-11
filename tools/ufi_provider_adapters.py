@@ -253,6 +253,37 @@ def _provider_health(query):
             "checks":results,"note":"Connectivity test makes real provider requests and may consume quota. Results are cached for 5 minutes. SharpAPI remains provisional until its endpoint contract is confirmed."}
 
 def handle_extra_route(route, query):
+    # Optional Gemini research endpoints. They accept only caller-supplied source
+    # material; they do not claim to browse or independently verify team news.
+    if route == "/api/gemini/status":
+        try:
+            from ufi_gemini_research import gemini_configured
+        except ImportError:
+            from tools.ufi_gemini_research import gemini_configured
+        return {"ok": True, "provider": "Gemini", "configured": gemini_configured(),
+                "model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                "note": "Configured is not a connectivity test; no secret values are returned."}, False
+    if route == "/api/gemini/research":
+        try:
+            from ufi_gemini_research import extract_research_brief, GeminiResearchError
+        except ImportError:
+            from tools.ufi_gemini_research import extract_research_brief, GeminiResearchError
+        question = (query.get("question") or [""])[0].strip()
+        if not question:
+            raise AdapterError("question is required.")
+        raw_sources = (query.get("source_material") or [""])[0]
+        if not raw_sources:
+            return {"ok": True, **extract_research_brief(question, [])}, False
+        try:
+            source_material = json.loads(raw_sources)
+        except (TypeError, ValueError):
+            raise AdapterError("source_material must be URL-encoded JSON array of sourced records.") from None
+        if not isinstance(source_material, list) or any(not isinstance(x, dict) for x in source_material):
+            raise AdapterError("source_material must be a JSON array of objects.")
+        try:
+            return {"ok": True, **extract_research_brief(question, source_material)}, False
+        except GeminiResearchError as exc:
+            raise AdapterError(str(exc)) from None
     if route == "/api/matches":
         return _normalized_matches(query),False
     if route == "/api/providers/health":
