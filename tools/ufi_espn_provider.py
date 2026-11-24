@@ -179,6 +179,80 @@ def _schedule_metrics(events, cutoff):
                              for dt,e in past],
             "rest_hours":rest,"games_14d":len(past),"source":"ESPN team schedule"}
 
+def get_standings(league,season=None):
+    params={"level":1}
+    if season is not None:params["season"]=str(season)
+    raw=_cached_json(_url("https://site.api.espn.com/apis/v2/sports/soccer/"+league+"/standings",params),ttl=1800)
+    tables=[]
+    def walk(node):
+        if isinstance(node,dict):
+            if isinstance(node.get("entries"),list):tables.append(node)
+            for child in _list(node.get("children")):walk(child)
+    walk(raw)
+    entries=[]
+    for table in tables:
+        for entry in _list(table.get("entries")):
+            team=entry.get("team") if isinstance(entry.get("team"),dict) else {}
+            stats={}
+            for stat in _list(entry.get("stats")):
+                if isinstance(stat,dict):
+                    key=str(stat.get("name") or stat.get("type") or stat.get("abbreviation") or "").lower()
+                    stats[key]=stat.get("value")
+            try:gp=float(stats.get("gamesplayed") or stats.get("gp"))
+            except (TypeError,ValueError):gp=0
+            try:points=float(stats.get("points") or stats.get("p"))
+            except (TypeError,ValueError):points=0
+            try:wins=float(stats.get("wins") or stats.get("w") or 0)
+            except (TypeError,ValueError):wins=0
+            try:ties=float(stats.get("ties") or stats.get("draws") or stats.get("d") or 0)
+            except (TypeError,ValueError):ties=0
+            if not points and gp:points=3*wins+ties
+            entries.append({"team_id":str(team.get("id") or entry.get("team_id") or ""),
+                "name":team.get("displayName") or entry.get("display_name"),
+                "points":points,"games_played":gp,"ppg":points/gp if gp>0 else None,
+                "rank":entry.get("rank"),"stats":stats})
+    valid=[x for x in entries if x.get("ppg") is not None]
+    league_avg=sum(x["ppg"] for x in valid)/len(valid) if valid else None
+    return {"entries":entries,"league_average_ppg":league_avg,"source":"ESPN standings"}
+
+def _opponent_adjusted_form(events,team_id,standings,cutoff):
+    table={str(x.get("team_id")):x for x in standings.get("entries",[]) if x.get("team_id")}
+    league_avg=standings.get("league_average_ppg")
+    if not league_avg or league_avg<=0:return {"sample_size":0,"source":"ESPN schedule + standings","reason":"League average PPG unavailable."}
+    matches=[]
+    for event in events:
+        start=event.get("date") or event.get("start_time")
+        try:dt=datetime.fromisoformat(str(start).replace("Z","+00:00"))
+        except (TypeError,ValueError):continue
+        if dt.tzinfo is None:dt=dt.replace(tzinfo=timezone.utc)
+        if dt>=cutoff:continue
+        comps=_competitors(event)
+        ours=next((c for c in comps if str((c.get("team") or {}).get("id") or c.get("team_id") or "")==str(team_id)),None)
+        if not ours:continue
+        opp=next((c for c in comps if c is not ours),None)
+        if not opp:continue
+        status=event.get("status") if isinstance(event.get("status"),dict) else {}
+        st=status.get("type") if isinstance(status.get("type"),dict) else {}
+        if st.get("completed") is not True:continue
+        try:gf=float(ours.get("score"));ga=float(opp.get("score"))
+        except (TypeError,ValueError):continue
+        result_points=3 if gf>ga else 1 if gf==ga else 0
+        opp_team=opp.get("team") if isinstance(opp.get("team"),dict) else {}
+        opp_id=str(opp_team.get("id") or opp.get("team_id") or "")
+        opp_ppg=(table.get(opp_id) or {}).get("ppg")
+        if opp_ppg is None:continue
+        weight=max(0.5,min(1.5,opp_ppg/league_avg))
+        matches.append({"date":dt.isoformat(),"opponent":opp_team.get("displayName") or opp_team.get("name"),
+                        "result_points":result_points,"opponent_ppg":opp_ppg,"opponent_strength_weight":weight,
+                        "adjusted_points":result_points*weight})
+    matches=sorted(matches,key=lambda x:x["date"])[-5:]
+    return {"sample_size":len(matches),"matches":matches,
+            "raw_points":sum(x["result_points"] for x in matches),
+            "opponent_adjusted_points":sum(x["adjusted_points"] for x in matches),
+            "opponent_adjusted_points_per_match":sum(x["adjusted_points"] for x in matches)/len(matches) if matches else None,
+            "method":"Result points weighted by opponent PPG divided by league average PPG; weight capped 0.5–1.5.",
+            "source":"ESPN team schedule + ESPN league standings"}
+
 def _boxscore_summary(summary):
     box=summary.get("boxscore") if isinstance(summary.get("boxscore"),dict) else {}
     teams=[]
@@ -228,7 +302,8 @@ def enrich_fixture(sport,league,home,away,kickoff):
         if side in {"home","away"}:team_ids[side]=str(team.get("id") or c.get("id") or "")
     if not team_ids.get("home"):team_ids["home"]=(event.get("home") or {}).get("team_id")
     if not team_ids.get("away"):team_ids["away"]=(event.get("away") or {}).get("team_id")
-    rosters={};schedules={}
+    rosters={};schedules={};schedule_rows={}
+    standings=get_standings(league)
     for side in ("home","away"):
         tid=team_ids.get(side)
         if not tid:continue
@@ -241,6 +316,10 @@ def enrich_fixture(sport,league,home,away,kickoff):
             schedules[side]=_schedule_metrics(rows,cutoff)
         except Exception as exc:schedules[side]={"error":type(exc).__name__}
     box=_boxscore_summary(summary)
+    cutoff=datetime.fromisoformat(str(kickoff).replace("Z","+00:00"))
+    if cutoff.tzinfo is None:cutoff=cutoff.replace(tzinfo=timezone.utc)
+    form={"home":_opponent_adjusted_form(schedule_rows.get("home",[]),team_ids.get("home"),standings,cutoff),
+          "away":_opponent_adjusted_form(schedule_rows.get("away",[]),team_ids.get("away"),standings,cutoff)}
     # Attach roster height/position data only to explicitly flagged match starters.
     roster_by_team={side:{p["athlete_id"]:p for p in (rosters.get(side,{}).get("players") or []) if p.get("athlete_id")} for side in ("home","away")}
     side_by_team={team_ids.get("home"):"home",team_ids.get("away"):"away"}
@@ -262,7 +341,7 @@ def enrich_fixture(sport,league,home,away,kickoff):
         "event":event,"event_status":event.get("status"),"venue":venue,"officials":officials,
         "key_plays":summary.get("key_plays") or summary.get("keyEvents") or [],
         "team_statistics":summary.get("team_statistics") or [],
-        "form":form,"head_to_head":h2h,"boxscore":box,"rosters":rosters,
+        "form":summary.get("form") or form,"opponent_adjusted_form":form,"head_to_head":h2h,"boxscore":box,"rosters":rosters,"standings":standings,
         "schedules":schedules,"team_ids":team_ids,
         "lineups_confirmed":box.get("starting_xi_confirmed") is True,
         "home_players":starting_players["home"],"away_players":starting_players["away"],
