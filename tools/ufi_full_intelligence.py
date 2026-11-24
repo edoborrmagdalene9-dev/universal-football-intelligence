@@ -195,25 +195,28 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
     rates=(model or {}).get("rate_estimate") or {}
     lh,la=_num(rates.get("lambdaHome")),_num(rates.get("lambdaAway"))
     checks=[]
-    def gate(name,passed,detail,required=True):
-        checks.append({"gate":name,"status":("PASS" if passed else "FAIL") if required else "NOT_APPLICABLE","detail":detail})
-    hard_fail=False
+    def gate(name,passed,detail,available=True,applicable=True):
+        status=("NOT_APPLICABLE" if not applicable else "PASS" if passed else "FAIL" if available else "NEEDS_DATA")
+        checks.append({"gate":name,"status":status,"detail":detail})
     if market in {"dc12","double chance 12"} or pick in {"12","home or away"}:
         draw=probability(grid,lambda h,a:h==a)
         total=(lh+la) if lh is not None and la is not None else None
-        gate("dc12_draw_probability",draw is not None and draw<=0.26,f"Dixon-Coles draw probability={draw}; maximum 0.26")
-        gate("dc12_lambda_total",total is not None and total>2.20,f"Combined lambda={total}; must exceed 2.20")
+        gate("dc12_draw_probability",draw is not None and draw<=0.26,f"Dixon-Coles draw probability={draw}; maximum 0.26",draw is not None)
+        gate("dc12_lambda_total",total is not None and total>2.20,f"Combined lambda={total}; must exceed 2.20",total is not None)
         ah=_num(evidence.get("asian_handicap_main_line"))
-        gate("dc12_asian_handicap",ah is not None and abs(ah)>0.25,f"Main AH line={ah}; 0 and ±0.25 are excluded")
+        gate("dc12_asian_handicap",ah is not None and abs(ah)>0.25,f"Main AH line={ah}; 0 and ±0.25 are excluded",ah is not None)
         draw_odds=_num(evidence.get("draw_odds"))
-        gate("dc12_draw_price",draw_odds is not None and draw_odds>3.00,f"Draw price={draw_odds}; must exceed 3.00")
+        gate("dc12_draw_price",draw_odds is not None and draw_odds>3.00,f"Draw price={draw_odds}; must exceed 3.00",draw_odds is not None)
         under_odds=_num(evidence.get("short_under_odds"))
-        gate("dc12_short_under",under_odds is None or under_odds>1.75,f"Short Under 2.0/2.25 price={under_odds}; if supplied must be >1.75")
-        gate("dc12_biscotto",evidence.get("biscotto") is False,"Biscotto must be explicitly checked and absent")
+        gate("dc12_short_under",under_odds is None or under_odds>1.75,f"Short Under 2.0/2.25 price={under_odds}; if supplied must be >1.75",under_odds is not None)
+        biscotto=evidence.get("biscotto")
+        gate("dc12_biscotto",biscotto is False,"Biscotto must be explicitly checked and absent",isinstance(biscotto,bool))
         dr=_num(evidence.get("league_draw_rate"))
-        gate("dc12_league_draw_rate",dr is not None and dr<=0.30,f"League draw rate={dr}; maximum 0.30")
-        gate("dc12_offensive_absences",evidence.get("key_offensive_absences") is False,"Key offensive absences must be explicitly checked and absent")
-        gate("dc12_low_block_congestion",evidence.get("low_block_congestion") is False,"Low-block congestion must be explicitly checked and absent")
+        gate("dc12_league_draw_rate",dr is not None and dr<=0.30,f"League draw rate={dr}; maximum 0.30",dr is not None)
+        absences=evidence.get("key_offensive_absences")
+        gate("dc12_offensive_absences",absences is False,"Key offensive absences must be explicitly checked and absent",isinstance(absences,bool))
+        low_block=evidence.get("low_block_congestion")
+        gate("dc12_low_block_congestion",low_block is False,"Low-block congestion must be explicitly checked and absent",isinstance(low_block,bool))
     elif "multigoals 1 3" in market or "multi score 1 3" in market or "team multigoals 1 3" in market:
         side=selection.get("side")
         team=_norm(selection.get("team") or selection.get("selection_team"))
@@ -221,23 +224,30 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
             side="home" if team==_norm(fixture.get("home")) else "away" if team==_norm(fixture.get("away")) else None
         lam=lh if side=="home" else la if side=="away" else None
         profile=team_goal_profile(grid,side) if side else None
-        gate("multi_1_3_lambda_window",lam is not None and 1.40<=lam<=1.85,f"Team lambda={lam}; target 1.40–1.85")
-        gate("multi_1_3_ruin_tail",profile is not None and profile["ruin_tail"]<0.28,f"P(0)+P(4+)={profile.get('ruin_tail') if profile else None}; must be <0.28")
+        gate("multi_1_3_lambda_window",lam is not None and 1.40<=lam<=1.85,f"Team lambda={lam}; target 1.40–1.85",lam is not None)
+        ruin=profile.get("ruin_tail") if profile else None
+        gate("multi_1_3_ruin_tail",ruin is not None and ruin<0.28,f"P(0)+P(4+)={ruin}; must be <0.28",ruin is not None)
         total_line=_num(evidence.get("supporting_total_line"))
-        gate("multi_1_3_supporting_total",total_line is not None and 2.25<=total_line<=2.75,f"Supporting Asian total line={total_line}; must be Over 2.25–2.75")
-        gate("multi_1_3_personnel",evidence.get("primary_scorer_and_creator_both_absent") is False and evidence.get("backup_gk_and_key_cb_out") is False,"Creator/scorer and backup-GK/key-CB exclusions must be explicitly cleared")
-        gate("multi_1_3_biscotto",evidence.get("biscotto") is False,"Biscotto must be explicitly checked and absent")
-        wind=_num((evidence.get("weather") or {}).get("wind_mph")) if isinstance(evidence.get("weather"),dict) else None
+        gate("multi_1_3_supporting_total",total_line is not None and 2.25<=total_line<=2.75,f"Supporting Asian total line={total_line}; must be Over 2.25–2.75",total_line is not None)
+        personnel_a=evidence.get("primary_scorer_and_creator_both_absent")
+        personnel_b=evidence.get("backup_gk_and_key_cb_out")
+        personnel_ready=isinstance(personnel_a,bool) and isinstance(personnel_b,bool)
+        gate("multi_1_3_personnel",personnel_a is False and personnel_b is False,"Creator/scorer and backup-GK/key-CB exclusions must be explicitly cleared",personnel_ready)
+        biscotto=evidence.get("biscotto")
+        gate("multi_1_3_biscotto",biscotto is False,"Biscotto must be explicitly checked and absent",isinstance(biscotto,bool))
+        weather=evidence.get("weather") if isinstance(evidence.get("weather"),dict) else {}
+        wind=_num(weather.get("wind_mph"))
         standing=evidence.get("standing_water")
-        gate("multi_1_3_weather",standing is False and wind is not None and wind<=25,"Standing water must be absent and wind <=25 mph")
+        weather_ready=isinstance(standing,bool) and wind is not None
+        gate("multi_1_3_weather",standing is False and wind<=25,"Standing water must be absent and wind <=25 mph",weather_ready)
     elif "under 3.5" in market or pick=="under 3.5":
-        gate("under_3_5_open_game",evidence.get("open_game") is False,"Under 3.5 is rejected in an open game; explicit closed-game assessment required")
+        open_game=evidence.get("open_game")
+        gate("under_3_5_open_game",open_game is False,"Under 3.5 is rejected in an open game; explicit closed-game assessment required",isinstance(open_game,bool))
     elif "under 4.5" in market or pick=="under 4.5":
-        gate("under_4_5_probability",p is not None and p>=0.78,f"Model P(Under 4.5)={p}; minimum 0.78")
+        gate("under_4_5_probability",p is not None and p>=0.78,f"Model P(Under 4.5)={p}; minimum 0.78",p is not None)
         count=_num(evidence.get("under45_count_in_slip"))
-        gate("under_4_5_slip_cap",count is not None and count<1,f"Existing Under 4.5 legs in slip={count}; maximum one")
-    for item in checks:
-        if item["status"]=="FAIL": hard_fail=True
+        gate("under_4_5_slip_cap",count is not None and count<1,f"Existing Under 4.5 legs in slip={count}; maximum one",count is not None)
+    hard_fail=any(x["status"]=="FAIL" for x in checks)
     return checks,hard_fail
 
 def audit_full_fixture(payload):
@@ -263,8 +273,9 @@ def audit_full_fixture(payload):
         pirates=_pirates_layers(fixture,model,selection,p,ev,selection_evidence)
         missing_layers=[x["layer"] for x in pirates if x["status"]=="NEEDS_DATA"]
         failed_layers=[x["layer"] for x in pirates if x["status"]=="FAIL"]
+        gate_missing=any(x["status"]=="NEEDS_DATA" for x in gates)
         if failed or failed_layers: decision="DITCH"
-        elif p is None or odds is None or missing_layers: decision="NEEDS_DATA"
+        elif p is None or odds is None or missing_layers or gate_missing: decision="NEEDS_DATA"
         elif ev is None or ev<=0: decision="NO_VALUE"
         else: decision="REVIEW_ONLY"
         results.append({"market":selection.get("market"),"selection":selection.get("selection"),"team":selection.get("team"),
