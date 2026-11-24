@@ -253,11 +253,14 @@ def audit_full_fixture(payload):
     results=[]
     for selection in selections:
         if not isinstance(selection,dict): continue
+        selection_evidence=dict(evidence)
+        if isinstance(selection.get("evidence"),dict):
+            selection_evidence.update(selection["evidence"])
         p,method=market_probability(grid,selection)
         odds=_num(selection.get("odds"))
         ev=p*odds-1 if p is not None and odds is not None and odds>1 else None
-        gates,failed=_selection_gates(selection,fixture,model,grid,evidence,p)
-        pirates=_pirates_layers(fixture,model,selection,p,ev,evidence)
+        gates,failed=_selection_gates(selection,fixture,model,grid,selection_evidence,p)
+        pirates=_pirates_layers(fixture,model,selection,p,ev,selection_evidence)
         missing_layers=[x["layer"] for x in pirates if x["status"]=="NEEDS_DATA"]
         failed_layers=[x["layer"] for x in pirates if x["status"]=="FAIL"]
         if failed or failed_layers: decision="DITCH"
