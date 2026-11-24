@@ -38,4 +38,18 @@ const audit=UFI.run400Audit({fixture_id:'f',home:'Home',away:'Away',kickoff:'202
  {selection:'Home',odds:2,evidence:{signal_checks:{'UFI-001':{status:'ASSESSED',source:'test feed',detail:'fixture verified'}}}},0.6);
 assert.equal(audit.checks[0].status,'ASSESSED');
 assert.equal(audit.coveragePercent,100);
+const noSlips=UFI.buildTwoSlips([{fixture:{fixture_id:'x'},audit:{selections:[{decision:'NEEDS_DATA',odds:2}]}}]);
+assert.equal(noSlips.status,'NO_QUALIFYING_SELECTIONS');
+const odds=[2,3,5,1.5,4,5];
+const candidates=odds.map((price,i)=>({fixture:{fixture_id:'fixture-'+i,home:'H'+i,away:'A'+i,kickoff:'2026-11-25T12:00:00Z'},
+ audit:{selections:[{decision:'REVIEW_ONLY',market:'Market '+i,selection:'Pick '+i,odds:price,expected_value_per_unit:0.05}]}}));
+const slips=UFI.buildTwoSlips(candidates);
+assert.equal(slips.status,'TWO_SLIPS_BUILT');
+assert.equal(slips.slip_a.combined_odds,30);
+assert.equal(slips.slip_b.combined_odds,30);
+assert.equal(slips.slip_a.stake_units,1);
+assert.equal(slips.slip_b.stake_units,1);
+assert.equal(new Set(slips.slip_a.items.map(x=>x.fixture.fixture_id)).size,slips.slip_a.items.length);
+assert.equal(new Set(slips.slip_b.items.map(x=>x.fixture.fixture_id)).size,slips.slip_b.items.length);
+
 console.log('UFI full-intelligence browser orchestration tests passed.');
