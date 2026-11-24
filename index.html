@@ -20,6 +20,7 @@
 <button class="nav-item" data-view="bookieedge"><span>⏱</span> 5400 Bookie-Edge Gate</button>
 <button class="nav-item" data-view="slips"><span>▤</span> Slip & odds lab</button>
 <button class="nav-item" data-view="backtest"><span>↗</span> Backtesting</button>
+<button class="nav-item" data-view="ufi-brain"><span>🧠</span> Full UFI Brain</button>
 <button class="nav-item" data-view="library"><span>▧</span> Research library</button>
 <button class="nav-item" data-view="settings"><span>⚙</span> Data & settings</button>
 </nav><div class="sidebar-bottom"><div class="source-indicator"></div><div><b>Evidence first</b><small>Unknown stays unknown.</small></div></div></aside>
@@ -219,6 +220,20 @@
 <div class="page-heading"><div><div class="eyebrow">07 / MEMORY</div><h1>Research library</h1><p>Store source links, match observations, tactical hypotheses and questions for later testing.</p></div></div>
 <div class="panel"><div class="form-grid three"><label>Note title<input id="noteTitle" placeholder="e.g. Press resistance hypothesis"></label><label>Type<select id="noteType"><option>Match observation</option><option>Player observation</option><option>Tactical hypothesis</option><option>Data source</option><option>Model experiment</option><option>Other</option></select></label><label>Source URL / match ID<input id="noteSource" placeholder="Link or ID"></label></div><label>Note<textarea id="noteBody" placeholder="Observation, sample size, evidence, what would falsify it"></textarea></label><button id="saveNote" class="button primary">Save research note</button></div><div class="panel"><div class="panel-head"><h2>Saved notes</h2><input id="noteSearch" class="search-input" placeholder="Search library"></div><div id="notesList" class="notes-list"></div></div>
 </section>
+<section class="view" id="view-ufi-brain">
+<div class="page-heading"><div><div class="eyebrow">AUTONOMOUS EVIDENCE PIPELINE</div><h1>Full UFI Brain</h1><p>Discover fixtures, load historical Dixon–Coles grids, inspect every returned bookmaker market, execute available Crainee engines, and run the evidence-gated Pirates, congestion, physical-duel and 400-signal checks.</p></div></div>
+<div class="notice warning">This scan never invents player, lineup, height, tactical, referee or price data. Missing evidence remains NEEDS_DATA. A REVIEW_ONLY result is not an automatic bet approval.</div>
+<div class="panel">
+<div class="form-grid three">
+<label>Window start<input id="ufiBrainStart" type="date"></label>
+<label>Window end<input id="ufiBrainEnd" type="date"></label>
+<label>Maximum fixtures to model<select id="ufiBrainLimit"><option value="20">20</option><option value="40" selected>40</option><option value="60">60</option><option value="100">100</option></select></label>
+</div>
+<div class="button-row"><button id="ufiBrainRun" class="button primary">Run full UFI four-day audit</button><span class="muted">Uses configured backend providers; up to 16 competition feeds.</span></div>
+<div id="ufiBrainStatus" class="notice">Ready. The four-day scan runs only when you start it, to avoid silently consuming provider quota.</div>
+</div>
+<div id="ufiBrainOutput" class="panel"><p class="muted">No full UFI scan has been run in this browser session.</p></div>
+</section>
 <section class="view" id="view-settings">
 <div class="page-heading"><div><div class="eyebrow">SYSTEM CONFIGURATION</div><h1>Data & settings</h1><p>Manage data provenance, storage, privacy and export.</p></div></div>
 <div class="dashboard-grid"><article class="panel"><h2>Active source</h2><p><b>StatsBomb Open Data</b></p><p class="muted">Selected public competitions and seasons. No API key is required for those repository files, but network access is needed.</p><a class="text-link" href="https://github.com/statsbomb/open-data" target="_blank" rel="noopener">Open source ↗</a></article><article class="panel"><h2>Storage model</h2><p>Player notes, team context, substitutions, forecasts and library notes are saved to this browser's local storage.</p><p class="muted">They do not automatically sync across devices. Export workspace regularly for backup.</p></article><article class="panel"><h2>Privacy & data integrity</h2><p>Do not enter passwords, private account tokens or sensitive personal data. Imported records are not treated as verified facts unless they include traceable provenance.</p></article><article class="panel"><h2>Reset local workspace</h2><p class="muted">This removes locally saved research from this browser. Export first if you want a backup.</p><button id="resetWorkspace" class="button danger">Reset local workspace</button><div id="settingsStatus" class="notice"></div></article></div>
@@ -245,6 +260,7 @@
 <script src="crainee-subconscious-narrative-ui.js?v=subconscious-ui-1"></script>
 <script src="ufi-live-fixture-feed.js?v=live-fixture-feed-20261028-1"></script>
 <script src="ufi-end-to-end-pipeline.js?v=ufi-pipeline-20261028-1"></script>
+<script src="ufi-full-intelligence.js?v=ufi-full-intelligence-20261124-2"></script>
 <script>
 /* Navigation safety net: keep page switching available even if another app module fails. */
 document.querySelectorAll('.nav-item').forEach(function(button){
