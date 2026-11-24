@@ -238,7 +238,7 @@ def _normalized_matches(query):
         current["providerSources"]=sorted(set(current.get("providerSources",[])+row.get("providerSources",[])))
     rows=list(merged.values())
     if not rows:
-        detail="; ".join(errors) if errors else "No configured fixture/odds provider returned records."
+        detail="; ".join(errors) if errors else "Configure SPORTSGAMEODDS_API_KEY or THE_ODDS_API_KEY on the backend to load normalized match records."
         raise AdapterError("No match provider returned usable records. "+detail)
     return {"ok":True,"source":"multi-provider","sources":sources,
             "fetchedAt":max((x for x in fetched if x is not None),default=time.time()),
