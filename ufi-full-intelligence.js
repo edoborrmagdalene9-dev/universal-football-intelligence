@@ -100,7 +100,7 @@ function buildScheduleEvidence(fixture,historyRows){
  return {home_schedule:teamSchedule(fixture.homeTeam||fixture.home),away_schedule:teamSchedule(fixture.awayTeam||fixture.away)};
 }
 async function fetchWeatherEvidence(fixture,backend){
- const venue=fixture.venue||{},lat=Number(venue.latitude),lon=Number(venue.longitude);
+ const venue=fixture.venue||{},lat=hasNumber(venue.latitude)?Number(venue.latitude):NaN,lon=hasNumber(venue.longitude)?Number(venue.longitude):NaN;
  const kickoff=fixture.kickoff||fixture.commence_time;
  if(!Number.isFinite(lat)||!Number.isFinite(lon)||!kickoff)return {status:'NEEDS_DATA',reason:'Stadium coordinates or kickoff are missing.'};
  const date=String(kickoff).slice(0,10),hour=new Date(kickoff).getUTCHours();
@@ -131,7 +131,7 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(fixture.venue)put('venue_identity','FETCHED',fixtureSource,fixtureStamp);
  put('source_provider','FETCHED',fixtureSource,fixtureStamp);
  if(fixtureStamp)put('source_freshness','FETCHED',fixtureSource,fixtureStamp);
- if(selection.market)put('market_identity',finite(Number(selection.odds))?'ASSESSED':'ESTIMATED',finite(Number(selection.odds))?marketSource:'UFI model-derived candidate',finite(Number(selection.odds))?marketStamp:modelStamp);
+ if(selection.market)put('market_identity',hasNumber(selection.odds)?'ASSESSED':'ESTIMATED',hasNumber(selection.odds)?marketSource:'UFI model-derived candidate',hasNumber(selection.odds)?marketStamp:modelStamp);
  if(selection.selection)put('selection_identity','ASSESSED',marketSource,marketStamp);
  if(hasNumber(selection.odds))put('decimal_price','FETCHED',marketSource,marketStamp);
  if(selection.bookmaker)put('bookmaker_identity','FETCHED',marketSource,marketStamp);
@@ -274,7 +274,7 @@ function marketSelections(fixture){
    const priced=outcomes.map(o=>({o,price:Number(o.price)})).filter(x=>Number.isFinite(x.price)&&x.price>1);
    const sums=new Map();
    for(const x of priced){
-    const point=x.o.point===undefined?'':Number(x.o.point);
+    const point=hasNumber(x.o.point)?Number(x.o.point):'';
     const group=[key,point,bookmaker].join('|');
     sums.set(group,(sums.get(group)||0)+(1/x.price));
    }
