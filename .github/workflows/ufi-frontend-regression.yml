@@ -24,3 +24,5 @@ jobs:
           for file in app.js exact-score-intelligence.js live-correct-score-chaos-engine.js universal-match-state-engine.js live-market-shock-backtest.js audit-intelligence.js ai-council.js calculator-risk-engine.js; do
             node --check "$file"
           done
+      - name: Test evidence-aware 400-signal audit
+        run: node tests/test_audit_intelligence.cjs
