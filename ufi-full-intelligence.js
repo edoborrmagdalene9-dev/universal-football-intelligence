@@ -165,7 +165,7 @@ async function runFixture(fixture,backend){
   const qs=new URLSearchParams({home,away,league,seasons:'5',date:String(kickoff).slice(0,10)});
   try{model=await getJSON(backend+'/api/models/score?'+qs.toString());}catch(e){model={status:'NEEDS_DATA',reason:e.message};}
  }
- const mainGrid=model.models?.dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles?.score_grid||[];
+ const mainGrid=model.models?.xg_dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles?.score_grid||[];
  let mainModelScore=null;
  if(mainGrid.length){const top=mainGrid.slice().sort((a,b)=>b.p-a.p)[0];mainModelScore={home:top.home,away:top.away};}
  const fixtureInfo={fixture_id:fixture.fixtureId||fixture.id||fixture.matchId||null,home,away,kickoff,competition:fixture.competition||fixture.sport_title||null,sport};
