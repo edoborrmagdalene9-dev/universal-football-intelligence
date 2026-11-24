@@ -320,6 +320,31 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
     hard_fail=any(x["status"]=="FAIL" for x in checks)
     return checks,hard_fail
 
+def _failure_scenarios(selection, grid, fixture, p):
+    if not grid or p is None:
+        return {"status":"NEEDS_DATA","reason":"A market-mapped Dixon-Coles score grid is required for failure scenarios."}
+    total=sum(max(0.0,_num(x.get("p")) or 0.0) for x in grid) or 1.0
+    failures=[]
+    for cell in grid:
+        hit=_selection_hit(selection,int(cell.get("home",0)),int(cell.get("away",0)),fixture)
+        if hit is False:
+            failures.append({"score":f'{int(cell.get("home",0))}-{int(cell.get("away",0))}',
+                             "home_goals":int(cell.get("home",0)),"away_goals":int(cell.get("away",0)),
+                             "probability":max(0.0,_num(cell.get("p")) or 0.0)/total})
+    failures.sort(key=lambda x:x["probability"],reverse=True)
+    market=_norm(selection.get("market") or selection.get("market_type"))
+    side=selection.get("side")
+    if side not in {"home","away"}:
+        team=_norm(selection.get("team") or selection.get("selection_team"))
+        side="home" if team==_norm(fixture.get("home")) else "away" if team==_norm(fixture.get("away")) else None
+    goal_profile=team_goal_profile(grid,side) if side and ("multigoals 1 3" in market or "multi score 1 3" in market) else None
+    return {"status":"ASSESSED","method":"market-mapped Dixon-Coles score-grid failure distribution",
+            "success_probability":p,"failure_probability":max(0.0,1.0-p),
+            "top_failure_scorelines":failures[:5],
+            "greatest_risk":failures[0] if failures else None,
+            "team_multigoals_breakdown":goal_profile,
+            "note":"Probabilities are model outputs, not calibrated guarantees. Unconventional scenario-engine scores are kept separate and are not assigned probabilities."}
+
 def audit_full_fixture(payload):
     if not isinstance(payload,dict): raise ValueError("JSON object required.")
     fixture=payload.get("fixture") if isinstance(payload.get("fixture"),dict) else {}
@@ -337,6 +362,10 @@ def audit_full_fixture(payload):
         if isinstance(selection.get("evidence"),dict):
             selection_evidence.update(selection["evidence"])
         p,method=market_probability(grid,selection)
+        up_is_down=_failure_scenarios(selection,grid,fixture,p)
+        if up_is_down.get("status")=="ASSESSED":
+            selection_evidence["alternative_scenarios"]=up_is_down["top_failure_scorelines"]
+            selection_evidence["scenario_engine_ran"]=True
         if p is not None and (model.get("models") or {}).get("xg_dixon_coles_rho_minus_0_10"):
             method="xg_dixon_coles_rho_minus_0_10_score_grid"
         odds=_num(selection.get("odds"))
@@ -354,7 +383,7 @@ def audit_full_fixture(payload):
         results.append({"market":selection.get("market"),"selection":selection.get("selection"),"team":selection.get("team"),
             "bookmaker":selection.get("bookmaker"),"odds":odds,"model_probability":p,"fair_odds":(1/p if p and p>0 else None),
             "expected_value_per_unit":ev,"probability_method":method,"decision":decision,
-            "hard_gates":gates,"bookie_edge_5400":edge5400,"pirates_layers":pirates})
+            "hard_gates":gates,"bookie_edge_5400":edge5400,"up_is_down_scenarios":up_is_down,"pirates_layers":pirates})
     congestion=_congestion(evidence); physical=_physical_duel(evidence)
     components=_components(evidence,fixture,model,selections[0])
     correlations=_market_correlations(selections,grid,fixture)
