@@ -156,7 +156,7 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
             date.fromisoformat(raw_date)
         except ValueError as exc:
             raise ProviderError("date must use YYYY-MM-DD") from exc
-        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
+        includes = "participants;league;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
         key = "fixtures:" + raw_date
         data, hit = cached(key, CACHE_TTL["fixtures"], lambda: provider_get(
             "/fixtures/date/" + raw_date, {"include": includes, "per_page": "100"}))
