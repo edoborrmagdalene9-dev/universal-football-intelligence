@@ -18,7 +18,7 @@ class FullIntelligenceTests(unittest.TestCase):
         p,method=market_probability(grid,{"market":"Double Chance 12","selection":"12"})
         self.assertGreater(p,0)
         self.assertLessEqual(p,1)
-        self.assertEqual(method,"dixon_coles_score_grid")
+        self.assertEqual(method,"dixon_coles_rho_minus_0_10_score_grid")
 
     def test_team_multigoals_reports_both_ruin_tails(self):
         profile=team_goal_profile(sample_grid(),"home")
