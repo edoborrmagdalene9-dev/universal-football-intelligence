@@ -225,9 +225,16 @@ def _components(evidence, fixture, model, selection):
         else:
             source=value.get("source") if isinstance(value,dict) else None
             stamp=value.get("fetched_at") if isinstance(value,dict) else None
-            status="ASSESSED" if source and stamp else "NEEDS_DATA"
+            requested=value.get("status") if isinstance(value,dict) else None
+            status=requested if requested in {"FETCHED","ESTIMATED","ASSESSED","FAIL","PENDING","NOT_APPLICABLE","NEEDS_DATA"} else ("FETCHED" if source and stamp else "NEEDS_DATA")
+            if status in {"FETCHED","ESTIMATED","ASSESSED"} and not (source and stamp):
+                status="NEEDS_DATA"
             rows.append({"group":group,"component":name,"status":status,"source":source,"fetched_at":stamp})
-    return {"total":len(rows),"counts":{s:sum(x["status"]==s for x in rows) for s in ("ASSESSED","NEEDS_DATA")},"components":rows}
+    statuses=("FETCHED","ESTIMATED","ASSESSED","FAIL","PENDING","NOT_APPLICABLE","NEEDS_DATA")
+    return {"total":len(rows),"counts":{state:sum(x["status"]==state for x in rows) for state in statuses},
+            "coverage_percent":round(100*sum(x["status"]=="ASSESSED" for x in rows)/len(rows)) if rows else 0,
+            "applicable_coverage_percent":round(100*sum(x["status"]=="ASSESSED" for x in rows)/max(1,len(rows)-sum(x["status"]=="NOT_APPLICABLE" for x in rows))) if rows else 0,
+            "components":rows}
 
 def _selection_gates(selection, fixture, model, grid, evidence, p):
     market=_norm(selection.get("market") or selection.get("market_type"))
