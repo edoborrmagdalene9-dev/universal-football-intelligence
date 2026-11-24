@@ -140,6 +140,7 @@ def get_roster(league,team_id):
             "position":pos.get("displayName") or pos.get("name"),
             "height":p.get("displayHeight") or p.get("height"),
             "height_in":p.get("heightInches") or p.get("height_in"),
+            "height_cm":round(float(p.get("heightInches") or p.get("height_in"))*2.54,1) if str(p.get("heightInches") or p.get("height_in") or "").replace(".","",1).isdigit() else None,
             "weight":p.get("displayWeight") or p.get("weight"),
             "age":p.get("age"),"date_of_birth":p.get("dateOfBirth"),
             "status":p.get("status"),"injuries":p.get("injuries") or [],
@@ -182,8 +183,9 @@ def _boxscore_summary(summary):
     box=summary.get("boxscore") if isinstance(summary.get("boxscore"),dict) else {}
     teams=[]
     for team in _list(box.get("teams")):
-        teams.append({"team_id":str(team.get("team",{}).get("id") or team.get("team_id") or ""),
-                      "name":team.get("team",{}).get("displayName") or team.get("display_name"),
+        info=team.get("team") if isinstance(team.get("team"),dict) else {}
+        teams.append({"team_id":str(info.get("id") or team.get("team_id") or ""),
+                      "name":info.get("displayName") or team.get("display_name"),
                       "formation":team.get("formation"),"statistics":team.get("statistics")})
     players=[]
     for team in _list(box.get("players")):
@@ -191,12 +193,19 @@ def _boxscore_summary(summary):
         for group in _list(team.get("statistics")):
             for athlete in _list(group.get("athletes")):
                 p=athlete.get("athlete") if isinstance(athlete.get("athlete"),dict) else {}
+                pos=p.get("position") if isinstance(p.get("position"),dict) else {}
                 players.append({"team_id":str(team_info.get("id") or ""),
                                 "athlete_id":str(p.get("id") or ""),
                                 "name":p.get("displayName") or p.get("fullName"),
-                                "starter":athlete.get("starter"),
+                                "position":pos.get("displayName") or pos.get("name"),
+                                "starter":athlete.get("starter") if isinstance(athlete.get("starter"),bool) else None,
                                 "stats":athlete.get("stats"),"source":"ESPN boxscore"})
-    return {"teams":teams,"players":players,"player_stats_available":bool(players)}
+    starters={}
+    for p in players:
+        if p.get("starter") is True:starters[p["team_id"]]=starters.get(p["team_id"],0)+1
+    return {"teams":teams,"players":players,"player_stats_available":bool(players),
+            "starting_xi_confirmed":bool(starters) and all(n==11 for n in starters.values()) and len(starters)>=2,
+            "starter_counts":starters,"raw":box}
 
 def enrich_fixture(sport,league,home,away,kickoff):
     league=league or LEAGUE_MAP.get(str(sport))
@@ -232,6 +241,19 @@ def enrich_fixture(sport,league,home,away,kickoff):
             schedules[side]=_schedule_metrics(rows,cutoff)
         except Exception as exc:schedules[side]={"error":type(exc).__name__}
     box=_boxscore_summary(summary)
+    # Attach roster height/position data only to explicitly flagged match starters.
+    roster_by_team={side:{p["athlete_id"]:p for p in (rosters.get(side,{}).get("players") or []) if p.get("athlete_id")} for side in ("home","away")}
+    side_by_team={team_ids.get("home"):"home",team_ids.get("away"):"away"}
+    starting_players={"home":[],"away":[]}
+    for p in box.get("players",[]):
+        side=side_by_team.get(p.get("team_id"))
+        if side and p.get("starter") is True:
+            roster=roster_by_team[side].get(p.get("athlete_id"),{})
+            starting_players[side].append({**p,"height_cm":roster.get("height_cm"),
+                "position":p.get("position") or roster.get("position"),"age":roster.get("age"),
+                "roster_source":"ESPN roster"})
+    formations={t.get("team_id"):t.get("formation") for t in box.get("teams",[]) if t.get("formation")}
+    formation_home=formations.get(team_ids.get("home"));formation_away=formations.get(team_ids.get("away"))
     venue=summary.get("venue") or comp.get("venue") or {}
     form=summary.get("form") or []
     h2h=summary.get("head_to_head") or {}
@@ -241,8 +263,12 @@ def enrich_fixture(sport,league,home,away,kickoff):
         "key_plays":summary.get("key_plays") or summary.get("keyEvents") or [],
         "team_statistics":summary.get("team_statistics") or [],
         "form":form,"head_to_head":h2h,"boxscore":box,"rosters":rosters,
-        "schedules":schedules,"team_ids":team_ids,"observed_at":datetime.now(timezone.utc).isoformat(),
-        "note":"ESPN does not publish a soccer injury report through this provider. Roster availability is not a confirmed match XI."}
+        "schedules":schedules,"team_ids":team_ids,
+        "lineups_confirmed":box.get("starting_xi_confirmed") is True,
+        "home_players":starting_players["home"],"away_players":starting_players["away"],
+        "formation_home":formation_home,"formation_away":formation_away,
+        "observed_at":datetime.now(timezone.utc).isoformat(),
+        "note":"ESPN does not publish a soccer injury report through this provider. Roster availability is not a confirmed match XI; only explicit boxscore starter flags create a confirmed XI."}
 
 def leagues():
     raw=_cached_json(_url(CORE+"/leagues",{"limit":1000}),ttl=86400)
