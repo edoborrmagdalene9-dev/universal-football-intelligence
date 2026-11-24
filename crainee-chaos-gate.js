@@ -63,7 +63,7 @@ if(typeof document!=='undefined')document.addEventListener('DOMContentLoaded',()
  $('caExample').addEventListener('click',example);
  $('caClear').addEventListener('click',()=>{['caHomeSquad','caAwaySquad','caReferee'].forEach(id=>$(id).value='');$('caOutput').textContent='Cleared. No match is cleared by default.'});
 });
-if(typeof module!=='undefined'&&module.exports)module.exports={evaluateAdvancedMatchRiskAndEdge:function(matchData,userBankroll){
+const chaosApi={evaluateAdvancedMatchRiskAndEdge:function(matchData,userBankroll){
  const current=Number(matchData.currentSecond||0);
  if(!Array.isArray(matchData.homeTeam?.players)||!Array.isArray(matchData.awayTeam?.players)||!matchData.referee)throw Error('Provide homeTeam.players, awayTeam.players and referee.');
  function calc(players){if(!Array.isArray(players)||players.length===0)throw Error('Each team requires a non-empty players array');return players.reduce((acc,p)=>{const value=p.marketValue==null?1000000:Number(p.marketValue),age=p.age==null?26:Number(p.age),caps=p.caps==null?30:Number(p.caps);if(!Number.isFinite(value)||value<0||!Number.isFinite(age)||age<15||age>60||!Number.isFinite(caps)||caps<0)throw Error('Invalid player attributes');return acc+value*Math.exp(-0.015*Math.pow(age-27,2))*Math.log10(caps+10)},0)}
@@ -73,4 +73,6 @@ if(typeof module!=='undefined'&&module.exports)module.exports={evaluateAdvancedM
  const flow=Math.min(1.2,gap/100),power=Math.max(0,Math.min(1,Math.log10(hs+as+1)/15)),time=Math.min(5400,Math.max(0,current))/5400,score=power*flow*(1+time),pct=score<0.25?0:Math.min(0.05,Math.max(0,0.05*score));
  return {status:score<0.25?'DISCARDED':'SURVIVED_AND_APPROVED',currentMatchTime:Math.floor(current/60)+' minutes ('+current+'s / 5400s)',matchPhase:second?'Second Half (45m - 90m)':'First Half (1m - 45m)',activeWhistleGap:gap+' seconds average between whistles',squadPowerIndex:power.toFixed(3),refereeFlowFactor:flow.toFixed(3),compositeEdgeScore:score.toFixed(3),maxSafeStakeLimit:(pct*100).toFixed(2)+'%',recommendedStakeAmount:(Number(userBankroll)*pct).toFixed(2),reason:score<0.25?'Composite score below 0.250':'Passed heuristic only; not proof of positive EV'};
 }};
+if(typeof module!=='undefined'&&module.exports)module.exports=chaosApi;
+if(typeof window!=='undefined')window.CraineeChaosGate=chaosApi;
 })();
