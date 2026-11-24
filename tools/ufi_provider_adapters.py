@@ -167,41 +167,84 @@ def calculate_arbitrage(query):
             "warning":"Valid only when odds cover every mutually exclusive outcome with identical settlement rules; fees, limits and price changes can erase the margin."}
 
 def _normalized_matches(query):
+    """Aggregate configured fixture/odds providers instead of returning the first partial feed."""
     errors=[]
-    # Try the richest event feed first, but do not let a bad key, unsupported
-    # league, provider outage, or quota error disable the odds-only fallback.
+    collected=[]
+    sources=[]
+    fetched=[]
     if os.getenv("SPORTSGAMEODDS_API_KEY","").strip():
         try:
-            # The direct provider route stays intentionally small by default;
-            # the normalized fixture feed should return a useful fixture list.
             match_query=dict(query)
             if not (match_query.get("limit") or [""])[0].strip():
                 match_query["limit"]=["50"]
             raw=_sgo_events(match_query)
             records=normalize_provider_payload("SportsGameOdds",raw.get("data"),raw.get("fetchedAt"))
             if records:
-                return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
-                        "data":records,"recordCount":len(records),"fallbackUsed":False,
-                        "note":"Scores/events/lineups remain unknown when absent from the source."}
-            errors.append("SportsGameOdds returned no normalized records")
+                collected.extend(records)
+                sources.append("SportsGameOdds")
+                fetched.append(raw.get("fetchedAt"))
+            else:
+                errors.append("SportsGameOdds returned no normalized records")
         except AdapterError as exc:
             errors.append("SportsGameOdds: "+str(exc))
     if os.getenv("THE_ODDS_API_KEY","").strip():
-        try:
-            raw=_odds_api((query.get("sport") or ["soccer_epl"])[0],query)
-            records=normalize_provider_payload("The Odds API",raw.get("data"),raw.get("fetchedAt"))
-            if records:
-                return {"ok":True,"source":raw.get("source"),"fetchedAt":raw.get("fetchedAt"),"cacheHit":raw.get("cacheHit"),
-                        "data":records,"recordCount":len(records),"fallbackUsed":bool(errors),
-                        "fallbackReason":errors if errors else None,
-                        "note":"Odds-only feed: score, lineups, events and statistics are intentionally unknown."}
-            errors.append("The Odds API returned no normalized records")
-        except AdapterError as exc:
-            errors.append("The Odds API: "+str(exc))
-    if errors:
-        raise AdapterError("No match provider returned usable records. "+"; ".join(errors))
-    raise AdapterError("Configure SPORTSGAMEODDS_API_KEY or THE_ODDS_API_KEY on the backend to load normalized match records.")
-
+        raw_sports=(query.get("sports") or [(query.get("sport") or ["soccer_epl"])[0]])[0]
+        sports=list(dict.fromkeys(x.strip() for x in raw_sports.split(",") if x.strip()))
+        if len(sports)>16:
+            raise AdapterError("At most 16 sports may be requested per normalized match search.")
+        for sport in sports:
+            try:
+                odds_query=dict(query)
+                odds_query.setdefault("regions",["uk"])
+                odds_query.setdefault("markets",["h2h"])
+                raw=_odds_api(sport,odds_query)
+                records=normalize_provider_payload("The Odds API",raw.get("data"),raw.get("fetchedAt"))
+                if records:
+                    collected.extend(records)
+                    if "The Odds API" not in sources:
+                        sources.append("The Odds API")
+                    fetched.append(raw.get("fetchedAt"))
+                else:
+                    errors.append("The Odds API ("+sport+") returned no normalized records")
+            except AdapterError as exc:
+                errors.append("The Odds API ("+sport+"): "+str(exc))
+    # Deduplicate by normalized teams + kickoff; merge source/odds evidence rather than discarding a provider.
+    merged={}
+    for row in collected:
+        if not isinstance(row,dict):
+            continue
+        home=" ".join(str(row.get("homeTeam") or "").casefold().split())
+        away=" ".join(str(row.get("awayTeam") or "").casefold().split())
+        kickoff=str(row.get("kickoff") or "")
+        key=(home,away,kickoff[:16])
+        if not home or not away or not kickoff:
+            key=(home,away,str(row.get("fixtureId") or row.get("matchId") or len(merged)))
+        current=merged.get(key)
+        if current is None:
+            merged[key]=dict(row)
+            merged[key]["sources"]=dict(row.get("sources") or {})
+            continue
+        current_sources=current.setdefault("sources",{})
+        for k,v in (row.get("sources") or {}).items():
+            current_sources[k]=v
+        if row.get("odds"):
+            current["odds"]={**(current.get("odds") or {}),**row["odds"]}
+        if row.get("lineups") and not current.get("lineups"):
+            current["lineups"]=row["lineups"]
+        if row.get("statistics") and not current.get("statistics"):
+            current["statistics"]=row["statistics"]
+        if row.get("events") and not current.get("events"):
+            current["events"]=row["events"]
+        current["providerSources"]=sorted(set(current.get("providerSources",[])+row.get("providerSources",[])))
+    rows=list(merged.values())
+    if not rows:
+        detail="; ".join(errors) if errors else "No configured fixture/odds provider returned records."
+        raise AdapterError("No match provider returned usable records. "+detail)
+    return {"ok":True,"source":"multi-provider","sources":sources,
+            "fetchedAt":max((x for x in fetched if x is not None),default=time.time()),
+            "data":rows,"recordCount":len(rows),"fallbackUsed":bool(errors),
+            "providerWarnings":errors,
+            "note":"Configured fixture and odds providers are aggregated. Missing scores, events, lineups and statistics remain unknown."}
 
 def _provider_health(query):
     """Explicit, quota-aware connectivity checks; invoke only when the user clicks Test."""
