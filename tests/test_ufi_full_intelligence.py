@@ -27,7 +27,7 @@ class FullIntelligenceTests(unittest.TestCase):
 
     def test_missing_pirates_evidence_never_auto_passes(self):
         model={"status":"model_output","rate_estimate":{"ok":True,"lambdaHome":1.6,"lambdaAway":1.1},
-               "dixon_coles":{"rho":-0.1},"models":{"dixon_coles":{"score_grid":sample_grid()}}}
+               "dixon_coles":{"rho":-0.1},"models":{"dixon_coles":{"score_grid":sample_grid()},"dixon_coles_rho_minus_0_10":{"score_grid":sample_grid()}}}
         result=audit_full_fixture({
             "fixture":{"fixture_id":"test-1","home":"Home","away":"Away","kickoff":"2026-11-25T19:00:00Z"},
             "model":model,"evidence":{},
