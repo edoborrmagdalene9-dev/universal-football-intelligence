@@ -248,10 +248,10 @@ def _normalized_matches(query):
 
 def _provider_health(query):
     """Explicit, quota-aware connectivity checks; invoke only when the user clicks Test."""
-    requested=(query.get("providers") or query.get("provider") or ["sportsGameOdds,theOddsApi,weatherapi,sharpapi,openMeteo"])[0]
+    requested=(query.get("providers") or query.get("provider") or ["sportmonks,sportsgameodds,theoddsapi,weatherapi,sharpapi,openmeteo"])[0]
     names=[x.strip().lower() for x in requested.split(",") if x.strip()]
     if not names or names==["all"]:
-        names=["sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo"]
+        names=["sportmonks","sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo"]
     aliases={"sgo":"sportsgameodds","odds":"theoddsapi","the-odds-api":"theoddsapi","weatherapi.com":"weatherapi","open-meteo":"openmeteo"}
     names=[aliases.get(x,x) for x in names]
     allowed={"sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo","sportmonks"}
