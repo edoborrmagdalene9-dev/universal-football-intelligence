@@ -321,8 +321,9 @@ function marketSelections(fixture){
     if(!Number.isFinite(price)||price<=1)continue;
     const group=groups.get(line)||{};if(label.includes('under'))group.under=price;if(label.includes('over'))group.over=price;groups.set(line,group);
    }
-   for(const group of groups.values())if(hasNumber(group.under)&&hasNumber(group.over)){
-    const sum=1/group.under+1/group.over;if(sum>0){const values=shortUnderProbByLine.get([...groups.entries()].find(([line,value])=>value===group)?.[0])||[];values.push((1/group.under)/sum);shortUnderProbByLine.set([...groups.entries()].find(([line,value])=>value===group)?.[0],values);}
+   for(const [line,group] of groups.entries())if(hasNumber(group.under)&&hasNumber(group.over)){
+    const sum=1/group.under+1/group.over;
+    if(sum>0){const values=shortUnderProbByLine.get(line)||[];values.push((1/group.under)/sum);shortUnderProbByLine.set(line,values);}
    }
   }
  }
