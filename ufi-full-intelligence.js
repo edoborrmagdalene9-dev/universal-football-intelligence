@@ -322,9 +322,14 @@ function marketSelections(fixture){
  const dcPick=found.find(x=>(String(x.market).toLowerCase()==='double chance'&&String(x.selection).toUpperCase()==='12')||String(x.market).toLowerCase()==='dc12');
  if(dcPick)dcPick.evidence={...(dcPick.evidence||{}),...dcEvidence};
  else found.push({market:'DC12',selection:'12',odds:null,bookmaker:null,evidence:dcEvidence});
- const hasTeamMulti=found.some(x=>String(x.market).toLowerCase().includes('multigoals 1 3'));
+ for(const candidate of found){
+  if(String(candidate.market).toLowerCase().includes('multigoals 1 3')){
+   candidate.evidence={...(candidate.evidence||{}),supporting_total_line:hasNumber(supportingOver?.line)?Number(supportingOver.line):null};
+  }
+ }
  for(const [team,side] of [[fixture.homeTeam||fixture.home,'home'],[fixture.awayTeam||fixture.away,'away']]){
-  if(team&&!hasTeamMulti)found.push({market:'Team Multigoals 1-3',selection:'1–3 goals',team,side,odds:null,bookmaker:null,evidence:{market_key:'derived_from_score_grid_only',supporting_total_line:hasNumber(supportingOver?.line)?Number(supportingOver.line):null}});
+  const already=found.some(x=>String(x.market).toLowerCase().includes('multigoals 1 3')&&(x.side===side||String(x.team||'').toLowerCase()===String(team||'').toLowerCase()));
+  if(team&&!already)found.push({market:'Team Multigoals 1-3',selection:'1–3 goals',team,side,odds:null,bookmaker:null,evidence:{market_key:'derived_from_score_grid_only',supporting_total_line:hasNumber(supportingOver?.line)?Number(supportingOver.line):null}});
  }
  return found;
 }
