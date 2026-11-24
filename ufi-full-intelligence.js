@@ -19,7 +19,8 @@ const LEAGUES={
 };
 const byId=id=>typeof document!=='undefined'?document.getElementById(id):null;
 function has(v){return v!==undefined&&v!==null&&v!=='';}
-function finite(v){return typeof v==='number'&&Number.isFinite(v);}\nfunction hasNumber(v){return v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));}
+function finite(v){return typeof v==='number'&&Number.isFinite(v);}
+function hasNumber(v){return v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));}
 function need(status,reason){return {status:status||'NEEDS_DATA',reason};}
 function runCraineeSuite(input){
  const out={},ev=input||{};
@@ -146,9 +147,11 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(model.backtest||model.chronological_backtest)put('chronological_validation','FETCHED',modelSource,modelStamp);
  if(physical?.lineups_confirmed)put('official_lineup','FETCHED','Sportmonks lineups (provider-reported; official confirmation flag supplied)',fixtureStamp);
  if(physical?.lineups_confirmed)put('lineup_timestamp','FETCHED','Sportmonks lineups',fixtureStamp);
- if(physical?.home_players?.some(p=>p.position&&/goalkeeper/i.test(p.position))&&physical?.away_players?.some(p=>p.position&&/goalkeeper/i.test(p.position)))put('goalkeeper_identity','FETCHED','Sportmonks player profiles',fixtureStamp);\n if(physical?.home_players?.filter(p=>p.position&&/centre back|center back/i.test(p.position)).length>=2&&physical?.away_players?.filter(p=>p.position&&/centre back|center back/i.test(p.position)).length>=2)put('centre_back_pairing','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.home_players?.some(p=>p.position&&/goalkeeper/i.test(p.position))&&physical?.away_players?.some(p=>p.position&&/goalkeeper/i.test(p.position)))put('goalkeeper_identity','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.home_players?.filter(p=>p.position&&/centre back|center back/i.test(p.position)).length>=2&&physical?.away_players?.filter(p=>p.position&&/centre back|center back/i.test(p.position)).length>=2)put('centre_back_pairing','FETCHED','Sportmonks player profiles',fixtureStamp);
  if(physical?.home_players?.filter(p=>p.height_cm).length>=7)put('home_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);
- if(physical?.away_players?.filter(p=>p.height_cm).length>=7)put('away_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);\n if(physical?.home_players?.some(p=>p.height_cm)&&physical?.away_players?.some(p=>p.height_cm))put('height_cm','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.away_players?.filter(p=>p.height_cm).length>=7)put('away_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.home_players?.some(p=>p.height_cm)&&physical?.away_players?.some(p=>p.height_cm))put('height_cm','FETCHED','Sportmonks player profiles',fixtureStamp);
  if(physical?.formation_home)put('home_formation','FETCHED','Sportmonks formations',fixtureStamp);
  if(physical?.formation_away)put('away_formation','FETCHED','Sportmonks formations',fixtureStamp);
  if(evidence?.weather?.source){
@@ -336,7 +339,9 @@ function marketSelections(fixture){
  }
  const dcNoVig=dcNoVigByBook.length?dcNoVigByBook.reduce((a,b)=>a+b,0)/dcNoVigByBook.length:null;
  const drawNoVig=drawNoVigByBook.length?drawNoVigByBook.reduce((a,b)=>a+b,0)/drawNoVigByBook.length:null;
- const selectedShortLine=hasNumber(shortUnder?.line)?Number(shortUnder.line):null;\n const selectedShortProbs=selectedShortLine!==null?(shortUnderProbByLine.get(selectedShortLine)||[]):[];\n const shortUnderNoVig=selectedShortProbs.length?selectedShortProbs.reduce((a,b)=>a+b,0)/selectedShortProbs.length:null;
+ const selectedShortLine=hasNumber(shortUnder?.line)?Number(shortUnder.line):null;
+ const selectedShortProbs=selectedShortLine!==null?(shortUnderProbByLine.get(selectedShortLine)||[]):[];
+ const shortUnderNoVig=selectedShortProbs.length?selectedShortProbs.reduce((a,b)=>a+b,0)/selectedShortProbs.length:null;
  const ah=found.find(x=>x.market==='Asian Handicap'&&x.evidence?.market_key==='spreads'&&hasNumber(x.line));
  const shortUnder=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('under')&&hasNumber(x.line)&&Number(x.line)<=2.25).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
  const supportingOver=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('over')&&hasNumber(x.line)&&Number(x.line)>=2.25&&Number(x.line)<=2.75).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
