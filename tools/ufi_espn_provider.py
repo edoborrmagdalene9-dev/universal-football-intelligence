@@ -148,6 +148,16 @@ def get_roster(league,team_id):
     return {"players":players,"team":raw.get("team"),"season":raw.get("season"),
             "observed_at_ms":raw.get("timestamp") or int(time.time()*1000),"total":raw.get("count") or len(players)}
 
+def get_player_profile(league,athlete_id):
+    raw=_cached_json(_url(WEB+"/"+league+"/athletes/"+str(athlete_id),{"region":"us","lang":"en"}),ttl=21600)
+    athlete=raw.get("athlete") if isinstance(raw.get("athlete"),dict) else raw
+    return {"source":"ESPN player profile","athlete_id":str(athlete_id),"data":athlete}
+
+def get_player_season_stats(league,athlete_id,season):
+    url=CORE+"/leagues/"+league+"/seasons/"+str(season)+"/athletes/"+str(athlete_id)+"/statistics"
+    raw=_cached_json(_url(url,{"limit":200}),ttl=21600)
+    return {"source":"ESPN player season statistics","athlete_id":str(athlete_id),"season":int(season),"data":raw}
+
 def get_team_schedule(league,team_id,season=None):
     params={"limit":1000}
     if season is not None:params["season"]=str(season)
