@@ -68,7 +68,26 @@ function run400Audit(fixture,selection,prob){
   fixtureResolution:{status:'candidate-found',matchId:fixture.fixture_id||fixture.id||null,kickoff:fixture.kickoff||null,orientation:'verified'},
   marketEstimate:finite(prob)?{probability:prob,source:'Dixon-Coles score grid'}:null,
   signalEvidence:selection.evidence||{}};
- try{return root.UFI400Audit.evaluate(row,null,{})}catch(e){return need('ERROR',e.message);}
+ try{
+  const base=root.UFI400Audit.evaluate(row,null,{});
+  const supplied=selection.evidence?.signal_checks||{};
+  const allowed=new Set(['FETCHED','ESTIMATED','ASSESSED','FAIL','PENDING','NOT_APPLICABLE','NEEDS_DATA']);
+  const checks=(base.checks||[]).map(check=>{
+   const exact=supplied[check.id]||supplied[check.name];
+   if(!exact||typeof exact!=='object'||!allowed.has(String(exact.status||'')))return check;
+   return {...check,status:exact.status,detail:String(exact.detail||check.detail),
+    evidenceStatus:['FETCHED','ESTIMATED'].includes(exact.status)?exact.status:check.evidenceStatus,
+    source:exact.source||check.source,updatedAt:exact.updatedAt||check.updatedAt};
+  });
+  const counts={};for(const check of checks)counts[check.status]=(counts[check.status]||0)+1;
+  const applicable=checks.length-(counts.NOT_APPLICABLE||0),assessed=counts.ASSESSED||0;
+  return {...base,checks,counts,coveragePercent:checks.length?Math.round(100*assessed/checks.length):0,
+   applicableCoveragePercent:applicable?Math.round(100*assessed/applicable):0,
+   evidenceFetched:checks.filter(x=>x.status==='FETCHED').length,
+   evidenceEstimated:checks.filter(x=>x.status==='ESTIMATED').length,
+   failures:checks.filter(x=>x.status==='FAIL'),pending:checks.filter(x=>x.status==='PENDING'),
+   notApplicable:checks.filter(x=>x.status==='NOT_APPLICABLE'),needsData:checks.filter(x=>x.status==='NEEDS_DATA')};
+ }catch(e){return need('ERROR',e.message);}
 }
 function runCalculator(selections){
  if(!root.UFICalculatorRisk||typeof root.UFICalculatorRisk.evaluateSlip!=='function')return need('NEEDS_DATA','Calculator risk engine is not loaded.');
