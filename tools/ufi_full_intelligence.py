@@ -187,13 +187,17 @@ def _congestion(evidence):
     def metrics(row):
         games=row.get("last_14_days")
         rest=_num(row.get("rest_hours"))
-        if not isinstance(games,list) or rest is None: return None
-        return {"games_14d":len(games),"rest_hours":rest,"extra_time":bool(row.get("extra_time_last_match"))}
+        if not isinstance(games,list): return None
+        return {"games_14d":len(games),"rest_hours":rest,"extra_time":row.get("extra_time_last_match"),
+                "travel_distance_km":_num(row.get("travel_distance_km"))}
     hm,am=metrics(home),metrics(away)
-    if hm is None or am is None: return {"status":"NEEDS_DATA","reason":"Both teams need dated last-14-day fixture records and rest hours."}
-    return {"status":"ASSESSED","home":hm,"away":am,"rest_differential_hours":hm["rest_hours"]-am["rest_hours"],
+    if hm is None or am is None: return {"status":"NEEDS_DATA","reason":"Both teams need dated last-14-day fixture records."}
+    rest_ready=hm["rest_hours"] is not None and am["rest_hours"] is not None
+    return {"status":"ASSESSED" if rest_ready else "PARTIAL","home":hm,"away":am,
+            "rest_differential_hours":hm["rest_hours"]-am["rest_hours"] if rest_ready else None,
             "density_differential":hm["games_14d"]-am["games_14d"],
-            "flags":[x for x in (["home_rest_under_48h"] if hm["rest_hours"]<48 else [])+(["away_rest_under_48h"] if am["rest_hours"]<48 else [])]}
+            "flags":[x for x in (["home_rest_under_48h"] if hm["rest_hours"] is not None and hm["rest_hours"]<48 else [])+(["away_rest_under_48h"] if am["rest_hours"] is not None and am["rest_hours"]<48 else [])],
+            "reason":None if rest_ready else "Fixture counts are sourced; exact rest hours require verified match end timestamps."}
 
 def _physical_duel(evidence):
     home=evidence.get("home_players"); away=evidence.get("away_players")
