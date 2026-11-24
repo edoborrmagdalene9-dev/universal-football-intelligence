@@ -29,7 +29,7 @@ const fixture={homeTeam:'Home FC',awayTeam:'Away FC',odds:[{title:'Book A',marke
  {key:'totals',outcomes:[{name:'Over',point:2.5,price:1.9},{name:'Under',point:2.5,price:1.9}]}
 ]}]};
 const markets=UFI.marketSelections(fixture);
-assert.equal(markets.find(x=>x.market==='1X2'&&x.selection==='Home').evidence.no_vig_probability,0.5);
+assert.ok(Math.abs(markets.find(x=>x.market==='1X2'&&x.selection==='Home').evidence.no_vig_probability-(0.5/(0.5+1/3.5+1/4)))<1e-10);
 assert.equal(markets.find(x=>x.market==='Over Under'&&x.selection==='Over 2.5').evidence.no_vig_probability,0.5);
 assert.ok(markets.some(x=>x.market==='DC12'&&x.odds===null));
 assert.ok(markets.some(x=>x.market==='Team Multigoals 1-3'&&x.side==='home'&&x.odds===null));
