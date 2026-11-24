@@ -706,6 +706,36 @@ function matchSportyBetPrice(row,fixture){
  if(best.priceDifference!==null&&best.priceDifference<=0.02)return {...best,status:'exact-market-and-price-match',reason:'Market, outcome and displayed decimal price match the source feed within 0.02.'};
  return {...best,status:'market-mapped-price-differs',reason:'Possible market/outcome match, but the source price differs from the slip price; do not treat the price as verified.'};
 }
+function buildUfiSignalEvidence(row,news){
+ const f=row.fixtureResolution||{}, e=row.marketEstimate||null;
+ const market=String(row.marketType||classifySlipMarket(row.rawLine||row.label||''));
+ const odd=Number(row.odd), out={};
+ const add=(id,status,detail,meta={})=>out[id]={status,detail,...meta};
+ const live=/live|in.?play|started/i.test(String(f.status||''));
+ add('UFI-001',row.label?'ASSESSED':'FAIL',row.label?'Selection label is present.':'Selection label is missing.');
+ add('UFI-007',f.status==='candidate-found'?'ASSESSED':'PENDING',f.status==='candidate-found'?'Fixture candidate matched; identity still requires source corroboration.':'No unique current fixture match.');
+ add('UFI-009',f.matchId?'ASSESSED':'PENDING',f.matchId?'Fixture provider ID is present.':'Fixture provider ID is missing.');
+ add('UFI-010',f.kickoff?'ASSESSED':'PENDING',f.kickoff?'Kickoff value is present; timezone/freshness are separate checks.':'Kickoff value is missing.');
+ add('UFI-015',Number.isFinite(odd)&&odd>1?'ASSESSED':'FAIL',Number.isFinite(odd)&&odd>1?'Decimal price is syntactically valid; source verification is separate.':'Odds are missing or invalid.');
+ add('UFI-021',Number.isFinite(odd)&&odd>1?'ASSESSED':'NEEDS_DATA',Number.isFinite(odd)&&odd>1?'Raw implied probability can be calculated; it is not a fair probability.':'Valid decimal odds required.');
+ add('UFI-022',e&&Number.isFinite(e.probability)&&e.probability>=0&&e.probability<=1?'ASSESSED':(e?'FAIL':'NEEDS_DATA'),e?'Experimental scenario probability supplied; calibration is not implied.':'No exact-market probability supplied.',e?{evidenceStatus:'ESTIMATED',source:e.modelSource||'UFI scenario model',confidence:null}:{});
+ add('UFI-023',e?.modelSource?'ASSESSED':'NEEDS_DATA',e?.modelSource?'Model source recorded: '+e.modelSource+'.':'Model source missing.',e?.modelSource?{evidenceStatus:'ESTIMATED',source:e.modelSource}:{});
+ add('UFI-038',Number.isFinite(odd)&&odd>1?'ASSESSED':'NEEDS_DATA',Number.isFinite(odd)&&odd>1?'Raw implied probability calculated; margin removal needs a complete outcome book.':'Valid odds required.');
+ add('UFI-041',market&&market!=='Unclassified'?'ASSESSED':'PENDING',market&&market!=='Unclassified'?'Market classified as '+market+'.':'Market classification is unresolved.');
+ add('UFI-198',news?.status==='live-results'?'ASSESSED':'PENDING',news?.status==='live-results'?'News search executed. Articles are leads, not verified injury facts.':'Fixture-specific news search did not complete.');
+ // Live state fields are genuinely inapplicable to a scheduled pre-match selection.
+ if(!live){
+  for(const id of ['UFI-301','UFI-302','UFI-303','UFI-304','UFI-305','UFI-306'])
+   add(id,'NOT_APPLICABLE','Pre-match selection: live score/clock/events/in-play price checks do not apply.');
+ }
+ // Market-family checks are N/A only when the selection is demonstrably outside that market family.
+ if(!/corner|set.?piece/i.test(market)) for(let n=101;n<=120;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a corners/set-piece market.');
+ if(!/player|shot/i.test(market)) for(let n=121;n<=140;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a player-shots market.');
+ if(!/card|foul/i.test(market)) for(let n=141;n<=160;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a cards/fouls market.');
+ if(!/both teams|btts|clean sheet/i.test(market)) for(let n=81;n<=100;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a BTTS/clean-sheet market; shared scoring inputs remain in the goal and team-model checks.');
+ if((window.UFI_APP_STATE?.manualSelections||[]).length<2) for(let n=321;n<=340;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Accumulator structure checks do not apply to a single-selection audit.');
+ return out;
+}
 async function runStrictSlipAudit(){
  const button=$('runStrictAudit');button.disabled=true;button.textContent='Fetching live news & auditing…';
  try{
@@ -720,6 +750,7 @@ async function runStrictSlipAudit(){
    const estimate=(row.marketEstimate&&String(row.marketEstimate.fixtureId||'')===String(fixture.matchId||''))?row.marketEstimate:((S.scenario&&fixture.source!=='live-fixture-feed'&&String(S.scenario.matchId||'')===String(fixture.matchId||''))?{...estimateSlipMarket(row,S.scenario),fixtureId:String(fixture.matchId||''),modelSource:'experimental-scoreline-scenario'}:null);
    row.marketEstimate=estimate;
    row.riskAudit=scoreSlipLeg(row,news);
+   row.signalEvidence=buildUfiSignalEvidence(row,news);
    row.extendedAudit=window.UFI400Audit?.evaluate(row,news,S)||null;
    rows.push({...row,audit:{index:i,fixture,estimate,news,...row.riskAudit,extendedAudit:row.extendedAudit,sportyBetMarketMatch:row.sportyBetMarketMatch}});
   }
@@ -733,7 +764,7 @@ async function runStrictSlipAudit(){
   S.riskAudits.unshift(S.lastRiskAudit);S.riskAudits=S.riskAudits.slice(0,100);persist();
   const listNews=r=>r.audit.news?.articles?.length?'<ul>'+r.audit.news.articles.slice(0,4).map(a=>'<li><a target="_blank" rel="noopener noreferrer" href="'+esc(a.url)+'">'+esc(a.title)+'</a> <small>'+esc(a.domain)+' · '+esc(a.seenDate||'date unavailable')+'</small>'+(a.terms.length?' <b>Signals: '+esc(a.terms.join(', '))+'</b>':'')+'</li>').join('')+'</ul>':'<small>'+esc(r.audit.news?.message||'No news status')+'</small>';
   const table=rows.length?'<div class="table-wrap"><table><thead><tr><th>Selection</th><th>Risk / 100</th><th>Decision</th><th>Model P / EV</th><th>SportyBet market match</th><th>Reasons, stored moods & live source headlines</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.label)+'<br><small>'+esc(r.audit.fixture.homeTeam&&r.audit.fixture.awayTeam?r.audit.fixture.homeTeam+' vs '+r.audit.fixture.awayTeam:'Unmatched fixture')+'</small></td><td>'+r.audit.riskScore+'</td><td><b>'+esc(r.audit.status)+'</b></td><td>'+(r.audit.probability==null?'—':pct(r.audit.probability))+'<br>'+(r.audit.ev==null?'EV —':(r.audit.ev*100).toFixed(1)+'% EV')+'</td><td>'+(r.audit.reasons.length?'<b>Cut reasons</b><ul>'+r.audit.reasons.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+(r.audit.warnings.length?'<b>Warnings</b><ul>'+r.audit.warnings.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+(r.audit.moodAudit?.matched?'<b>Stored mood / game-killer matches</b><p>'+esc((r.audit.moodAudit.moodLabels||[]).join(' · '))+'</p><ul>'+r.audit.moodAudit.hits.map(x=>'<li><b>'+esc(x.kind)+': '+esc(x.match)+'</b> · '+esc(x.status)+' · '+esc(x.date||'date unknown')+' · '+esc(x.mood)+'<br>'+esc(x.reason)+'</li>').join('')+'</ul>':'<small>No saved mood/game-killer record matched this leg. This does not mean the leg is safe.</small>')+listNews(r)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No selections to audit.</p>';
-  const extendedSummary=rows.map(r=>{const x=r.extendedAudit;return '<li><b>'+esc(r.label)+'</b>: '+(x?x.total+' signals; '+(x.counts.ASSESSED||0)+' assessed; '+(x.counts.NEEDS_DATA||0)+' need data; '+(x.counts.FAIL||0)+' failed':'400-signal registry unavailable')+'. Coverage '+(x?x.coveragePercent:0)+'%.</li>'}).join('');
+  const extendedSummary=rows.map(r=>{const x=r.extendedAudit;return '<li><b>'+esc(r.label)+'</b>: '+(x?x.total+' signals; '+(x.counts.ASSESSED||0)+' assessed; '+(x.counts.NEEDS_DATA||0)+' need data; '+(x.counts.NOT_APPLICABLE||0)+' not applicable; '+(x.counts.PENDING||0)+' pending; '+(x.counts.FAIL||0)+' failed':'400-signal registry unavailable')+'. Coverage '+(x?x.coveragePercent:0)+'% of all checks; '+(x?x.applicableCoveragePercent:0)+'% of applicable checks. Estimated evidence: '+(x?x.evidenceEstimated:0)+'.</li>'}).join('');
   const traps='<h3>🧠 400-SIGNAL AUDIT COVERAGE</h3><p>Each selection is checked against 400 named signals across 20 domains. NEEDS_DATA means evidence is not connected or loaded; it is not a pass and not proof a bet is bad.</p><ul>'+extendedSummary+'</ul><h3>❌ TRAPS REMOVED</h3>'+(cut.length?'<ul>'+cut.map(r=>'<li><b>'+esc(r.label)+'</b> — '+esc(r.audit.reasons.join('; ')||'Hard-stop validation failed')+'</li>').join('')+'</ul>':'<p>No hard-stop cuts were proven by the current evidence. This does NOT mean every leg is safe.</p>')+'<h3>🟠 HOLD — DO NOT TREAT AS CLEARED</h3>'+(hold.length?'<ul>'+hold.map(r=>'<li><b>'+esc(r.label)+'</b> — '+esc(r.audit.warnings.join('; ')||r.audit.reasons.join('; '))+'</li>').join('')+'</ul>':'<p>No holds.</p>');
   const shortlist='<h3>🔎 REPLACEMENT SEARCH</h3><p>Current fixture feed contains '+(S.liveFixtures||[]).length+' candidate fixtures, including '+(S.sportyBetFixtures||[]).length+' SportyBet fixtures with source prices. <b>No automatic replacement is qualified yet</b> because market-to-selection matching and calibrated, fixture-specific prediction validation are not yet established. The app will not invent replacement probabilities.</p><h3>✅ FINAL 3-GAME SECURE SLIP — QUALIFIED CANDIDATES ONLY</h3><p class="amber">“Secure” is a requested format, not a guarantee. A slot stays empty unless it passes the same fixture, market, price and evidence checks.</p><ol>'+picks.map(p=>'<li><b>'+esc(p.label)+'</b>: '+(p.row?esc(p.row.label)+' · '+pct(p.row.audit.probability)+' experimental estimated probability · odds '+Number(p.row.odd).toFixed(2)+' · EV '+(p.row.audit.ev==null?'not established':(p.row.audit.ev*100).toFixed(1)+'%'):'<span class="amber">NO QUALIFIED CANDIDATE — no evidence-backed replacement is currently available</span>')+'</li>').join('')+'</ol>';
   const cutButton=cut.length?'<button id="removeCutLegsNow" class="button danger">Remove '+cut.length+' CUT leg(s) from current slip</button>':'';
