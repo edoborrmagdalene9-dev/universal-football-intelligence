@@ -27,13 +27,41 @@ function evaluate(row,news,state){
  set('UFI-040','NEEDS_DATA','Joint hit-rate requires calibrated per-leg probabilities and dependence treatment.');
  set('UFI-041',row.marketType?'ASSESSED':'NEEDS_DATA',row.marketType?'Market type: '+row.marketType+'.':'Market type not confidently classified.');
  set('UFI-101','NEEDS_DATA','Shots line parsing needs a structured player/team shots market and source.');
- set('UFI-181',f.status==='candidate-found'?'ASSESSED':'NEEDS_DATA',f.status==='candidate-found'?'Fixture match exists; confirmed starting lineup is not implied.':'Fixture match missing; lineup cannot be assessed.');
+ set('UFI-181','NEEDS_DATA','Fixture matching does not prove a confirmed starting XI. Require a sourced official team sheet or explicitly tagged projection.');
  set('UFI-301','NEEDS_DATA','Live score, match clock, and live event verification are not connected to this pre-match audit.');
  set('UFI-198',news?.status==='ok'?'ASSESSED':'NEEDS_DATA',news?.status==='ok'?'News search returned articles; headlines are clues, not verified injury reports.':'News feed did not return verifiable results.');
  set('UFI-381','ASSESSED','The audit permits HOLD / no-pick; a survivor label is not a guarantee.');
  set('UFI-389','ASSESSED','Unverified data is surfaced as NEEDS_DATA rather than silently passed.');
+ // Evidence supplied by the caller is applied after legacy structural checks.
+ // A check is ASSESSED only when a real evidence record is present and validated.
+ const signalEvidence=row.signalEvidence||row.evidence?.signalEvidence||{};
+ for(const [id,record] of Object.entries(signalEvidence)){
+   const check=checks.find(x=>x.id===id); if(!check||!record||typeof record!=='object') continue;
+   const provenance=['FETCHED','ESTIMATED'].includes(record.evidenceStatus)?record.evidenceStatus:null;
+   if(record.status==='NOT_APPLICABLE'){
+     check.status='NOT_APPLICABLE'; check.detail=record.detail||'Not applicable to this fixture/market context.';
+   }else if(record.status==='PENDING'){
+     check.status='PENDING'; check.detail=record.detail||'Evidence retrieval is still pending.';
+   }else if(record.status==='FAIL'){
+     check.status='FAIL'; check.detail=record.detail||'Evidence failed the applicable rule.';
+   }else if(['FETCHED','ESTIMATED','ASSESSED'].includes(record.status)||provenance){
+     check.status='ASSESSED'; check.evidenceStatus=provenance||record.status;
+     check.source=record.source||null; check.sourceUrl=record.sourceUrl||null;
+     check.updatedAt=record.updatedAt||null; check.confidence=Number.isFinite(record.confidence)?record.confidence:null;
+     check.detail=record.detail||'Evidence supplied and evaluated.';
+   }
+ }
  const counts=checks.reduce((a,c)=>(a[c.status]=(a[c.status]||0)+1,a),{});
- return {version:'UFI 400-signal registry v1',total:checks.length,counts,coveragePercent:Math.round(100*(counts.ASSESSED||0)/checks.length),failures:checks.filter(c=>c.status==='FAIL'),needsData:checks.filter(c=>c.status==='NEEDS_DATA'),assessed:checks.filter(c=>c.status==='ASSESSED'),checks};
+ const applicable=checks.length-(counts.NOT_APPLICABLE||0);
+ const assessed=counts.ASSESSED||0;
+ return {version:'UFI 400-signal registry v2-evidence-aware',total:checks.length,counts,
+   coveragePercent:Math.round(100*assessed/checks.length),
+   applicableCoveragePercent:applicable?Math.round(100*assessed/applicable):0,
+   evidenceFetched:checks.filter(c=>c.evidenceStatus==='FETCHED').length,
+   evidenceEstimated:checks.filter(c=>c.evidenceStatus==='ESTIMATED').length,
+   failures:checks.filter(c=>c.status==='FAIL'),pending:checks.filter(c=>c.status==='PENDING'),
+   notApplicable:checks.filter(c=>c.status==='NOT_APPLICABLE'),
+   needsData:checks.filter(c=>c.status==='NEEDS_DATA'),assessedChecks:checks.filter(c=>c.status==='ASSESSED'),checks};
 }
 window.UFI400Audit={version:'UFI 400-signal registry v1',features,evaluate};
 })();
