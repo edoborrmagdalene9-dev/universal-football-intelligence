@@ -56,6 +56,20 @@ class NormalizedProviderAggregationTests(unittest.TestCase):
         self.assertEqual(result["quota"]["remaining"],498)
         self.assertEqual(result["quota"]["used"],2)
 
+    def test_odds_api_sports_catalog_returns_only_soccer_keys_without_secret(self):
+        payload=[
+            {"key":"soccer_epl","title":"EPL","group":"Soccer","active":True},
+            {"key":"basketball_nba","title":"NBA","group":"Basketball","active":True},
+            {"key":"soccer_test","title":"Test League","group":"Soccer","active":False},
+        ]
+        with patch.dict(os.environ,{"THE_ODDS_API_KEY":"private-test-key"},clear=False), \
+             patch.object(adapters,"_get_json",return_value=(payload,{"X-Requests-Remaining":"90"})), \
+             patch.object(adapters,"_cached",side_effect=lambda key,ttl,fn:(fn(),False)):
+            result=adapters._odds_sports_catalog()
+        self.assertEqual([x["key"] for x in result["sports"]],["soccer_epl","soccer_test"])
+        self.assertEqual(result["quota"]["remaining"],90)
+        self.assertNotIn("private-test-key",str(result))
+
     def test_sportmonks_health_probe_checks_api_catalog_without_exposing_token(self):
         with patch.dict(os.environ,{"SPORTMONKS_API_TOKEN":"private-test-token"},clear=False), \
              patch.object(adapters,"_get_json",return_value=({"data":[{"id":1}]},{})) as request:
