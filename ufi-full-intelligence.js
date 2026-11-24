@@ -133,9 +133,9 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(fixture.venue)put('venue_identity','FETCHED',fixtureSource,fixtureStamp);
  put('source_provider','FETCHED',fixtureSource,fixtureStamp);
  if(fixtureStamp)put('source_freshness','FETCHED',fixtureSource,fixtureStamp);
- if(selection.market)put('market_identity',hasNumber(selection.odds)?'ASSESSED':'ESTIMATED',hasNumber(selection.odds)?marketSource:'UFI model-derived candidate',hasNumber(selection.odds)?marketStamp:modelStamp);
- if(selection.selection)put('selection_identity','ASSESSED',marketSource,marketStamp);
- if(hasNumber(selection.odds))put('decimal_price','FETCHED',marketSource,marketStamp);
+ if(selection.market)put('market_identity',hasNumber(selection.odds)?'FETCHED':'ESTIMATED',hasNumber(selection.odds)?marketSource:'UFI model-derived candidate',hasNumber(selection.odds)?marketStamp:modelStamp);
+ if(selection.selection)put('selection_identity',hasNumber(selection.odds)?'FETCHED':'ESTIMATED',hasNumber(selection.odds)?marketSource:'UFI model-derived candidate',hasNumber(selection.odds)?marketStamp:modelStamp);
+ if(hasNumber(selection.odds)&&priceStamp)put('decimal_price','FETCHED',marketSource,priceStamp);
  if(selection.bookmaker)put('bookmaker_identity','FETCHED',marketSource,marketStamp);
  if(hasNumber(selection.line))put('market_line','FETCHED',marketSource,marketStamp);
  if(priceStamp)put('price_timestamp','FETCHED',marketSource,priceStamp);
