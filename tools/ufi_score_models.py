@@ -160,7 +160,17 @@ def _sample_metrics(grid,actual_h,actual_a):
             "outcome_brier":sum((p-(1.0 if i==outcome else 0.0))**2 for i,p in enumerate(probs)),
             "outcome_logloss":-math.log(max(1e-15,probs[outcome]))}
 
-def chronological_backtest(rows,test_fraction=0.2,max_test=100):
+_BACKTEST_CACHE={}
+_BACKTEST_LOCK=threading.RLock()
+
+def chronological_backtest(rows,test_fraction=0.2,max_test=400):
+    rows=_valid_rows(rows)
+    if rows:
+        signature=tuple((r["date"],r["home_team"],r["away_team"],r["home_goals"],r["away_goals"]) for r in rows)
+        cache_key=(len(rows),rows[0]["date"],rows[-1]["date"],hash(signature),test_fraction,max_test)
+        with _BACKTEST_LOCK:
+            cached=_BACKTEST_CACHE.get(cache_key)
+        if cached is not None:return dict(cached)
     rows=_valid_rows(rows)
     if len(rows)<150:return {"status":"NEEDS_DATA","reason":"At least 150 dated historical matches are required for chronological holdout validation.","total_matches":len(rows)}
     split=max(1,min(len(rows)-1,int(len(rows)*(1-max(.1,min(.4,test_fraction))))))
@@ -181,12 +191,15 @@ def chronological_backtest(rows,test_fraction=0.2,max_test=100):
             sample=_sample_metrics(grid,match["home_goals"],match["away_goals"])
             if sample:metrics[name].append(sample)
         used_dates.append(match["date"])
-    return {"status":"complete" if len(used_dates)>=20 else "INSUFFICIENT_TEST_SAMPLE",
+    result={"status":"complete" if len(used_dates)>=20 else "INSUFFICIENT_TEST_SAMPLE",
             "method":"chronological holdout; each test match uses only results strictly before its date",
             "total_matches":len(rows),"nominal_test_matches":len(test),"evaluated_matches":len(used_dates),
             "test_start":min(used_dates) if used_dates else None,"test_end":max(used_dates) if used_dates else None,
             "metrics":{name:_metrics(values) for name,values in metrics.items()},
             "warning":"Metrics are historical diagnostics, not proof of future profitability. Exact-score Brier is the multiclass scoreline-grid Brier; model comparison uses the same evaluated matches."}
+    if rows:
+        with _BACKTEST_LOCK:_BACKTEST_CACHE[cache_key]=result
+    return result
 
 def predict_fixture(rows,home,away,cutoff_date=None,include_backtest=True):
     if not cutoff_date:
