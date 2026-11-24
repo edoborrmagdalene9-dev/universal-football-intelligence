@@ -158,6 +158,13 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
   if(hasNumber(evidence.weather.humidity_pct))put('humidity','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
  }
  if(evidence?.referee_assignment?.source)put('referee_assignment','FETCHED',evidence.referee_assignment.source,evidence.referee_assignment.fetched_at||fixtureStamp);
+ if(evidence?.opponent_adjusted_form?.source&&Number(evidence.opponent_adjusted_form.sample_size)>=5)
+  put('opponent_adjusted_form','ASSESSED',evidence.opponent_adjusted_form.source,fixtureStamp);
+ if(evidence?.tactical?.source&&evidence.tactical.formation_home&&evidence.tactical.formation_away)
+  put('tactical_matchup','FETCHED',evidence.tactical.source,fixtureStamp);
+ if(Array.isArray(evidence.home_roster)&&evidence.home_roster.length&&Array.isArray(evidence.away_roster)&&evidence.away_roster.length){
+  put('home_roster','FETCHED','ESPN rosters',fixtureStamp);put('away_roster','FETCHED','ESPN rosters',fixtureStamp);
+ }
  for(const side of ['home','away']){
   const schedule=evidence[side+'_schedule'];
   if(Array.isArray(schedule?.last_14_days)){
