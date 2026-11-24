@@ -290,9 +290,14 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
         team=_norm(selection.get("team") or selection.get("selection_team"))
         if side not in ("home","away"):
             side="home" if team==_norm(fixture.get("home")) else "away" if team==_norm(fixture.get("away")) else None
-        lam=lh if side=="home" else la if side=="away" else None
+        xg=(model or {}).get("xg_rate_estimate") or {}
+        xg_ready=bool(xg.get("ok")) and _num(xg.get("lambdaHome")) is not None and _num(xg.get("lambdaAway")) is not None
+        xg_lh=_num(xg.get("lambdaHome")) if xg_ready else None
+        xg_la=_num(xg.get("lambdaAway")) if xg_ready else None
+        lam=xg_lh if side=="home" else xg_la if side=="away" else None
         profile=team_goal_profile(grid,side) if side else None
-        gate("multi_1_3_lambda_window",lam is not None and 1.40<=lam<=1.85,f"Team lambda={lam}; target 1.40–1.85",lam is not None)
+        gate("multi_1_3_xg_rate",xg_ready,"Published source-backed HxG/AxG rates are required for team multigoals.",xg_ready)
+        gate("multi_1_3_lambda_window",lam is not None and 1.40<=lam<=1.85,f"Published xG team lambda={lam}; target 1.40–1.85",lam is not None)
         ruin=profile.get("ruin_tail") if profile else None
         gate("multi_1_3_ruin_tail",ruin is not None and ruin<0.28,f"P(0)+P(4+)={ruin}; must be <0.28",ruin is not None)
         total_line=_num(evidence.get("supporting_total_line"))
