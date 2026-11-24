@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 from tools import ufi_provider_adapters as adapters
+from tools.ufi_match_context import normalize_sportmonks_fixture
 
 class NormalizedProviderAggregationTests(unittest.TestCase):
     def test_aggregates_sgo_and_multiple_odds_sports_and_deduplicates(self):
@@ -77,6 +78,26 @@ class NormalizedProviderAggregationTests(unittest.TestCase):
         self.assertTrue(result["checks"]["sportmonks"]["reachable"])
         self.assertEqual(result["checks"]["sportmonks"]["catalogRecords"],1)
         self.assertNotIn("private-test-token",str(result))
+
+    def test_sportmonks_normalizer_keeps_lineup_venue_and_source_fields(self):
+        row=normalize_sportmonks_fixture({
+            "id":42,"starting_at":"2026-11-25 19:00:00",
+            "participants":[
+                {"name":"Home FC","meta":{"location":"home"}},
+                {"name":"Away FC","meta":{"location":"away"}}
+            ],
+            "league":{"id":8,"name":"Test League"},
+            "state":{"state":"NS","started":False,"finished":False},
+            "lineups":[{"player_id":100,"position_id":1}],
+            "statistics":[{"type_id":1,"data":{"value":8}}],
+            "referees":[{"id":5}],"venue":{"latitude":51.5,"longitude":-0.1}
+        },"2026-11-24T12:00:00Z")
+        self.assertEqual(row["homeTeam"],"Home FC")
+        self.assertEqual(row["awayTeam"],"Away FC")
+        self.assertEqual(row["competition"],"Test League")
+        self.assertTrue(row["quality"]["hasLineups"])
+        self.assertTrue(row["quality"]["hasReferees"])
+        self.assertEqual(row["sources"]["fixture"],"Sportmonks")
 
     def test_sportmonks_lineup_context_merges_with_odds_event(self):
         sportmonks=[{
