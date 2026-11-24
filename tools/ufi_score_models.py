@@ -162,12 +162,17 @@ def predict_fixture(rows,home,away,cutoff_date=None,include_backtest=True):
     rho=fit_rho(prior)
     independent=_grid(rates["lambdaHome"],rates["lambdaAway"],0)
     dc=_grid(rates["lambdaHome"],rates["lambdaAway"],rho["rho"])
+    # Preserve the requested rho=-0.10 sensitivity surface alongside the
+    # empirically fitted Dixon-Coles model; neither silently replaces the other.
+    fixed_rho=-0.10
+    dc_fixed=_grid(rates["lambdaHome"],rates["lambdaAway"],fixed_rho)
     def top(grid):
         return [{**x,"fair_odds":(1/x["p"] if x["p"]>0 else None)} for x in sorted(grid,key=lambda x:x["p"],reverse=True)[:12]]
     return {"status":"model_output","fixture":{"home":home,"away":away,"cutoff_date":cutoff_date},
             "training_matches":len(prior),"rate_estimate":rates,"dixon_coles":rho,
-            "models":{"independent_poisson":{"top_scores":top(independent),"one_x_two":_outcome_probs(independent)},
-                      "dixon_coles":{"top_scores":top(dc),"one_x_two":_outcome_probs(dc)}},
+            "models":{"independent_poisson":{"top_scores":top(independent),"one_x_two":_outcome_probs(independent),"score_grid":independent},
+                      "dixon_coles":{"top_scores":top(dc),"one_x_two":_outcome_probs(dc),"score_grid":dc},
+                      "dixon_coles_rho_minus_0_10":{"rho":fixed_rho,"top_scores":top(dc_fixed),"one_x_two":_outcome_probs(dc_fixed),"score_grid":dc_fixed}},
             "historical_backtest":(chronological_backtest(prior) if include_backtest else {"status":"not_run_for_latency","reason":"Chronological holdout backtesting is available on request but is skipped for interactive prediction latency."}),
             "market_gate":"WAIT","market_gate_reason":"Exact-score odds, de-vigged market probabilities, calibrated EV and live confirmation have not been checked by this endpoint.",
             "source_urls":sorted({r.get("source_url") for r in prior if r.get("source_url")}),
