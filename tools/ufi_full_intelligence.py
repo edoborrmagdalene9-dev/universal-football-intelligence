@@ -398,6 +398,8 @@ def audit_full_fixture(payload):
         if isinstance(selection.get("evidence"),dict):
             selection_evidence.update(selection["evidence"])
         p,method=market_probability(grid,selection)
+        if p is not None and (model.get("models") or {}).get("xg_dixon_coles_rho_minus_0_10"):
+            method="xg_dixon_coles_rho_minus_0_10_score_grid"
         odds=_num(selection.get("odds"))
         ev=p*odds-1 if p is not None and odds is not None and odds>1 else None
         gates,failed=_selection_gates(selection,fixture,model,grid,selection_evidence,p)
