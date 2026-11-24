@@ -280,6 +280,47 @@ function marketProbFromModel(model,selection,fixture){
  else return null;
  return grid.filter(x=>hit(x.home,x.away)).reduce((a,x)=>a+(Number(x.p)||0),0)/sum;
 }
+function buildSlip(pool,target=30,low=28,high=32){
+ const rows=pool.filter(x=>finite(Number(x.odds))&&Number(x.odds)>1).sort((a,b)=>Number(b.quality||0)-Number(a.quality||0));
+ let best=null;const maxLegs=Math.min(12,rows.length);
+ function visit(start,chosen,product,fixtures){
+  if(chosen.length>0&&product>=low&&product<=high){
+   const score=Math.abs(product-target);
+   if(!best||score<best.score||(score===best.score&&chosen.length<best.items.length))best={items:chosen.slice(),product,score};
+   return;
+  }
+  if(chosen.length>=maxLegs||product>high)return;
+  for(let i=start;i<rows.length;i++){
+   const row=rows[i],fid=String(row.fixture?.fixture_id||row.fixture?.home+'|'+row.fixture?.away+'|'+row.fixture?.kickoff);
+   if(fixtures.has(fid))continue;
+   const next=product*Number(row.odds);if(next>high)continue;
+   fixtures.add(fid);chosen.push(row);visit(i+1,chosen,next,fixtures);chosen.pop();fixtures.delete(fid);
+  }
+ }
+ visit(0,[],1,new Set());
+ return best?{status:'BUILT',stake_units:1,combined_odds:Number(best.product.toFixed(4)),items:best.items}:null;
+}
+function buildTwoSlips(results,target=30){
+ const candidates=[];
+ for(const result of results||[]){
+  const fixture=result.fixture||{};
+  for(const item of result.audit?.selections||[]){
+   if(item.decision!=='REVIEW_ONLY'||!finite(Number(item.odds))||Number(item.odds)<=1)continue;
+   candidates.push({fixture,market:item.market,selection:item.selection,team:item.team,bookmaker:item.bookmaker,
+    odds:Number(item.odds),model_probability:item.model_probability,expected_value_per_unit:item.expected_value_per_unit,
+    quality:Number(item.expected_value_per_unit||0)});
+  }
+ }
+ if(!candidates.length)return {status:'NO_QUALIFYING_SELECTIONS',reason:'No selection passed all nine Pirates layers, market-specific hard gates, 5400 gate, source checks and positive EV.'};
+ const a=buildSlip(candidates,target);
+ if(!a)return {status:'NO_CLEAN_PRODUCT',reason:'No unpadded Slip A product landed in the permitted 28.00–32.00 window.'};
+ const used=new Set(a.items.map(x=>String(x.fixture.fixture_id||x.fixture.home+'|'+x.fixture.away+'|'+x.fixture.kickoff)+'|'+x.market));
+ const poolB=candidates.filter(x=>!used.has(String(x.fixture.fixture_id||x.fixture.home+'|'+x.fixture.away+'|'+x.fixture.kickoff)+'|'+x.market));
+ const b=buildSlip(poolB,target);
+ if(!b)return {status:'ONLY_ONE_CLEAN_SLIP',reason:'Slip A passed the product search, but a second independent clean Slip B could not be formed. No single slip is presented as final.'};
+ return {status:'TWO_SLIPS_BUILT',target_combined_odds:target,accepted_range:[28,32],stake_units_each:1,
+  slip_a:a,slip_b:b,policy:'Pure multiples only. No padding, no forced leg count. A fixture may recur across A/B only on a different market.'};
+}
 async function scan(options={}){
  const backend=String(options.backend||DEFAULT_BACKEND).replace(/\/+$/,'');
  const start=options.startDate||dateISO(new Date());
@@ -338,6 +379,7 @@ async function scan(options={}){
    ditch:results.reduce((n,x)=>n+(x.audit?.summary?.ditch||0),0),
    needsData:results.reduce((n,x)=>n+(x.audit?.summary?.needs_data||0),0),
    noValue:results.reduce((n,x)=>n+(x.audit?.summary?.no_value||0),0)},
+  slips:buildTwoSlips(results),
   note:'All outputs are evidence-gated. Unsupported leagues, unavailable markets and missing lineup/player/congestion evidence remain NEEDS_DATA.'};
 }
 function render(result){
@@ -365,7 +407,7 @@ function attach(){
  });
 }
 if(typeof document!=='undefined'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',attach);else attach();}
-const api={runCraineeSuite,run400Audit,runCalculator,marketSelections,marketProbFromModel,runFixture,scan,render,DEFAULT_SPORTS,LEAGUES};
+const api={runCraineeSuite,run400Audit,runCalculator,marketSelections,marketProbFromModel,runFixture,buildSlip,buildTwoSlips,scan,render,DEFAULT_SPORTS,LEAGUES};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;
 root.UFIFullIntelligence=api;
 })(typeof window!=='undefined'?window:globalThis);
