@@ -185,6 +185,8 @@ def _normalized_matches(query):
     collected=[]
     sources=[]
     fetched=[]
+    provider_counts={}
+    requested_sports=[]
     if os.getenv("SPORTSGAMEODDS_API_KEY","").strip():
         try:
             match_query=dict(query)
@@ -192,6 +194,7 @@ def _normalized_matches(query):
                 match_query["limit"]=["50"]
             raw=_sgo_events(match_query)
             records=normalize_provider_payload("SportsGameOdds",raw.get("data"),raw.get("fetchedAt"))
+            provider_counts["SportsGameOdds"]=len(records)
             if records:
                 collected.extend(records)
                 sources.append("SportsGameOdds")
@@ -203,6 +206,7 @@ def _normalized_matches(query):
     if os.getenv("THE_ODDS_API_KEY","").strip():
         raw_sports=(query.get("sports") or [(query.get("sport") or ["soccer_epl"])[0]])[0]
         sports=list(dict.fromkeys(x.strip() for x in raw_sports.split(",") if x.strip()))
+        requested_sports=sports
         if len(sports)>16:
             raise AdapterError("At most 16 sports may be requested per normalized match search.")
         for sport in sports:
@@ -212,6 +216,7 @@ def _normalized_matches(query):
                 odds_query.setdefault("markets",["h2h"])
                 raw=_odds_api(sport,odds_query)
                 records=normalize_provider_payload("The Odds API",raw.get("data"),raw.get("fetchedAt"))
+                provider_counts["The Odds API:"+sport]=len(records)
                 if records:
                     collected.extend(records)
                     if "The Odds API" not in sources:
@@ -255,6 +260,7 @@ def _normalized_matches(query):
         raise AdapterError("No match provider returned usable records. "+detail)
     return {"ok":True,"source":"multi-provider","sources":sources,
             "fetchedAt":max((x for x in fetched if x is not None),default=time.time()),
+            "requestedSports":requested_sports,"providerRecordCounts":provider_counts,
             "data":rows,"recordCount":len(rows),"fallbackUsed":bool(errors),
             "providerWarnings":errors,
             "note":"Configured fixture and odds providers are aggregated. Missing scores, events, lineups and statistics remain unknown."}
