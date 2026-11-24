@@ -10,7 +10,7 @@ const UFI=require('../ufi-full-intelligence.js');
 
 const suite=UFI.runCraineeSuite({fixtureId:'unit-test',homeTeam:'Home',awayTeam:'Away',mainModelScore:{home:2,away:1}});
 assert.equal(suite.unconventional.unconventionalShortlist.length,20);
-assert.equal(suite.unconventional.confidenceStatus,'NOT_ESTIMATED');
+assert.equal(suite.unconventional.unconventionalShortlist[0].probabilityStatus,'NOT_ESTIMATED');
 assert.equal(suite.chaos.status,'NEEDS_DATA');
 assert.equal(suite.tactical.status,'NEEDS_DATA');
 assert.equal(suite.background.status,'NEEDS_DATA');
