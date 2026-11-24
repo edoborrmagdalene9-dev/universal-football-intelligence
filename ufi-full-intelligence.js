@@ -301,7 +301,7 @@ function marketSelections(fixture){
  }
  const found=[...best.values()].map(({_group,...x})=>x);
  const drawPick=found.find(x=>x.market==='1X2'&&x.selection==='Draw');
- const dcNoVigByBook=[],drawNoVigByBook=[],shortUnderProbByBook=[];
+ const dcNoVigByBook=[],drawNoVigByBook=[],shortUnderProbByLine=new Map();
  for(const book of books){
   const marketsForBook=Array.isArray(book.markets)?book.markets:[];
   const h2h=marketsForBook.find(m=>['h2h','h2h_3_way','moneyline'].includes(String(m.key||'').toLowerCase()));
@@ -322,13 +322,13 @@ function marketSelections(fixture){
     const group=groups.get(line)||{};if(label.includes('under'))group.under=price;if(label.includes('over'))group.over=price;groups.set(line,group);
    }
    for(const group of groups.values())if(hasNumber(group.under)&&hasNumber(group.over)){
-    const sum=1/group.under+1/group.over;if(sum>0)shortUnderProbByBook.push((1/group.under)/sum);
+    const sum=1/group.under+1/group.over;if(sum>0){const values=shortUnderProbByLine.get([...groups.entries()].find(([line,value])=>value===group)?.[0])||[];values.push((1/group.under)/sum);shortUnderProbByLine.set([...groups.entries()].find(([line,value])=>value===group)?.[0],values);}
    }
   }
  }
  const dcNoVig=dcNoVigByBook.length?dcNoVigByBook.reduce((a,b)=>a+b,0)/dcNoVigByBook.length:null;
  const drawNoVig=drawNoVigByBook.length?drawNoVigByBook.reduce((a,b)=>a+b,0)/drawNoVigByBook.length:null;
- const shortUnderNoVig=shortUnderProbByBook.length?shortUnderProbByBook.reduce((a,b)=>a+b,0)/shortUnderProbByBook.length:null;
+ const selectedShortLine=hasNumber(shortUnder?.line)?Number(shortUnder.line):null;\n const selectedShortProbs=selectedShortLine!==null?(shortUnderProbByLine.get(selectedShortLine)||[]):[];\n const shortUnderNoVig=selectedShortProbs.length?selectedShortProbs.reduce((a,b)=>a+b,0)/selectedShortProbs.length:null;
  const ah=found.find(x=>x.market==='Asian Handicap'&&x.evidence?.market_key==='spreads'&&hasNumber(x.line));
  const shortUnder=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('under')&&hasNumber(x.line)&&Number(x.line)<=2.25).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
  const supportingOver=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('over')&&hasNumber(x.line)&&Number(x.line)>=2.25&&Number(x.line)<=2.75).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
