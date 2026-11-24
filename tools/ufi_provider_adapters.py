@@ -151,6 +151,22 @@ def _weatherapi(query):
     payload,hit=_cached(cachekey,_TTLS["weatherapi"],lambda:_get_json(_query_url(url,params))[0])
     return {"ok":True,"source":"WeatherAPI.com","fetchedAt":time.time(),"cacheHit":hit,"data":payload}
 
+def _odds_sports_catalog():
+    """Return the provider's live sport catalogue; do not guess competition keys."""
+    key=os.getenv("THE_ODDS_API_KEY","").strip()
+    if not key: raise AdapterError("THE_ODDS_API_KEY is not configured on the server.")
+    base=os.getenv("THE_ODDS_API_BASE_URL","https://api.the-odds-api.com/v4/sports").strip().rstrip("/")
+    payload,headers=_cached("odds:sports-catalog",3600,lambda:_get_json(_query_url(base,{"apiKey":key})))
+    rows=payload if isinstance(payload,list) else (payload.get("data") or [] if isinstance(payload,dict) else [])
+    soccer=[{"key":x.get("key"),"title":x.get("title"),"group":x.get("group"),"active":x.get("active")}
+            for x in rows if isinstance(x,dict) and (str(x.get("group","")).lower()=="soccer" or str(x.get("key","")).startswith("soccer_"))]
+    h={str(k).lower():v for k,v in (headers or {}).items()}
+    return {"ok":True,"source":"The Odds API sports catalogue","fetchedAt":time.time(),
+            "sports":soccer,"sportCount":len(soccer),
+            "quota":{"remaining":int(h["x-requests-remaining"]) if str(h.get("x-requests-remaining","")).isdigit() else None,
+                     "used":int(h["x-requests-used"]) if str(h.get("x-requests-used","")).isdigit() else None},
+            "note":"Live provider catalogue only. Active means listed by the provider, not that fixtures or markets are currently available."}
+
 def _prob(value, name):
     try: x=float(value)
     except (TypeError,ValueError): raise AdapterError(name+" must be numeric.")
@@ -337,6 +353,8 @@ def handle_extra_route(route, query):
                "openMeteo":True}
         return {"ok":True,"providers":{k:{"configured":v,"status":"configured-not-connectivity-tested" if v else "not-configured"} for k,v in names.items()},
                 "secretValuesReturned":False,"note":"Configured means a secret exists, not that the provider is reachable or that your free plan covers the requested league."},False
+    if route == "/api/sports/catalog":
+        return _odds_sports_catalog(),False
     if route == "/api/odds/the-odds-api":
         sport=(query.get("sport") or ["soccer_epl"])[0]
         return _odds_api(sport,query),False
