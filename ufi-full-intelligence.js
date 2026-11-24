@@ -302,7 +302,8 @@ function marketSelections(fixture){
     const group=[key,line===null?'':line,bookmaker].join('|');
     const invSum=sums.get(group)||0;
     const noVig=invSum>0?(1/price)/invSum:null;
-    const priceTimestamp=market.last_update||market.lastUpdate||book.last_update||book.lastUpdate||fixture.timestamps?.providerUpdatedAt||null;\n    const evidence={no_vig_probability:noVig,market_key:key,market_line:line,price_source:'The Odds API / SportsGameOdds normalized bookmaker payload',price_timestamp:priceTimestamp,source_updated_at:priceTimestamp,snapshots:0};
+    const priceTimestamp=market.last_update||market.lastUpdate||book.last_update||book.lastUpdate||fixture.timestamps?.providerUpdatedAt||null;
+    const evidence={no_vig_probability:noVig,market_key:key,market_line:line,price_source:'The Odds API / SportsGameOdds normalized bookmaker payload',price_timestamp:priceTimestamp,source_updated_at:priceTimestamp,snapshots:0};
     const item={market:marketName,selection,team,side,line,odds:price,bookmaker,evidence,_group:group};
     const identity=[key,line===null?'':line,selection,team||''].join('|');
     if(priceTimestamp){
