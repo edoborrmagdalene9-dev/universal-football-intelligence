@@ -291,10 +291,10 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
         standing=evidence.get("standing_water")
         weather_ready=isinstance(standing,bool) and wind is not None
         gate("multi_1_3_weather",standing is False and wind<=25,"Standing water must be absent and wind <=25 mph",weather_ready)
-    elif "under 3.5" in market or pick=="under 3.5":
+    elif "under 3 5" in pick or market=="under 3 5" or (market in {"over under","totals","total goals","goals over under","asian total"} and pick.startswith("under") and _num(selection.get("line"))==3.5):
         open_game=evidence.get("open_game")
         gate("under_3_5_open_game",open_game is False,"Under 3.5 is rejected in an open game; explicit closed-game assessment required",isinstance(open_game,bool))
-    elif "under 4.5" in market or pick=="under 4.5":
+    elif "under 4 5" in pick or market=="under 4 5" or (market in {"over under","totals","total goals","goals over under","asian total"} and pick.startswith("under") and _num(selection.get("line"))==4.5):
         gate("under_4_5_probability",p is not None and p>=0.78,f"Model P(Under 4.5)={p}; minimum 0.78",p is not None)
         count=_num(evidence.get("under45_count_in_slip"))
         gate("under_4_5_slip_cap",count is not None and count<1,f"Existing Under 4.5 legs in slip={count}; maximum one",count is not None)
