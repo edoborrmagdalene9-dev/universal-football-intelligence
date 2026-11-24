@@ -300,11 +300,19 @@ function marketSelections(fixture){
   }
  }
  const found=[...best.values()].map(({_group,...x})=>x);
- const homePick=found.find(x=>x.market==='1X2'&&x.selection==='Home');
  const drawPick=found.find(x=>x.market==='1X2'&&x.selection==='Draw');
- const awayPick=found.find(x=>x.market==='1X2'&&x.selection==='Away');
- const dcNoVig=homePick&&awayPick&&hasNumber(homePick.evidence?.no_vig_probability)&&hasNumber(awayPick.evidence?.no_vig_probability)
-  ?Number(homePick.evidence.no_vig_probability)+Number(awayPick.evidence.no_vig_probability):null;
+ const dcNoVigByBook=[];
+ for(const book of books){
+  const h2h=(Array.isArray(book.markets)?book.markets:[]).find(m=>['h2h','h2h_3_way','moneyline'].includes(String(m.key||'').toLowerCase()));
+  const outcomes=Array.isArray(h2h?.outcomes)?h2h.outcomes:[];
+  const prices={};
+  for(const o of outcomes){const label=mapOutcome(o.name,fixture.homeTeam||fixture.home,fixture.awayTeam||fixture.away);const price=Number(o.price);if(Number.isFinite(price)&&price>1)prices[label]=price;}
+  if(hasNumber(prices.Home)&&hasNumber(prices.Draw)&&hasNumber(prices.Away)){
+   const sum=1/prices.Home+1/prices.Draw+1/prices.Away;
+   if(sum>0)dcNoVigByBook.push((1/prices.Home+1/prices.Away)/sum);
+  }
+ }
+ const dcNoVig=dcNoVigByBook.length?dcNoVigByBook.reduce((a,b)=>a+b,0)/dcNoVigByBook.length:null;
  const ah=found.find(x=>x.market==='Asian Handicap'&&x.evidence?.market_key==='spreads'&&hasNumber(x.line));
  const shortUnder=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('under')&&hasNumber(x.line)&&Number(x.line)<=2.25).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
  const supportingOver=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('over')&&hasNumber(x.line)&&Number(x.line)>=2.25&&Number(x.line)<=2.75).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
