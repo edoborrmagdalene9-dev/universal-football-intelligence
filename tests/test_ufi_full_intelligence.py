@@ -49,6 +49,27 @@ class FullIntelligenceTests(unittest.TestCase):
         self.assertEqual(result["selections"][0]["decision"],"NEEDS_DATA")
         self.assertTrue(any(x["status"]=="NEEDS_DATA" for x in result["selections"][0]["hard_gates"]))
 
+    def test_5400_gate_requires_independent_validation_and_fresh_snapshots(self):
+        from datetime import datetime, timezone
+        from tools.ufi_full_intelligence import _bookie_edge_5400
+        missing=_bookie_edge_5400(0.6,2.0,{},{"status":"scheduled"})
+        self.assertEqual(missing["status"],"NEEDS_DATA")
+        evidence={"uncertainty":0.01,"validation_matches":600,"snapshots":5,
+                  "no_vig_probability":0.45,"source_updated_at":datetime.now(timezone.utc).isoformat(),
+                  "match_second":2700}
+        passed=_bookie_edge_5400(0.6,2.0,evidence,{"status":"live"})
+        self.assertEqual(passed["status"],"PASS")
+        self.assertGreaterEqual(passed["margin_score"],1.05)
+
+    def test_market_correlation_identifies_alternative_1x2_outcomes(self):
+        from tools.ufi_full_intelligence import _market_correlations
+        rows=[{"home":1,"away":0,"p":0.5},{"home":0,"away":1,"p":0.5}]
+        result=_market_correlations([
+            {"market":"1X2","selection":"Home"},
+            {"market":"1X2","selection":"Away"}
+        ],rows,{"home":"Home","away":"Away"})
+        self.assertEqual(result[0]["relationship"],"mutually_exclusive")
+
     def test_100_component_check_is_exactly_100_and_missing_stays_unknown(self):
         model={"status":"NEEDS_DATA"}
         result=audit_full_fixture({
