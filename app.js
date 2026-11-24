@@ -193,7 +193,7 @@ function resolveSlipFixture(row){
   const h=normalizeTeamName(m.homeTeam),a=normalizeTeamName(m.awayTeam);
   return h&&a&&whole.includes(' '+h+' ')&&whole.includes(' '+a+' ');
  });
- const candidates=live.map(m=>({source:m.source||'live-fixture-feed',match_id:m.id||m.matchId,match_date:m.date,home_team:{home_team_name:m.homeTeam},away_team:{away_team_name:m.awayTeam},competition:m.competition,status:m.status,markets:m.markets||[],oddsTimestamp:m.oddsTimestamp||null}));
+ const candidates=live.map(m=>({source:m.source||'live-fixture-feed',match_id:m.id||m.matchId,match_date:m.date,kickoff:m.date,home_team:{home_team_name:m.homeTeam},away_team:{away_team_name:m.awayTeam},competition:m.competition,status:m.status,markets:m.markets||[],oddsTimestamp:m.oddsTimestamp||null,providerEvidence:m.providerEvidence||null}));
  const historical=(S.matches||[]).filter(m=>{
   const h=normalizeTeamName(m.home_team?.home_team_name),a=normalizeTeamName(m.away_team?.away_team_name);
   return h&&a&&whole.includes(' '+h+' ')&&whole.includes(' '+a+' ');
@@ -202,7 +202,7 @@ function resolveSlipFixture(row){
  if(all.length===1){
   const m=all[0],parsed=parseFixtureText(raw),h=normalizeTeamName(m.home_team?.home_team_name);
   const orientation=normalizeTeamName(parsed.homeText).includes(h)?'home-away':(normalizeTeamName(parsed.awayText).includes(h)?'away-home':'verify-orientation');
-  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',reason:m.source==='live-fixture-feed'?'Matched to a current/upcoming public fixture feed. Confirm competition, kickoff, exact SportyBet market and odds.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
+  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),kickoff:m.kickoff||m.match_date||'',homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',oddsTimestamp:m.oddsTimestamp||null,providerEvidence:m.providerEvidence||null,reason:m.source==='live-fixture-feed'?'Matched to a current/upcoming public fixture feed. Confirm competition, kickoff, exact SportyBet market and odds.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
  }
  if(all.length>1)return {status:'ambiguous',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'Multiple fixtures match these team names. Add the date/competition and resolve manually.'};
  return {status:(S.liveFixtures.length||S.matches.length)?'not-found-in-loaded-list':'no-fixtures-loaded',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:(S.liveFixtures.length||S.matches.length)?'No matching fixture found in the current feed or loaded historical list.':'Load current fixtures before fixture matching.'};
@@ -421,6 +421,23 @@ const LIVE_LEAGUES=[
  ['ned.1','Eredivisie'],['por.1','Primeira Liga'],['uefa.champions','Champions League'],['uefa.europa','Europa League'],
  ['usa.1','MLS'],['ksa.1','Saudi Pro League'],['tur.1','Turkish Super Lig']
 ];
+const UFI_BACKEND_BASE='https://universal-football-intelligence.onrender.com';
+const UFI_ODDS_SPORTS=['soccer_epl','soccer_spain_la_liga','soccer_germany_bundesliga','soccer_italy_serie_a','soccer_france_ligue_one','soccer_uefa_champs_league','soccer_uefa_europa_league','soccer_england_championship'];
+async function fetchUfiBackendFixtures(){
+ const params=new URLSearchParams({sports:UFI_ODDS_SPORTS.join(','),regions:'uk',markets:'h2h',limit:'50'});
+ const payload=await json(UFI_BACKEND_BASE+'/api/matches?'+params.toString());
+ if(!payload?.ok||!Array.isArray(payload.data))throw Error(payload?.error||'UFI multi-provider fixture feed returned no usable response.');
+ return payload.data.map(raw=>({
+  id:String(raw.fixtureId||raw.matchId||raw.id||''),matchId:String(raw.fixtureId||raw.matchId||raw.id||''),
+  date:String(raw.kickoff||''),homeTeam:String(raw.homeTeam||''),awayTeam:String(raw.awayTeam||''),
+  competition:String(raw.competition||'Unknown competition'),
+  status:raw.status?.started?'In Progress':(raw.status?.ended?'Finished':'Scheduled'),
+  source:'ufi-multi-provider-feed',markets:[],
+  oddsTimestamp:raw.timestamps?.providerUpdatedAt||raw.timestamps?.fetchedAt||payload.fetchedAt||null,
+  providerEvidence:{sources:raw.sources||{},timestamps:raw.timestamps||{},score:raw.score??null,events:raw.events??null,
+   lineups:raw.lineups??null,statistics:raw.statistics??null,referee:raw.referee??null,venue:raw.venue??null,quality:raw.quality||{},odds:raw.odds||{}}
+ })).filter(x=>x.homeTeam&&x.awayTeam);
+}
 async function fetchSportyBetUpcoming(){
  const endpoint='https://www.sportybet.com/api/ng/factsCenter/pcUpcomingEvents?sportId=sr%3Asport%3A1&marketId=1%2C18%2C10%2C29%2C11%2C26%2C36%2C14%2C60100&pageSize=100&pageNum=1&todayGames=false&timeline=168&_t='+Date.now();
  const payload=await json(endpoint);
@@ -441,8 +458,9 @@ async function loadLiveFixtures(){
  const button=$('loadLiveFixtures');if(button){button.disabled=true;button.textContent='Loading current fixtures…'}
  notice('liveFixtureOutput','Connecting to SportyBet fixture/market feed first, then using ESPN as a fallback. Browser access to SportyBet may be blocked by CORS.','');
  try{
-  let sportyBetRows=[],sportyBetError='';
+  let sportyBetRows=[],sportyBetError='',backendRows=[],backendError='';
   try{sportyBetRows=await fetchSportyBetUpcoming();S.sportyBetFixtures=sportyBetRows}catch(e){sportyBetError=String(e?.message||e);S.sportyBetFixtures=[]}
+  try{backendRows=await fetchUfiBackendFixtures();S.backendFixtures=backendRows}catch(e){backendError=String(e?.message||e);S.backendFixtures=[]}
   const nowDate=new Date(),endDate=new Date(nowDate.getTime()+7*86400000);
   const ymd=d=>d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
   const dates=ymd(nowDate)+'-'+ymd(endDate);
@@ -460,10 +478,16 @@ async function loadLiveFixtures(){
   const failed=results.filter(x=>x.status==='rejected').length;
   const uniq=new Map();good.forEach(f=>uniq.set(f.id,f));
   const espnRows=[...uniq.values()];
-  const allRows=[...sportyBetRows,...espnRows.filter(e=>!sportyBetRows.some(s=>normalizeTeamName(s.homeTeam)===normalizeTeamName(e.homeTeam)&&normalizeTeamName(s.awayTeam)===normalizeTeamName(e.awayTeam)))];
+  const merged=new Map();
+  for(const f of [...espnRows,...backendRows,...sportyBetRows]){
+   const key=normalizeTeamName(f.homeTeam)+'|'+normalizeTeamName(f.awayTeam)+'|'+String(f.date||'').slice(0,10);
+   const prior=merged.get(key);
+   merged.set(key,prior?{...prior,...f,markets:f.markets?.length?f.markets:(prior.markets||[]),providerEvidence:f.providerEvidence||prior.providerEvidence||null}:f);
+  }
+  const allRows=[...merged.values()];
   S.liveFixtures=allRows.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
   const rows=S.liveFixtures;
-  $('liveFixtureOutput').innerHTML='<p><b>Current fixture feed:</b> '+rows.length+' fixtures found. SportyBet source: '+sportyBetRows.length+' fixtures with market prices; ESPN fallback: '+espnRows.length+' fixtures across '+(LIVE_LEAGUES.length-failed)+'/'+LIVE_LEAGUES.length+' league feeds.</p>'+(sportyBetError?'<p class="amber">SportyBet direct feed unavailable in this browser: '+esc(sportyBetError)+'. This may be a CORS/network restriction; do not treat ESPN fixtures as SportyBet odds.</p>':'')+
+  $('liveFixtureOutput').innerHTML='<p><b>Current fixture feed:</b> '+rows.length+' deduplicated fixtures found. SportyBet: '+sportyBetRows.length+' fixtures with market prices; UFI multi-provider backend: '+backendRows.length+' fixtures; ESPN: '+espnRows.length+' fixtures across '+(LIVE_LEAGUES.length-failed)+'/'+LIVE_LEAGUES.length+' league feeds.</p>'+(sportyBetError?'<p class="amber">SportyBet direct feed unavailable in this browser: '+esc(sportyBetError)+'. Do not treat other providers as SportyBet prices.</p>':'')+(backendError?'<p class="amber">UFI backend fixture feed unavailable: '+esc(backendError)+'. ESPN and SportyBet fallback feeds remain available.</p>':'')+
    (rows.length?'<div class="table-wrap"><table><thead><tr><th>Kickoff (feed timezone)</th><th>Fixture</th><th>Competition</th><th>Status</th></tr></thead><tbody>'+rows.map(f=>'<tr><td>'+esc(f.date?new Date(f.date).toLocaleString():'Not supplied')+'</td><td>'+esc(f.homeTeam+' vs '+f.awayTeam)+'</td><td>'+esc(f.competition)+'</td><td>'+esc(f.status)+'</td></tr>').join('')+'</tbody></table></div>':'<p>No fixtures returned. This may be an API/network limitation; it does not mean no matches are scheduled.</p>')+
    '<p class="amber">SportyBet odds are timestamped source prices, not guaranteed to match the price on your open slip. Market settlement rules, lineups, injuries and calibrated probabilities remain separate checks. ESPN fallback fixtures have no SportyBet prices. Use “Match slip fixtures” again after loading this feed.</p>';
   addActivity('Loaded '+rows.length+' public current/upcoming fixtures; '+failed+' league feeds failed');
