@@ -378,9 +378,9 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows){
   model,marketCount:selections.length,audit,engines,anitaResearch,400SignalAudits:audits};
 }
 function marketProbFromModel(model,selection,fixture){
- const grid=model.models?.dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles?.score_grid||[];
+ const grid=model.models?.xg_dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles?.score_grid||[];
  if(!grid.length)return null;
- const m=String(selection.market||'').toLowerCase(),pick=String(selection.selection||'').toLowerCase(),line=Number(selection.line);
+ const m=String(selection.market||'').toLowerCase(),pick=String(selection.selection||'').toLowerCase(),line=hasNumber(selection.line)?Number(selection.line):NaN;
  const sum=grid.reduce((a,x)=>a+(Number(x.p)||0),0)||1;
  let hit;
  if(m==='1x2')hit=(h,a)=>pick==='home'?h>a:pick==='away'?h<a:h===a;
