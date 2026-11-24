@@ -287,6 +287,97 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
     hard_fail=any(x["status"]=="FAIL" for x in checks)
     return checks,hard_fail
 
+def _bookie_edge_5400(prob, odds, evidence, fixture):
+    """The 5400 gate requires real timestamped prices and independent validation."""
+    required={
+        "probability":prob,"odds":odds,"uncertainty":_num(evidence.get("uncertainty")),
+        "validation_matches":_num(evidence.get("validation_matches")),
+        "snapshots":_num(evidence.get("snapshots")),
+        "no_vig_probability":_num(evidence.get("no_vig_probability")),
+        "source_updated_at":evidence.get("source_updated_at") or evidence.get("price_timestamp"),
+    }
+    missing=[k for k,v in required.items() if v is None]
+    stamp=None
+    if required["source_updated_at"]:
+        try:
+            stamp=datetime.fromisoformat(str(required["source_updated_at"]).replace("Z","+00:00"))
+            if stamp.tzinfo is None: stamp=stamp.replace(tzinfo=timezone.utc)
+        except (TypeError,ValueError): missing.append("valid_source_updated_at")
+    current=_num(evidence.get("match_second"))
+    if current is None and _norm(fixture.get("status")) in {"scheduled","upcoming","not started","fixture"}:
+        current=0.0
+    if current is None: missing.append("match_second_or_explicit_pre_match_status")
+    if missing:
+        return {"status":"NEEDS_DATA","missing":missing,"reason":"5400 gate requires probability uncertainty, >=200 independent validation matches, >=3 distinct price snapshots, no-vig market probability, fresh price timestamp and match clock."}
+    age=(datetime.now(timezone.utc)-stamp).total_seconds()
+    if age< -5: return {"status":"FAIL","reason":"Price timestamp is in the future.","price_age_seconds":age}
+    if age>15: return {"status":"FAIL","reason":"Price is older than 15 seconds.","price_age_seconds":age}
+    p=float(prob); price=float(odds); uncertainty=float(required["uncertainty"])
+    samples=float(required["validation_matches"]); snapshots=float(required["snapshots"]); market=float(required["no_vig_probability"])
+    elapsed=max(0.0,min(5400.0,float(current)))
+    time_weight=elapsed/5400.0
+    conservative=max(0.0,p-1.645*uncertainty)
+    conservative_ev=conservative*price-1.0
+    conservative_edge=conservative-market
+    margin=(p/(1.0/price))*(1.0+time_weight)
+    checks={
+        "validation_matches":samples>=200,"snapshots":snapshots>=3,"uncertainty":uncertainty<=0.08,
+        "minimum_probability":p>=0.05,"5400_margin":margin>=1.05,
+        "conservative_ev":conservative_ev>=0.03,"conservative_edge":conservative_edge>=0.01,
+    }
+    return {"status":"PASS" if all(checks.values()) else "FAIL","checks":checks,
+            "price_age_seconds":round(age,2),"conservative_probability":conservative,
+            "conservative_ev":conservative_ev,"conservative_edge":conservative_edge,
+            "margin_score":margin,"time_weight":time_weight,
+            "note":"5400 time scaling is a heuristic gate, not 5400 independent confirmations or a probability boost."}
+
+def _selection_hit(selection, h, a, fixture):
+    market=_norm(selection.get("market") or selection.get("market_type"))
+    pick=_norm(selection.get("selection") or selection.get("outcome"))
+    side=selection.get("side")
+    team=_norm(selection.get("team") or selection.get("selection_team"))
+    if side not in {"home","away"}:
+        side="home" if team==_norm(fixture.get("home")) else "away" if team==_norm(fixture.get("away")) else None
+    line=_num(selection.get("line"))
+    if market in {"1x2","match result","full time result","h2h"}:
+        return h>a if pick in {"home","home win","1"} else h<a if pick in {"away","away win","2"} else h==a
+    if market in {"dc12","double chance","double chance 12"} or pick in {"12","home or away","1x","x2"}:
+        return h!=a if pick in {"12","home or away"} else h>=a if pick=="1x" else a>=h
+    if market in {"btts","both teams to score"}: return h>0 and a>0 if pick in {"yes","btts yes"} else h==0 or a==0
+    if market in {"over under","totals","total goals","goals over under","asian total"} and line is not None:
+        return h+a>line if pick.startswith("over") else h+a<line
+    if "multigoals 1 3" in market or "multi score 1 3" in market:
+        return 1<=(h if side=="home" else a)<=3 if side in {"home","away"} else False
+    if market in {"team total","team totals","team goals"} and line is not None and side in {"home","away"}:
+        goals=h if side=="home" else a
+        return goals>line if pick.startswith("over") else goals<line
+    return None
+
+def _market_correlations(selections, grid, fixture):
+    output=[]
+    if not grid: return output
+    total=sum(max(0.0,_num(x.get("p")) or 0.0) for x in grid) or 1.0
+    for i in range(len(selections)):
+        for j in range(i+1,len(selections)):
+            a,b=selections[i],selections[j]
+            pa=pb=pab=0.0; supported=True
+            for cell in grid:
+                weight=max(0.0,_num(cell.get("p")) or 0.0)/total
+                ha=_selection_hit(a,int(cell.get("home",0)),int(cell.get("away",0)),fixture)
+                hb=_selection_hit(b,int(cell.get("home",0)),int(cell.get("away",0)),fixture)
+                if ha is None or hb is None: supported=False; break
+                if ha: pa+=weight
+                if hb: pb+=weight
+                if ha and hb: pab+=weight
+            if not supported: continue
+            denom=math.sqrt(max(0.0,pa*(1-pa)*pb*(1-pb)))
+            phi=(pab-pa*pb)/denom if denom>1e-12 else None
+            relation="mutually_exclusive" if pab<=1e-12 and pa>0 and pb>0 else "positive_association" if phi is not None and phi>0.1 else "negative_association" if phi is not None and phi< -0.1 else "compatible"
+            output.append({"selection_indices":[i,j],"selections":[a.get("selection"),b.get("selection")],
+                           "relationship":relation,"joint_probability":pab,"correlation_phi":phi,
+                           "method":"dixon_coles_score_grid","note":"Candidate-pool relationship only; do not treat alternatives as simultaneous slip legs."})
+    return output
+
 def audit_full_fixture(payload):
     if not isinstance(payload,dict): raise ValueError("JSON object required.")
     fixture=payload.get("fixture") if isinstance(payload.get("fixture"),dict) else {}
@@ -308,25 +399,27 @@ def audit_full_fixture(payload):
         ev=p*odds-1 if p is not None and odds is not None and odds>1 else None
         gates,failed=_selection_gates(selection,fixture,model,grid,selection_evidence,p)
         pirates=_pirates_layers(fixture,model,selection,p,ev,selection_evidence)
+        edge5400=_bookie_edge_5400(p,odds,selection_evidence,fixture)
         missing_layers=[x["layer"] for x in pirates if x["status"]=="NEEDS_DATA"]
         failed_layers=[x["layer"] for x in pirates if x["status"]=="FAIL"]
         gate_missing=any(x["status"]=="NEEDS_DATA" for x in gates)
-        if failed or failed_layers: decision="DITCH"
-        elif p is None or odds is None or missing_layers or gate_missing: decision="NEEDS_DATA"
+        if failed or failed_layers or edge5400["status"]=="FAIL": decision="DITCH"
+        elif p is None or odds is None or missing_layers or gate_missing or edge5400["status"]!="PASS": decision="NEEDS_DATA"
         elif ev is None or ev<=0: decision="NO_VALUE"
         else: decision="REVIEW_ONLY"
         results.append({"market":selection.get("market"),"selection":selection.get("selection"),"team":selection.get("team"),
             "bookmaker":selection.get("bookmaker"),"odds":odds,"model_probability":p,"fair_odds":(1/p if p and p>0 else None),
             "expected_value_per_unit":ev,"probability_method":method,"decision":decision,
-            "hard_gates":gates,"pirates_layers":pirates})
+            "hard_gates":gates,"bookie_edge_5400":edge5400,"pirates_layers":pirates})
     congestion=_congestion(evidence); physical=_physical_duel(evidence)
     components=_components(evidence,fixture,model,selections[0])
+    correlations=_market_correlations(selections,grid,fixture)
     return {"ok":True,"pipeline":"ufi-full-intelligence-v1","fixture":fixture,
         "model":{"status":model.get("status"),"lambda_home":(model.get("rate_estimate") or {}).get("lambdaHome"),
                  "lambda_away":(model.get("rate_estimate") or {}).get("lambdaAway"),
                  "rho":(model.get("dixon_coles") or {}).get("rho"),"score_grid_cells":len(grid),
                  "training_matches":model.get("training_matches")},
-        "congestion":congestion,"physical_duel":physical,"components_100":components,
+        "congestion":congestion,"physical_duel":physical,"components_100":components,"market_correlations":correlations,
         "selections":results,
         "summary":{"review_only":sum(x["decision"]=="REVIEW_ONLY" for x in results),
                    "ditch":sum(x["decision"]=="DITCH" for x in results),
