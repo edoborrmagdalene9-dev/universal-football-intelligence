@@ -249,21 +249,38 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
     def gate(name,passed,detail,available=True,applicable=True):
         status=("NOT_APPLICABLE" if not applicable else "NEEDS_DATA" if not available else "PASS" if passed else "FAIL")
         checks.append({"gate":name,"status":status,"detail":detail})
-    if market in {"dc12","double chance 12"} or pick in {"12","home or away"}:
+    is_dc12=market in {"dc12","double chance 12"} or pick in {"12","home or away"}
+    if is_dc12:
         draw=probability(grid,lambda h,a:h==a)
         total=(lh+la) if lh is not None and la is not None else None
-        gate("dc12_draw_probability",draw is not None and draw<=0.26,f"Dixon-Coles draw probability={draw}; maximum 0.26",draw is not None)
+        gate("dc12_model_draw_probability",draw is not None and draw<=0.26,f"Dixon-Coles P(Draw)={draw}; maximum 0.26",draw is not None)
+        draw_market=_num(evidence.get("draw_no_vig_probability"))
+        gate("dc12_no_vig_draw_probability",draw_market is not None and draw_market<=0.26,f"Same-book de-vig draw probability={draw_market}; maximum 0.26",draw_market is not None)
         gate("dc12_lambda_total",total is not None and total>2.20,f"Combined lambda={total}; must exceed 2.20",total is not None)
+        xg=(model or {}).get("xg_rate_estimate") or {}
+        combined_xg=(_num(xg.get("lambdaHome"))+_num(xg.get("lambdaAway"))) if xg.get("ok") and _num(xg.get("lambdaHome")) is not None and _num(xg.get("lambdaAway")) is not None else None
+        gate("dc12_combined_xg",combined_xg is not None and combined_xg>=2.50,f"Published xG combined lambda={combined_xg}; minimum 2.50",combined_xg is not None)
         ah=_num(evidence.get("asian_handicap_main_line"))
-        gate("dc12_asian_handicap",ah is not None and abs(ah)>0.25,f"Main AH line={ah}; 0 and ±0.25 are excluded",ah is not None)
+        gate("dc12_asian_handicap",ah is not None and abs(ah)>=0.75,f"Main AH line={ah}; must be <=-0.75 or >=+0.75",ah is not None)
         draw_odds=_num(evidence.get("draw_odds"))
-        gate("dc12_draw_price",draw_odds is not None and draw_odds>3.00,f"Draw price={draw_odds}; must exceed 3.00",draw_odds is not None)
-        under_odds=_num(evidence.get("short_under_odds"))
-        gate("dc12_short_under",under_odds is not None and under_odds>1.75,f"Short Under 2.0/2.25 price={under_odds}; if supplied must be >1.75",under_odds is not None)
+        gate("dc12_draw_price",draw_odds is not None and draw_odds>3.00,f"1X2 draw price={draw_odds}; must exceed 3.00",draw_odds is not None)
+        short_line=_num(evidence.get("short_under_line"))
+        short_prob=_num(evidence.get("short_under_no_vig_probability"))
+        short_available=short_line is not None and short_line<=2.25
+        gate("dc12_short_under_signal",short_prob is not None and short_prob<=0.50,
+             f"Under 2.0/2.25 no-vig probability={short_prob}; reject if short (>50%)",
+             short_prob is not None if short_available else bool(evidence.get("market_scan_complete")),
+             applicable=short_available or not evidence.get("market_scan_complete"))
+        supporting=_num(evidence.get("supporting_total_line"))
+        gate("dc12_over_2_50_support",supporting is not None and supporting>=2.50,
+             f"Supporting Over line={supporting}; minimum 2.50",
+             supporting is not None or bool(evidence.get("market_scan_complete")))
+        dr=_num(model.get("league_draw_rate"))
+        gate("dc12_league_draw_rate",dr is not None and dr<=0.30,f"League draw rate={dr}; maximum 0.30",dr is not None)
         biscotto=evidence.get("biscotto")
         gate("dc12_biscotto",biscotto is False,"Biscotto must be explicitly checked and absent",isinstance(biscotto,bool))
-        dr=_num(evidence.get("league_draw_rate"))
-        gate("dc12_league_draw_rate",dr is not None and dr<=0.30,f"League draw rate={dr}; maximum 0.30",dr is not None)
+        incentive=evidence.get("competitive_incentive")
+        gate("dc12_competitive_incentive",incentive is True,"Clear competitive incentive must be explicitly evidenced",isinstance(incentive,bool))
         absences=evidence.get("key_offensive_absences")
         gate("dc12_offensive_absences",absences is False,"Key offensive absences must be explicitly checked and absent",isinstance(absences,bool))
         low_block=evidence.get("low_block_congestion")
@@ -279,7 +296,9 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
         ruin=profile.get("ruin_tail") if profile else None
         gate("multi_1_3_ruin_tail",ruin is not None and ruin<0.28,f"P(0)+P(4+)={ruin}; must be <0.28",ruin is not None)
         total_line=_num(evidence.get("supporting_total_line"))
-        gate("multi_1_3_supporting_total",total_line is not None and 2.25<=total_line<=2.75,f"Supporting Asian total line={total_line}; must be Over 2.25–2.75",total_line is not None)
+        gate("multi_1_3_supporting_total",total_line is not None and 2.25<=total_line<=2.75,
+             f"Supporting Over line={total_line}; must be Over 2.25–2.75",
+             total_line is not None or bool(evidence.get("market_scan_complete")))
         personnel_a=evidence.get("primary_scorer_and_creator_both_absent")
         personnel_b=evidence.get("backup_gk_and_key_cb_out")
         personnel_ready=isinstance(personnel_a,bool) and isinstance(personnel_b,bool)
@@ -300,97 +319,6 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
         gate("under_4_5_slip_cap",count is not None and count<1,f"Existing Under 4.5 legs in slip={count}; maximum one",count is not None)
     hard_fail=any(x["status"]=="FAIL" for x in checks)
     return checks,hard_fail
-
-def _bookie_edge_5400(prob, odds, evidence, fixture):
-    """The 5400 gate requires real timestamped prices and independent validation."""
-    required={
-        "probability":prob,"odds":odds,"uncertainty":_num(evidence.get("uncertainty")),
-        "validation_matches":_num(evidence.get("validation_matches")),
-        "snapshots":_num(evidence.get("snapshots")),
-        "no_vig_probability":_num(evidence.get("no_vig_probability")),
-        "source_updated_at":evidence.get("source_updated_at") or evidence.get("price_timestamp"),
-    }
-    missing=[k for k,v in required.items() if v is None]
-    stamp=None
-    if required["source_updated_at"]:
-        try:
-            stamp=datetime.fromisoformat(str(required["source_updated_at"]).replace("Z","+00:00"))
-            if stamp.tzinfo is None: stamp=stamp.replace(tzinfo=timezone.utc)
-        except (TypeError,ValueError): missing.append("valid_source_updated_at")
-    current=_num(evidence.get("match_second"))
-    if current is None and _norm(fixture.get("status")) in {"scheduled","upcoming","not started","fixture"}:
-        current=0.0
-    if current is None: missing.append("match_second_or_explicit_pre_match_status")
-    if missing:
-        return {"status":"NEEDS_DATA","missing":missing,"reason":"5400 gate requires probability uncertainty, >=200 independent validation matches, >=3 distinct price snapshots, no-vig market probability, fresh price timestamp and match clock."}
-    age=(datetime.now(timezone.utc)-stamp).total_seconds()
-    if age< -5: return {"status":"FAIL","reason":"Price timestamp is in the future.","price_age_seconds":age}
-    if age>15: return {"status":"FAIL","reason":"Price is older than 15 seconds.","price_age_seconds":age}
-    p=float(prob); price=float(odds); uncertainty=float(required["uncertainty"])
-    samples=float(required["validation_matches"]); snapshots=float(required["snapshots"]); market=float(required["no_vig_probability"])
-    elapsed=max(0.0,min(5400.0,float(current)))
-    time_weight=elapsed/5400.0
-    conservative=max(0.0,p-1.645*uncertainty)
-    conservative_ev=conservative*price-1.0
-    conservative_edge=conservative-market
-    margin=(p/(1.0/price))*(1.0+time_weight)
-    checks={
-        "validation_matches":samples>=200,"snapshots":snapshots>=3,"uncertainty":uncertainty<=0.08,
-        "minimum_probability":p>=0.05,"5400_margin":margin>=1.05,
-        "conservative_ev":conservative_ev>=0.03,"conservative_edge":conservative_edge>=0.01,
-    }
-    return {"status":"PASS" if all(checks.values()) else "FAIL","checks":checks,
-            "price_age_seconds":round(age,2),"conservative_probability":conservative,
-            "conservative_ev":conservative_ev,"conservative_edge":conservative_edge,
-            "margin_score":margin,"time_weight":time_weight,
-            "note":"5400 time scaling is a heuristic gate, not 5400 independent confirmations or a probability boost."}
-
-def _selection_hit(selection, h, a, fixture):
-    market=_norm(selection.get("market") or selection.get("market_type"))
-    pick=_norm(selection.get("selection") or selection.get("outcome"))
-    side=selection.get("side")
-    team=_norm(selection.get("team") or selection.get("selection_team"))
-    if side not in {"home","away"}:
-        side="home" if team==_norm(fixture.get("home")) else "away" if team==_norm(fixture.get("away")) else None
-    line=_num(selection.get("line"))
-    if market in {"1x2","match result","full time result","h2h"}:
-        return h>a if pick in {"home","home win","1"} else h<a if pick in {"away","away win","2"} else h==a
-    if market in {"dc12","double chance","double chance 12"} or pick in {"12","home or away","1x","x2"}:
-        return h!=a if pick in {"12","home or away"} else h>=a if pick=="1x" else a>=h
-    if market in {"btts","both teams to score"}: return h>0 and a>0 if pick in {"yes","btts yes"} else h==0 or a==0
-    if market in {"over under","totals","total goals","goals over under","asian total"} and line is not None:
-        return h+a>line if pick.startswith("over") else h+a<line
-    if "multigoals 1 3" in market or "multi score 1 3" in market:
-        return 1<=(h if side=="home" else a)<=3 if side in {"home","away"} else False
-    if market in {"team total","team totals","team goals"} and line is not None and side in {"home","away"}:
-        goals=h if side=="home" else a
-        return goals>line if pick.startswith("over") else goals<line
-    return None
-
-def _market_correlations(selections, grid, fixture):
-    output=[]
-    if not grid: return output
-    total=sum(max(0.0,_num(x.get("p")) or 0.0) for x in grid) or 1.0
-    for i in range(len(selections)):
-        for j in range(i+1,len(selections)):
-            a,b=selections[i],selections[j]
-            pa=pb=pab=0.0; supported=True
-            for cell in grid:
-                weight=max(0.0,_num(cell.get("p")) or 0.0)/total
-                ha=_selection_hit(a,int(cell.get("home",0)),int(cell.get("away",0)),fixture)
-                hb=_selection_hit(b,int(cell.get("home",0)),int(cell.get("away",0)),fixture)
-                if ha is None or hb is None: supported=False; break
-                if ha: pa+=weight
-                if hb: pb+=weight
-                if ha and hb: pab+=weight
-            if not supported: continue
-            denom=math.sqrt(max(0.0,pa*(1-pa)*pb*(1-pb)))
-            phi=(pab-pa*pb)/denom if denom>1e-12 else None
-            relation="mutually_exclusive" if pab<=1e-12 and pa>0 and pb>0 else "positive_association" if phi is not None and phi>0.1 else "negative_association" if phi is not None and phi< -0.1 else "compatible"
-            output.append({"selection_indices":[i,j],"selections":[a.get("selection"),b.get("selection")],
-                           "relationship":relation,"joint_probability":pab,"correlation_phi":phi,
-                           "method":"dixon_coles_score_grid","note":"Candidate-pool relationship only; do not treat alternatives as simultaneous slip legs."})
-    return output
 
 def audit_full_fixture(payload):
     if not isinstance(payload,dict): raise ValueError("JSON object required.")
