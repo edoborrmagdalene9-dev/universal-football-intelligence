@@ -62,6 +62,52 @@ function runCraineeSuite(input){
  else out.subconscious=need('NEEDS_DATA','Requires source-backed DEF/MID/ATT squad height, composure, foot skill and style-fit values. No defaults are injected.');
  return out;
 }
+const playerProfileCache=new Map();
+async function buildSportmonksEvidence(fixture,backend,enabled){
+ const base={};
+ if(!enabled)return {status:'NEEDS_DATA',reason:'Sportmonks player profile endpoint is not configured.'};
+ if(fixture.lineupsConfirmed!==true)return {status:'NEEDS_DATA',reason:'Provider lineups are not explicitly marked confirmed; no starting XI is assumed.'};
+ if(!Array.isArray(fixture.lineups)||!Array.isArray(fixture.participants))return {status:'NEEDS_DATA',reason:'Confirmed lineups or participant identity mapping are missing.'};
+ const sides=new Map();
+ for(const p of fixture.participants){const side=String(p?.meta?.location||'').toLowerCase();if(p?.id&&['home','away'].includes(side))sides.set(String(p.id),side);}
+ const starters=fixture.lineups.filter(row=>{
+  const t=String(row?.type?.name||row?.type?.developer_name||row?.type_name||'').toLowerCase();
+  return row?.is_starting===true||row?.starting===true||t.includes('starting xi')||t.includes('starting lineup');
+ });
+ const grouped={home:[],away:[]};
+ for(const row of starters){
+  const side=sides.get(String(row.team_id||row.participant_id||''));const id=row.player_id||row.player?.id;
+  if(side&&id&&/^\\d+$/.test(String(id)))grouped[side].push({id:String(id),lineup:row});
+ }
+ if(grouped.home.length<11||grouped.away.length<11)return {status:'NEEDS_DATA',reason:'Sportmonks did not provide 11 explicitly identified starters for both teams.',counts:{home:grouped.home.length,away:grouped.away.length}};
+ async function profile(id){
+  if(playerProfileCache.has(id))return playerProfileCache.get(id);
+  const promise=getJSON(backend+'/api/player?id='+encodeURIComponent(id)).then(x=>{
+   const p=x.data?.data||x.data||{};
+   return {id,name:p.name||p.display_name||null,height_cm:Number.isFinite(Number(p.height))?Number(p.height):null,
+    position:p.detailed_position?.name||p.position?.name||null,source:'Sportmonks player profile',fetched_at:x.fetchedAt||null};
+  });
+  playerProfileCache.set(id,promise);
+  try{return await promise}catch(e){playerProfileCache.delete(id);throw e;}
+ }
+ async function allProfiles(rows){
+  const out=[];let i=0;
+  async function worker(){while(i<rows.length){const row=rows[i++];try{const p=await profile(row.id);out.push({...p,position:p.position||row.lineup.position?.name||row.lineup.position_name||null});}catch(e){out.push({id:row.id,height_cm:null,source_error:e.message});}}}
+  await Promise.all(Array.from({length:4},worker));return out;
+ }
+ const [homePlayers,awayPlayers]=await Promise.all([allProfiles(grouped.home),allProfiles(grouped.away)]);
+ const formations=Array.isArray(fixture.formations)?fixture.formations:[];
+ const formFor=side=>{
+  const participant=fixture.participants.find(p=>String(p?.meta?.location||'').toLowerCase()===side);
+  const row=formations.find(x=>String(x.participant_id||x.team_id||'')===String(participant?.id||''));
+  return row?.formation?.name||row?.formation_name||row?.formation||null;
+ };
+ const fh=formFor('home'),fa=formFor('away');
+ return {status:'FETCHED',home_players:homePlayers,away_players:awayPlayers,formation_home:fh,formation_away:fa,
+  lineups_confirmed:true,lineups_source:'Sportmonks',player_profile_count:homePlayers.length+awayPlayers.length,
+  height_coverage:{home:homePlayers.filter(x=>finite(x.height_cm)).length,away:awayPlayers.filter(x=>finite(x.height_cm)).length},
+  note:'Only explicitly flagged starting-XI rows were enriched. Missing player heights and jump metrics remain unknown.'};
+}
 function run400Audit(fixture,selection,prob){
  if(!root.UFI400Audit||typeof root.UFI400Audit.evaluate!=='function')return need('NEEDS_DATA','UFI400Audit browser module is not loaded.');
  const row={label:String(selection.selection||selection.market||''),odd:selection.odds,
@@ -154,7 +200,7 @@ function marketSelections(fixture){
  }
  return found;
 }
-async function runFixture(fixture,backend){
+async function runFixture(fixture,backend,playerProfilesEnabled){
  const home=fixture.homeTeam||fixture.home,away=fixture.awayTeam||fixture.away;
  const kickoff=fixture.kickoff||fixture.commence_time||fixture.starting_at||null;
  const sport=fixture.sport||fixture.sport_key||'';
@@ -178,6 +224,13 @@ async function runFixture(fixture,backend){
   anitaResearch=await getJSON(backend+'/api/ai/research-fixture?'+rq.toString());
  }catch(e){anitaResearch={status:'NEEDS_DATA',reason:e.message,verified:false};}
  const evidence={...(fixture.evidence||{})};
+ const physicalEvidence=await buildSportmonksEvidence(fixture,backend,playerProfilesEnabled);
+ if(physicalEvidence.status==='FETCHED'){
+  evidence.home_players=physicalEvidence.home_players;
+  evidence.away_players=physicalEvidence.away_players;
+  evidence.formation_home=physicalEvidence.formation_home;
+  evidence.formation_away=physicalEvidence.formation_away;
+ }
  // Only lift fields already present in the provider record; no inferred lineup or player attributes.
  if(Array.isArray(fixture.lineups)){
   const rows=fixture.lineups.map(x=>x&&typeof x==='object'?x:null).filter(Boolean);
@@ -207,7 +260,7 @@ async function runFixture(fixture,backend){
   catch(e){audit={ok:false,error:e.message};}
  }else audit={ok:false,reason:'No bookmaker markets with decimal prices were returned for this fixture.'};
  const audits=selections.map(s=>({selection:s,registry:run400Audit(fixtureInfo,s,marketProbFromModel(model,s,fixtureInfo)),calculator:runCalculator([s])}));
- return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},modelStatus:model.status,modelReason:model.reason||null,
+ return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},playerProfileEvidence:physicalEvidence,modelStatus:model.status,modelReason:model.reason||null,
   model,marketCount:selections.length,audit,engines,anitaResearch,400SignalAudits:audits};
 }
 function marketProbFromModel(model,selection,fixture){
@@ -272,8 +325,10 @@ async function scan(options={}){
  const payload={...firstPayload,source:'multi-provider-catalogue-scan',sources:[...sources],
   providerRecordCounts,providerWarnings:warnings,requestedSports:[...new Set(requestedSports)],data:[...deduped.values()]};
  const fixtures=rowsFrom(payload).slice(0,Math.min(100,Number(options.maxFixtures)||40));
+ let playerProfilesEnabled=false;
+ try{const status=await getJSON(backend+'/api/providers/status');playerProfilesEnabled=!!status.providers?.sportmonks?.configured;}catch(_){}
  const results=[];let cursor=0;
- async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
+ async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend,playerProfilesEnabled);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
  await Promise.all(Array.from({length:Math.min(3,fixtures.length)},worker));
  return {ok:true,source:payload.source,sources:payload.sources,providerRecordCounts:payload.providerRecordCounts,
   providerWarnings:payload.providerWarnings||[],marketFallback,requestedSports:payload.requestedSports||sports,
