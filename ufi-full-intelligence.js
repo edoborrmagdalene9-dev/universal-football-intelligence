@@ -301,24 +301,41 @@ function marketSelections(fixture){
  }
  const found=[...best.values()].map(({_group,...x})=>x);
  const drawPick=found.find(x=>x.market==='1X2'&&x.selection==='Draw');
- const dcNoVigByBook=[];
+ const dcNoVigByBook=[],drawNoVigByBook=[],shortUnderProbByBook=[];
  for(const book of books){
-  const h2h=(Array.isArray(book.markets)?book.markets:[]).find(m=>['h2h','h2h_3_way','moneyline'].includes(String(m.key||'').toLowerCase()));
+  const marketsForBook=Array.isArray(book.markets)?book.markets:[];
+  const h2h=marketsForBook.find(m=>['h2h','h2h_3_way','moneyline'].includes(String(m.key||'').toLowerCase()));
   const outcomes=Array.isArray(h2h?.outcomes)?h2h.outcomes:[];
   const prices={};
   for(const o of outcomes){const label=mapOutcome(o.name,fixture.homeTeam||fixture.home,fixture.awayTeam||fixture.away);const price=Number(o.price);if(Number.isFinite(price)&&price>1)prices[label]=price;}
   if(hasNumber(prices.Home)&&hasNumber(prices.Draw)&&hasNumber(prices.Away)){
    const sum=1/prices.Home+1/prices.Draw+1/prices.Away;
-   if(sum>0)dcNoVigByBook.push((1/prices.Home+1/prices.Away)/sum);
+   if(sum>0){dcNoVigByBook.push((1/prices.Home+1/prices.Away)/sum);drawNoVigByBook.push((1/prices.Draw)/sum);}
+  }
+  const totals=marketsForBook.filter(m=>['totals','alternate_totals','over_under'].includes(String(m.key||'').toLowerCase()));
+  for(const total of totals){
+   const groups=new Map();
+   for(const o of (Array.isArray(total.outcomes)?total.outcomes:[])){
+    const line=hasNumber(o.point)?Number(o.point):null;if(line===null||line>2.25)continue;
+    const label=String(o.name||'').toLowerCase(),price=Number(o.price);
+    if(!Number.isFinite(price)||price<=1)continue;
+    const group=groups.get(line)||{};if(label.includes('under'))group.under=price;if(label.includes('over'))group.over=price;groups.set(line,group);
+   }
+   for(const group of groups.values())if(hasNumber(group.under)&&hasNumber(group.over)){
+    const sum=1/group.under+1/group.over;if(sum>0)shortUnderProbByBook.push((1/group.under)/sum);
+   }
   }
  }
  const dcNoVig=dcNoVigByBook.length?dcNoVigByBook.reduce((a,b)=>a+b,0)/dcNoVigByBook.length:null;
+ const drawNoVig=drawNoVigByBook.length?drawNoVigByBook.reduce((a,b)=>a+b,0)/drawNoVigByBook.length:null;
+ const shortUnderNoVig=shortUnderProbByBook.length?shortUnderProbByBook.reduce((a,b)=>a+b,0)/shortUnderProbByBook.length:null;
  const ah=found.find(x=>x.market==='Asian Handicap'&&x.evidence?.market_key==='spreads'&&hasNumber(x.line));
  const shortUnder=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('under')&&hasNumber(x.line)&&Number(x.line)<=2.25).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
  const supportingOver=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('over')&&hasNumber(x.line)&&Number(x.line)>=2.25&&Number(x.line)<=2.75).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
- const dcEvidence={market_key:'derived_from_score_grid_only',no_vig_probability:dcNoVig,
+ const dcEvidence={market_key:'derived_from_score_grid_only',no_vig_probability:dcNoVig,draw_no_vig_probability:drawNoVig,
   draw_odds:drawPick?.odds??null,asian_handicap_main_line:hasNumber(ah?.line)?Math.abs(Number(ah.line)):null,
-  short_under_odds:shortUnder?.odds??null};
+  short_under_odds:shortUnder?.odds??null,short_under_line:hasNumber(shortUnder?.line)?Number(shortUnder.line):null,
+  short_under_no_vig_probability:shortUnderNoVig,supporting_total_line:hasNumber(supportingOver?.line)?Number(supportingOver.line):null};
  const dcPick=found.find(x=>(String(x.market).toLowerCase()==='double chance'&&String(x.selection).toUpperCase()==='12')||String(x.market).toLowerCase()==='dc12');
  if(dcPick)dcPick.evidence={...(dcPick.evidence||{}),...dcEvidence};
  else found.push({market:'DC12',selection:'12',odds:null,bookmaker:null,evidence:dcEvidence});
@@ -333,7 +350,7 @@ function marketSelections(fixture){
  }
  return found;
 }
-async function runFixture(fixture,backend,playerProfilesEnabled,historyRows){
+async function runFixture(fixture,backend,playerProfilesEnabled,historyRows,marketScanComplete){
  const home=fixture.homeTeam||fixture.home,away=fixture.away;
  const kickoff=fixture.kickoff||fixture.commence_time||fixture.starting_at||null;
  const sport=fixture.sport||fixture.sport_key||'';
@@ -361,7 +378,7 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows){
   const rq=new URLSearchParams({home,away,competition:fixtureInfo.competition||'',date:String(kickoff||'').slice(0,10)});
   anitaResearch=await getJSON(backend+'/api/ai/research-fixture?'+rq.toString());
  }catch(e){anitaResearch={status:'NEEDS_DATA',reason:e.message,verified:false};}
- const evidence={...(fixture.evidence||{})};
+ const evidence={...(fixture.evidence||{}),market_scan_complete:marketScanComplete===true};
  const scheduleEvidence=buildScheduleEvidence(fixture,historyRows);
  Object.assign(evidence,scheduleEvidence);
  const [physicalEvidence,weatherEvidence]=await Promise.all([
@@ -520,7 +537,7 @@ async function scan(options={}){
   }
  }catch(e){historyError=e.message;}
  const results=[];let cursor=0;
- async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend,playerProfilesEnabled,historyRows);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
+ async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend,playerProfilesEnabled,historyRows,!marketFallback);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
  await Promise.all(Array.from({length:Math.min(3,fixtures.length)},worker));
  return {ok:true,source:payload.source,sources:payload.sources,providerRecordCounts:payload.providerRecordCounts,
   providerWarnings:[...(payload.providerWarnings||[]),...(historyError?["Sportmonks schedule enrichment: "+historyError]:[])],marketFallback,requestedSports:payload.requestedSports||sports,
