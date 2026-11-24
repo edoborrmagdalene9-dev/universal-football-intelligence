@@ -218,8 +218,10 @@ def predict_fixture(rows,home,away,cutoff_date=None,include_backtest=True):
             "xg_poisson":{"top_scores":top(xg_independent),"one_x_two":_outcome_probs(xg_independent),"score_grid":xg_independent},
             "xg_dixon_coles":{"top_scores":top(xg_dc),"one_x_two":_outcome_probs(xg_dc),"score_grid":xg_dc},
             "xg_dixon_coles_rho_minus_0_10":{"rho":fixed_rho,"top_scores":top(xg_dc_fixed),"one_x_two":_outcome_probs(xg_dc_fixed),"score_grid":xg_dc_fixed}})
+    league_draw_rate=(sum(1 for row in prior if row["home_goals"]==row["away_goals"])/len(prior)) if prior else None
     return {"status":"model_output","fixture":{"home":home,"away":away,"cutoff_date":cutoff_date},
-            "training_matches":len(prior),"rate_estimate":rates,"xg_rate_estimate":xg_rates,"dixon_coles":rho,
+            "training_matches":len(prior),"league_draw_rate":league_draw_rate,
+            "rate_estimate":rates,"xg_rate_estimate":xg_rates,"dixon_coles":rho,
             "models":models,
             "historical_backtest":(chronological_backtest(prior) if include_backtest else {"status":"not_run_for_latency","reason":"Chronological holdout backtesting is available on request but is skipped for interactive prediction latency."}),
             "market_gate":"WAIT","market_gate_reason":"Exact-score odds, de-vigged market probabilities, calibrated EV and live confirmation have not been checked by this endpoint.",
