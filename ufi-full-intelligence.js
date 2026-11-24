@@ -19,7 +19,7 @@ const LEAGUES={
 };
 const byId=id=>typeof document!=='undefined'?document.getElementById(id):null;
 function has(v){return v!==undefined&&v!==null&&v!=='';}
-function finite(v){return typeof v==='number'&&Number.isFinite(v);}
+function finite(v){return typeof v==='number'&&Number.isFinite(v);}\nfunction hasNumber(v){return v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));}
 function need(status,reason){return {status:status||'NEEDS_DATA',reason};}
 function runCraineeSuite(input){
  const out={},ev=input||{};
@@ -72,7 +72,7 @@ function normalizeSportmonksRows(payload){
   for(const p of participants){const side=String(p?.meta?.location||'').toLowerCase();if(side==='home')home=p.name||p.short_code||null;if(side==='away')away=p.name||p.short_code||null;}
   const venue=x.venue||{};
   return {home,away,kickoff:x.starting_at||null,ending:x.ending_at||x.finished_at||null,
-   venue:{lat:Number(venue.latitude),lon:Number(venue.longitude)},raw:x};
+   venue:{lat:hasNumber(venue.latitude)?Number(venue.latitude):NaN,lon:hasNumber(venue.longitude)?Number(venue.longitude):NaN},raw:x};
  }).filter(x=>x.home&&x.away&&x.kickoff);
 }
 function distanceKm(a,b){
@@ -84,7 +84,7 @@ function distanceKm(a,b){
 function buildScheduleEvidence(fixture,historyRows){
  const kickoff=Date.parse(fixture.kickoff||fixture.commence_time||'');
  if(!Number.isFinite(kickoff)||!Array.isArray(historyRows))return {};
- const upcomingVenue={lat:Number(fixture.venue?.latitude),lon:Number(fixture.venue?.longitude)};
+ const upcomingVenue={lat:hasNumber(fixture.venue?.latitude)?Number(fixture.venue.latitude):NaN,lon:hasNumber(fixture.venue?.longitude)?Number(fixture.venue.longitude):NaN};
  function teamSchedule(team){
   const past=historyRows.filter(row=>{
    const isTeam=String(row.home).toLowerCase()===String(team).toLowerCase()||String(row.away).toLowerCase()===String(team).toLowerCase();
@@ -133,9 +133,9 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(fixtureStamp)put('source_freshness','FETCHED',fixtureSource,fixtureStamp);
  if(selection.market)put('market_identity',finite(Number(selection.odds))?'ASSESSED':'ESTIMATED',finite(Number(selection.odds))?marketSource:'UFI model-derived candidate',finite(Number(selection.odds))?marketStamp:modelStamp);
  if(selection.selection)put('selection_identity','ASSESSED',marketSource,marketStamp);
- if(finite(Number(selection.odds)))put('decimal_price','FETCHED',marketSource,marketStamp);
+ if(hasNumber(selection.odds))put('decimal_price','FETCHED',marketSource,marketStamp);
  if(selection.bookmaker)put('bookmaker_identity','FETCHED',marketSource,marketStamp);
- if(selection.line!==null&&selection.line!==undefined)put('market_line','FETCHED',marketSource,marketStamp);
+ if(hasNumber(selection.line))put('market_line','FETCHED',marketSource,marketStamp);
  if(selection.evidence?.price_timestamp)put('price_timestamp','FETCHED',marketSource,selection.evidence.price_timestamp);
  if(model.training_matches)put('historical_sample','FETCHED',modelSource,modelStamp);
  if(model.rate_estimate?.ok&&finite(model.rate_estimate.lambdaHome))put('home_lambda','ASSESSED',modelSource,modelStamp);
@@ -153,9 +153,9 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(physical?.formation_away)put('away_formation','FETCHED','Sportmonks formations',fixtureStamp);
  if(evidence?.weather?.source){
   put('weather_source','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
-  if(finite(Number(evidence.weather.wind_mph)))put('wind_speed','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
-  if(finite(Number(evidence.weather.temperature_c)))put('temperature','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
-  if(finite(Number(evidence.weather.humidity_pct)))put('humidity','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+  if(hasNumber(evidence.weather.wind_mph))put('wind_speed','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+  if(hasNumber(evidence.weather.temperature_c))put('temperature','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+  if(hasNumber(evidence.weather.humidity_pct))put('humidity','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
  }
  if(evidence?.referee_assignment?.source)put('referee_assignment','FETCHED',evidence.referee_assignment.source,evidence.referee_assignment.fetched_at||fixtureStamp);
  for(const side of ['home','away']){
@@ -164,8 +164,8 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
    put(side+'_last_fixture','FETCHED',schedule.source||'Sportmonks fixtures range',schedule.fetched_at||fixtureStamp);
    put(side+'_games_14d','FETCHED',schedule.source||'Sportmonks fixtures range',schedule.fetched_at||fixtureStamp);
   }
-  if(finite(Number(schedule?.rest_hours)))put(side+'_rest_hours','ASSESSED',schedule.source||'Sportmonks fixture end timestamps',schedule.fetched_at||fixtureStamp);
-  if(finite(Number(schedule?.travel_distance_km)))put('travel_distance','ESTIMATED',schedule.source||'Sportmonks venue coordinates',schedule.fetched_at||fixtureStamp);
+  if(hasNumber(schedule?.rest_hours))put(side+'_rest_hours','ASSESSED',schedule.source||'Sportmonks fixture end timestamps',schedule.fetched_at||fixtureStamp);
+  if(hasNumber(schedule?.travel_distance_km))put('travel_distance','ESTIMATED',schedule.source||'Sportmonks venue coordinates',schedule.fetched_at||fixtureStamp);
   if(schedule?.extra_time_last_match===true||schedule?.extra_time_last_match===false)put('extra_time_load','FETCHED',schedule.source||'Sportmonks fixture state',schedule.fetched_at||fixtureStamp);
  }
  evidence.component_evidence=out;
@@ -192,7 +192,7 @@ async function buildSportmonksEvidence(fixture,backend,enabled){
   if(playerProfileCache.has(id))return playerProfileCache.get(id);
   const promise=getJSON(backend+'/api/player?id='+encodeURIComponent(id)).then(x=>{
    const p=x.data?.data||x.data||{};
-   return {id,name:p.name||p.display_name||null,height_cm:Number.isFinite(Number(p.height))?Number(p.height):null,
+   return {id,name:p.name||p.display_name||null,height_cm:hasNumber(p.height)?Number(p.height):null,
     position:p.detailed_position?.name||p.position?.name||null,source:'Sportmonks player profile',fetched_at:x.fetchedAt||null};
   });
   playerProfileCache.set(id,promise);
@@ -279,7 +279,7 @@ function marketSelections(fixture){
     sums.set(group,(sums.get(group)||0)+(1/x.price));
    }
    for(const {o,price} of priced){
-    const point=o.point===undefined?null:Number(o.point);
+    const point=!hasNumber(o.point)?null:Number(o.point);
     const rawName=o.name||o.label||o.description||'';
     let marketName=key,selection=mapOutcome(rawName,fixture.homeTeam||fixture.home,fixture.awayTeam||fixture.away),team=o.description||null,side=null,line=Number.isFinite(point)?point:null;
     if(key==='h2h'||key==='h2h_3_way'||key==='moneyline'){marketName='1X2';selection=mapOutcome(rawName,fixture.homeTeam||fixture.home,fixture.awayTeam||fixture.away);}
