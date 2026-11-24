@@ -39,6 +39,19 @@ class NormalizedProviderAggregationTests(unittest.TestCase):
         self.assertEqual(merged["sources"]["fixture"],"SportsGameOdds")
         self.assertEqual(merged["sources"]["odds"],"The Odds API")
 
+    def test_odds_api_unwraps_json_and_captures_quota_headers(self):
+        payload=[{"id":"evt-1","home_team":"Home","away_team":"Away",
+                  "commence_time":"2026-11-25T19:00:00Z","sport_key":"soccer_epl",
+                  "sport_title":"EPL","bookmakers":[]}]
+        headers={"X-Requests-Remaining":"498","X-Requests-Used":"2","X-Requests-Last":"1"}
+        with patch.dict(os.environ,{"THE_ODDS_API_KEY":"test"},clear=False), \
+             patch.object(adapters,"_get_json",return_value=(payload,headers)), \
+             patch.object(adapters,"_cached",side_effect=lambda key,ttl,fn:(fn(),False)):
+            result=adapters._odds_api("soccer_epl",{"regions":["uk"],"markets":["h2h"]})
+        self.assertEqual(result["data"],payload)
+        self.assertEqual(result["quota"]["remaining"],498)
+        self.assertEqual(result["quota"]["used"],2)
+
     def test_sportmonks_health_probe_checks_api_catalog_without_exposing_token(self):
         with patch.dict(os.environ,{"SPORTMONKS_API_TOKEN":"private-test-token"},clear=False), \
              patch.object(adapters,"_get_json",return_value=({"data":[{"id":1}]},{})) as request:
