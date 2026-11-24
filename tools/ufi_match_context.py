@@ -78,7 +78,7 @@ def normalize_sportmonks_fixture(fixture, fetched_at=None):
         "status":{"started":state.get("started"),"ended":state.get("ended"),"finalized":state.get("finished"),
                   "state":_first(state.get("state"),state.get("name"),state.get("short_name"))},
         "score":fixture.get("scores"),"events":fixture.get("events"),"lineups":fixture.get("lineups"),
-        "statistics":fixture.get("statistics"),"referees":fixture.get("referees"),"venue":venue,\n        "formations":fixture.get("formations"),"participants":participants,
+        "statistics":fixture.get("statistics"),"referees":fixture.get("referees"),"venue":venue,\n        "formations":fixture.get("formations"),"participants":participants,\n        "lineupsConfirmed":fixture.get("lineups_confirmed") if isinstance(fixture.get("lineups_confirmed"),bool) else None,
         "odds":None,"sources":{"fixture":"Sportmonks","odds":None},
         "timestamps":{"providerUpdatedAt":fixture.get("updated_at"),"fetchedAt":fetched_at},
         "quality":{"missingRequiredFields":missing,"hasScore":fixture.get("scores") is not None,
