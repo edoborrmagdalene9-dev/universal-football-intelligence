@@ -460,7 +460,7 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows,mark
  }else audit={ok:false,reason:'No bookmaker markets with decimal prices were returned for this fixture.'};
  const audits=selections.map(s=>({selection:s,registry:run400Audit(fixtureInfo,s,marketProbFromModel(model,s,fixtureInfo)),calculator:runCalculator([s])}));
  return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},playerProfileEvidence:physicalEvidence,espnEnrichment,weatherEvidence,scheduleEvidence,modelStatus:model.status,modelReason:model.reason||null,
-  model,marketCount:selections.length,audit,engines,anitaResearch,400SignalAudits:audits};
+  model,marketCount:selections.length,audit,engines,anitaResearch,"400SignalAudits":audits};
 }
 function marketProbFromModel(model,selection,fixture){
  const grid=model.models?.xg_dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles?.score_grid||[];
