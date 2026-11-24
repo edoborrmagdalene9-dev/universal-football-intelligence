@@ -139,6 +139,27 @@ def _integrated_get_payload(route, query):
             return generate_score_prediction(query), False
         except ValueError as exc:
             raise legacy.ProviderError(str(exc)) from exc
+    if route == "/api/espn/leagues":
+        try:
+            try:
+                from . import ufi_espn_provider as espn
+            except ImportError:
+                import ufi_espn_provider as espn
+            return espn.leagues(),False
+        except Exception as exc:
+            return {"status":"NEEDS_DATA","source":"ESPN","reason":str(exc)},False
+    if route == "/api/espn/enrich":
+        try:
+            try:
+                from . import ufi_espn_provider as espn
+            except ImportError:
+                import ufi_espn_provider as espn
+            def q(name,default=""):
+                value=query.get(name,[default])
+                return value[0] if isinstance(value,list) else value
+            return espn.enrich_fixture(q("sport"),q("league") or None,q("home"),q("away"),q("kickoff")),False
+        except Exception as exc:
+            return {"status":"NEEDS_DATA","source":"ESPN","reason":str(exc)},False
     try:
         extra=adapters.handle_extra_route(route,query)
         if extra is not None:
