@@ -96,6 +96,149 @@ def market_probability(grid, selection):
         return probability(grid,lambda h,a:h+a<ln),"dixon_coles_score_grid"
     return None,"market_not_supported_by_score_grid_adapter"
 
+def _selection_hit(selection, home_goals, away_goals, fixture):
+    market=_norm(selection.get("market") or selection.get("market_type"))
+    pick=_norm(selection.get("selection") or selection.get("outcome"))
+    team=_norm(selection.get("team") or selection.get("selection_team"))
+    side=selection.get("side")
+    if side not in {"home","away"}:
+        side="home" if team and team==_norm(fixture.get("home")) else "away" if team and team==_norm(fixture.get("away")) else None
+    line=_num(selection.get("line"))
+    if market in {"1x2","match result","full time result","h2h","moneyline"}:
+        if pick in {"home","home win","1"}:return home_goals>away_goals
+        if pick in {"draw","x"}:return home_goals==away_goals
+        if pick in {"away","away win","2"}:return home_goals<away_goals
+    if market in {"double chance","double chance 12","dc12"} or pick in {"12","1x","x2","home or away"}:
+        choice="12" if pick in {"12","home or away"} or market in {"double chance 12","dc12"} else pick
+        if choice=="12":return home_goals!=away_goals
+        if choice=="1x":return home_goals>=away_goals
+        if choice=="x2":return away_goals>=home_goals
+    if market in {"btts","both teams to score"}:
+        yes=pick in {"yes","btts yes"} or "yes" in pick
+        return (home_goals>0 and away_goals>0) if yes else (home_goals==0 or away_goals==0)
+    if market in {"over under","totals","total goals","goals over under","asian total"} and line is not None:
+        # Half-goal totals are binary. Whole/quarter Asian totals need settlement handling and are not simplified.
+        if abs(line-round(line))<1e-9 or abs(line*2-round(line*2))>1e-9:return None
+        over=pick.startswith("over")
+        return (home_goals+away_goals>line) if over else (home_goals+away_goals<line)
+    if market in {"team total","team totals","team goals","team over under","multigoals 1 3","multi score 1 3","team multigoals 1 3"} and side in {"home","away"}:
+        goals=home_goals if side=="home" else away_goals
+        if "1 3" in market or "multi" in market:return 1<=goals<=3
+        if line is not None:
+            if abs(line-round(line))<1e-9 or abs(line*2-round(line*2))>1e-9:return None
+            return goals>line if pick.startswith("over") else goals<line
+    if market in {"asian handicap","handicap","spreads"} and side in {"home","away"} and line is not None:
+        if abs(line-round(line))<1e-9 or abs(line*2-round(line*2))>1e-9:return None
+        adjusted=(home_goals+line>away_goals) if side=="home" else (away_goals+line>home_goals)
+        return adjusted
+    if market in {"correct score","exact score"}:
+        match=re.search(r"(\d+)\s*[-:]\s*(\d+)",str(selection.get("selection") or ""))
+        if match:return home_goals==int(match.group(1)) and away_goals==int(match.group(2))
+    if pick in {"under 3 5","under 4 5"}:
+        threshold=3.5 if pick=="under 3 5" else 4.5
+        return home_goals+away_goals<threshold
+    return None
+
+def _model_probability_uncertainty(model, selection, p):
+    models=(model or {}).get("models") or {}
+    names=("independent_poisson","dixon_coles","dixon_coles_rho_minus_0_10",
+           "xg_poisson","xg_dixon_coles","xg_dixon_coles_rho_minus_0_10")
+    values=[]
+    for name in names:
+        grid=(models.get(name) or {}).get("score_grid") or []
+        q,_=market_probability(grid,selection)
+        if q is not None:values.append(q)
+    backtest=(model or {}).get("historical_backtest") or {}
+    n=_num(backtest.get("evaluated_matches"))
+    if len(values)<2 or n is None or n<=0 or p is None:return None,{"model_probabilities":values,"validation_matches":n}
+    mean=sum(values)/len(values)
+    ensemble=math.sqrt(sum((x-mean)**2 for x in values)/len(values))
+    sampling=math.sqrt(max(0.0,p*(1-p))/n)
+    return max(ensemble,sampling),{"model_probabilities":values,"ensemble_standard_deviation":ensemble,
+        "binomial_sampling_standard_error":sampling,"validation_matches":n,
+        "method":"Maximum of score-grid model ensemble dispersion and binomial sampling standard error."}
+
+def _parse_timestamp(value):
+    if isinstance(value,(int,float)):
+        try:return datetime.fromtimestamp(float(value),tz=timezone.utc)
+        except (ValueError,OverflowError,OSError):return None
+    if isinstance(value,str) and value.strip():
+        try:
+            dt=datetime.fromisoformat(value.strip().replace("Z","+00:00"))
+            return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+        except ValueError:return None
+    return None
+
+def _bookie_edge_5400(p, odds, evidence, fixture):
+    evidence=evidence if isinstance(evidence,dict) else {}
+    market=_num(evidence.get("no_vig_probability"))
+    uncertainty=_num(evidence.get("uncertainty"))
+    samples=_num(evidence.get("validation_matches"))
+    snapshots=_num(evidence.get("snapshots"))
+    stamp=_parse_timestamp(evidence.get("source_updated_at") or evidence.get("price_timestamp"))
+    missing=[]
+    if odds is None or odds<=1:missing.append("Fetched decimal odds are missing or invalid.")
+    if p is None or not 0<p<1:missing.append("Model probability is missing or invalid.")
+    if market is None or not 0<=market<=1:missing.append("Complete same-market no-vig probability is missing.")
+    if uncertainty is None or not 0<=uncertainty<=1:missing.append("Model uncertainty estimate is missing.")
+    if samples is None:missing.append("Independent chronological validation-match count is missing.")
+    if snapshots is None:missing.append("Distinct timestamped bookmaker snapshot count is missing.")
+    if stamp is None:missing.append("Provider-supplied price update timestamp is missing.")
+    if missing:return {"status":"NEEDS_DATA","reasons":missing,"metrics":{},"thresholds":{"min_validation_matches":200,"min_snapshots":3}}
+    now=datetime.now(timezone.utc);age=(now-stamp).total_seconds()
+    minute=_num(evidence.get("match_minute"))
+    if minute is None:
+        status=fixture.get("status") if isinstance(fixture.get("status"),dict) else {}
+        clock=str(status.get("clock") or "")
+        match=re.match(r"^(\d{1,3})",clock)
+        minute=float(match.group(1)) if match else 0.0
+    elapsed=min(5400,max(0,math.floor(min(minute,90)*60)))
+    time_weight=elapsed/5400
+    conservative_p=max(0.0,p-1.645*uncertainty)
+    conservative_ev=conservative_p*odds-1
+    conservative_edge=conservative_p-market
+    implied=1/odds
+    margin_score=(p/implied)*(1+time_weight)
+    reasons=[]
+    if age < -5:reasons.append("Provider price timestamp is in the future.")
+    if age>30:reasons.append(f"Stale source price ({round(age)} seconds old; maximum 30).")
+    if samples<200:reasons.append("Insufficient independent chronological validation matches (<200).")
+    if snapshots<3:reasons.append("Too few distinct timestamped bookmaker snapshots (<3).")
+    if uncertainty>0.05:reasons.append("Model probability uncertainty exceeds 5%.")
+    if p<0.50:reasons.append("Model probability below 50% floor.")
+    if margin_score<1.05:reasons.append(f"5400 margin score {margin_score:.3f} is below 1.050.")
+    if conservative_ev<0.03:reasons.append(f"Conservative net EV {conservative_ev:.4f} is below 0.030.")
+    if conservative_edge<0.02:reasons.append(f"Conservative edge {conservative_edge:.4f} is below 0.020.")
+    return {"status":"PASS" if not reasons else "FAIL","reasons":reasons,
+        "metrics":{"model_probability":p,"market_probability":market,"uncertainty":uncertainty,
+          "conservative_probability":conservative_p,"conservative_ev":conservative_ev,
+          "conservative_edge":conservative_edge,"margin_score":margin_score,"source_age_seconds":age,
+          "validation_matches":samples,"snapshots":snapshots,"time_weight":time_weight,
+          "uncertainty_method":evidence.get("uncertainty_method")},
+        "thresholds":{"max_source_age_seconds":30,"min_validation_matches":200,"min_snapshots":3,
+          "max_uncertainty":0.05,"min_probability":0.50,"minimum_safe_margin":1.05,
+          "min_conservative_ev":0.03,"min_conservative_edge":0.02},
+        "note":"5400 time-scaled margin score is a heuristic; conservative EV, edge, freshness and validation remain mandatory."}
+
+def _market_correlations(selections, grid, fixture):
+    rows=[]
+    supported=[]
+    for selection in selections:
+        p,_=market_probability(grid,selection)
+        if p is not None:supported.append((selection,p))
+    for i in range(len(supported)):
+        left,pa=supported[i]
+        for right,pb in supported[i+1:]:
+            joint=probability(grid,lambda h,a:_selection_hit(left,h,a,fixture) is True and _selection_hit(right,h,a,fixture) is True)
+            denom=math.sqrt(max(0.0,pa*(1-pa)*pb*(1-pb)))
+            corr=(joint-pa*pb)/denom if joint is not None and denom>0 else None
+            rows.append({"market_a":left.get("market"),"selection_a":left.get("selection"),
+                         "market_b":right.get("market"),"selection_b":right.get("selection"),
+                         "p_a":pa,"p_b":pb,"joint_probability":joint,"independence_product":pa*pb,
+                         "correlation":corr,"status":"ASSESSED" if joint is not None else "NEEDS_DATA"})
+    return {"status":"ASSESSED" if rows else "NEEDS_DATA","pairs":rows,
+            "note":"Joint probabilities are derived from the shared score grid; this is within-fixture dependence, not proof of cross-fixture accumulator independence."}
+
 def _derive_lnfi(evidence, selection, fixture):
     """Compute W-L sector totals only from supplied last-ten-start result rows."""
     home_rows=evidence.get("home_players")
@@ -176,7 +319,7 @@ def _pirates_layers(fixture, model, selection, p, ev, evidence):
     else: add(PIRATES[7],"NEEDS_DATA","Exact-market model probability and fetched price are not both available.")
     scenarios=evidence.get("alternative_scenarios")
     if isinstance(scenarios,list) and scenarios and evidence.get("scenario_engine_ran") is True:
-        add(PIRATES[8],"ASSESSED","Alternative score paths were generated and reviewed; they are scenarios, not probabilities.",{"scenario_count":len(scenarios)})
+        add(PIRATES[8],"ASSESSED","Probability-weighted market failure paths were generated from the score grid.",{"scenario_count":len(scenarios)})
     else: add(PIRATES[8],"NEEDS_DATA","No executed, fixture-specific alternative-scenario review.")
     return layers
 
@@ -367,6 +510,15 @@ def audit_full_fixture(payload):
         if isinstance(selection.get("evidence"),dict):
             selection_evidence.update(selection["evidence"])
         p,method=market_probability(grid,selection)
+        backtest=(model or {}).get("historical_backtest") or {}
+        if selection_evidence.get("validation_matches") is None and _num(backtest.get("evaluated_matches")) is not None:
+            selection_evidence["validation_matches"]=_num(backtest.get("evaluated_matches"))
+        uncertainty,uncertainty_details=_model_probability_uncertainty(model,selection,p)
+        if selection_evidence.get("uncertainty") is None and uncertainty is not None:
+            selection_evidence["uncertainty"]=uncertainty
+            selection_evidence["uncertainty_method"]=uncertainty_details.get("method")
+        if selection_evidence.get("source_updated_at") is None:
+            selection_evidence["source_updated_at"]=selection_evidence.get("price_timestamp")
         up_is_down=_failure_scenarios(selection,grid,fixture,p)
         if up_is_down.get("status")=="ASSESSED":
             selection_evidence["alternative_scenarios"]=up_is_down["top_failure_scorelines"]
