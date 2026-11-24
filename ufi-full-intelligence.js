@@ -172,7 +172,31 @@ async function runFixture(fixture,backend){
  const engines=runCraineeSuite({fixtureId:fixtureInfo.fixture_id,homeTeam:home,awayTeam:away,mainModelScore,
   chaos:fixture.engineEvidence?.chaos,tactical:fixture.engineEvidence?.tactical,background:fixture.engineEvidence?.background,
   subconscious:fixture.engineEvidence?.subconscious,narrativeConditions:fixture.engineEvidence?.narrativeConditions});
+ let anitaResearch=need('NEEDS_DATA','Research worker not run.');
+ try{
+  const rq=new URLSearchParams({home,away,competition:fixtureInfo.competition||'',date:String(kickoff||'').slice(0,10)});
+  anitaResearch=await getJSON(backend+'/api/ai/research-fixture?'+rq.toString());
+ }catch(e){anitaResearch={status:'NEEDS_DATA',reason:e.message,verified:false};}
  const evidence={...(fixture.evidence||{})};
+ // Only lift fields already present in the provider record; no inferred lineup or player attributes.
+ if(Array.isArray(fixture.lineups)){
+  const rows=fixture.lineups.map(x=>x&&typeof x==='object'?x:null).filter(Boolean);
+  const homeRows=[],awayRows=[];
+  for(const row of rows){
+   const player=row.player&&typeof row.player==='object'?row.player:row;
+   const team=String(row.team_name||row.team?.name||row.team?.short_code||'').toLowerCase();
+   const item={name:player.name||row.player_name||null,position:row.position?.name||row.position_name||null,
+    height_cm:Number.isFinite(Number(player.height_cm??player.height))?Number(player.height_cm??player.height):null};
+   if(team===String(home).toLowerCase())homeRows.push(item);
+   else if(team===String(away).toLowerCase())awayRows.push(item);
+  }
+  if(homeRows.length)evidence.home_players=homeRows;
+  if(awayRows.length)evidence.away_players=awayRows;
+ }
+ if(fixture.formations&&typeof fixture.formations==='object'){
+  evidence.formation_home=fixture.formations.home||null;
+  evidence.formation_away=fixture.formations.away||null;
+ }
  if(engines.unconventional?.unconventionalShortlist?.length){
   evidence.alternative_scenarios=engines.unconventional.unconventionalShortlist;
   evidence.scenario_engine_ran=true;
@@ -184,7 +208,7 @@ async function runFixture(fixture,backend){
  }else audit={ok:false,reason:'No bookmaker markets with decimal prices were returned for this fixture.'};
  const audits=selections.map(s=>({selection:s,registry:run400Audit(fixtureInfo,s,marketProbFromModel(model,s,fixtureInfo)),calculator:runCalculator([s])}));
  return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},modelStatus:model.status,modelReason:model.reason||null,
-  model,marketCount:selections.length,audit,engines,400SignalAudits:audits};
+  model,marketCount:selections.length,audit,engines,anitaResearch,400SignalAudits:audits};
 }
 function marketProbFromModel(model,selection,fixture){
  const grid=model.models?.dixon_coles?.score_grid||[];
