@@ -78,7 +78,7 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(fixture.venue)put('venue_identity','FETCHED',fixtureSource,fixtureStamp);
  put('source_provider','FETCHED',fixtureSource,fixtureStamp);
  if(fixtureStamp)put('source_freshness','FETCHED',fixtureSource,fixtureStamp);
- if(selection.market)put('market_identity','ASSESSED',marketSource,marketStamp);
+ if(selection.market)put('market_identity',finite(Number(selection.odds))?'ASSESSED':'ESTIMATED',finite(Number(selection.odds))?marketSource:'UFI model-derived candidate',finite(Number(selection.odds))?marketStamp:modelStamp);
  if(selection.selection)put('selection_identity','ASSESSED',marketSource,marketStamp);
  if(finite(Number(selection.odds)))put('decimal_price','FETCHED',marketSource,marketStamp);
  if(selection.bookmaker)put('bookmaker_identity','FETCHED',marketSource,marketStamp);
@@ -93,9 +93,9 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(model.backtest||model.chronological_backtest)put('chronological_validation','FETCHED',modelSource,modelStamp);
  if(physical?.lineups_confirmed)put('official_lineup','FETCHED','Sportmonks lineups (provider-reported; official confirmation flag supplied)',fixtureStamp);
  if(physical?.lineups_confirmed)put('lineup_timestamp','FETCHED','Sportmonks lineups',fixtureStamp);
- if(physical?.home_players?.some(p=>p.position&&/goalkeeper/i.test(p.position)))put('goalkeeper_identity','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.home_players?.some(p=>p.position&&/goalkeeper/i.test(p.position))&&physical?.away_players?.some(p=>p.position&&/goalkeeper/i.test(p.position)))put('goalkeeper_identity','FETCHED','Sportmonks player profiles',fixtureStamp);\n if(physical?.home_players?.filter(p=>p.position&&/centre back|center back/i.test(p.position)).length>=2&&physical?.away_players?.filter(p=>p.position&&/centre back|center back/i.test(p.position)).length>=2)put('centre_back_pairing','FETCHED','Sportmonks player profiles',fixtureStamp);
  if(physical?.home_players?.filter(p=>p.height_cm).length>=7)put('home_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);
- if(physical?.away_players?.filter(p=>p.height_cm).length>=7)put('away_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.away_players?.filter(p=>p.height_cm).length>=7)put('away_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);\n if(physical?.home_players?.some(p=>p.height_cm)&&physical?.away_players?.some(p=>p.height_cm))put('height_cm','FETCHED','Sportmonks player profiles',fixtureStamp);
  if(physical?.formation_home)put('home_formation','FETCHED','Sportmonks formations',fixtureStamp);
  if(physical?.formation_away)put('away_formation','FETCHED','Sportmonks formations',fixtureStamp);
  if(evidence?.weather?.source)put('weather_source','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
