@@ -93,6 +93,43 @@ def market_probability(grid, selection):
         return probability(grid,lambda h,a:h+a<ln),"dixon_coles_score_grid"
     return None,"market_not_supported_by_score_grid_adapter"
 
+def _derive_lnfi(evidence, selection, fixture):
+    """Compute W-L sector totals only from supplied last-ten-start result rows."""
+    home_rows=evidence.get("home_players")
+    away_rows=evidence.get("away_players")
+    if not isinstance(home_rows,list) or not isinstance(away_rows,list):
+        return None
+    def aggregate(rows):
+        totals={"DEF":0,"MID":0,"ATT":0}
+        counts={"DEF":0,"MID":0,"ATT":0}
+        for player in rows:
+            if not isinstance(player,dict): continue
+            pos=_norm(player.get("position"))
+            sector=("DEF" if pos in {"gk","goalkeeper","cb","lb","rb","lwb","rwb","defender","defence","defense"}
+                    else "MID" if pos in {"dm","cdm","cm","am","lm","rm","midfielder","midfield"}
+                    else "ATT" if pos in {"st","cf","lw","rw","winger","forward","striker","attacker"}
+                    else None)
+            starts=player.get("last_ten_starts")
+            if sector is None or not isinstance(starts,list) or len(starts)<10: continue
+            last=starts[-10:]
+            results=[_norm(x.get("result") if isinstance(x,dict) else x) for x in last]
+            if any(x not in {"w","win","d","draw","l","loss"} for x in results): continue
+            totals[sector]+=sum(1 if x in {"w","win"} else -1 if x in {"l","loss"} else 0 for x in results)
+            counts[sector]+=1
+        return totals,counts
+    ht,hc=aggregate(home_rows); at,ac=aggregate(away_rows)
+    if any(hc[k]==0 or ac[k]==0 for k in ("DEF","MID","ATT")): return None
+    market=_norm(selection.get("market") or selection.get("market_type"))
+    pick=_norm(selection.get("selection") or selection.get("outcome"))
+    team=_norm(selection.get("team") or selection.get("selection_team"))
+    if team==_norm(fixture.get("home")) or pick in {"home","home win","1"}: selected,opponent=ht,at
+    elif team==_norm(fixture.get("away")) or pick in {"away","away win","2"}: selected,opponent=at,ht
+    elif market in {"1x2","match result","full time result","h2h"}: return None
+    else: selected,opponent=ht,at
+    sectors={k:selected[k] for k in ("DEF","MID","ATT")}
+    return {"sectors":sectors,"spine_differential":sum(selected.values())-sum(opponent.values()),
+            "home_sectors":ht,"away_sectors":at,"source":"supplied player last_ten_starts","sample_starts_per_player":10}
+
 def _pirates_layers(fixture, model, selection, p, ev, evidence):
     market=_norm(selection.get("market") or selection.get("market_type"))
     layers=[]
@@ -104,7 +141,7 @@ def _pirates_layers(fixture, model, selection, p, ev, evidence):
     if isinstance(politics,dict) and politics.get("source") and politics.get("checked_at"):
         add(PIRATES[1],"FAIL" if politics.get("material_risk") is True else "ASSESSED","Evidence-backed institutional/referee context reviewed.",politics)
     else: add(PIRATES[1],"NEEDS_DATA","No sourced institutional, referee or unusual-risk review.")
-    lnfi=evidence.get("lnfi")
+    lnfi=evidence.get("lnfi") if isinstance(evidence.get("lnfi"),dict) else _derive_lnfi(evidence,selection,fixture)
     if isinstance(lnfi,dict):
         sectors=lnfi.get("sectors") or {}
         required=("DEF","MID","ATT") if market in {"1x2","match result","full time result","h2h"} else ("ATT",)
