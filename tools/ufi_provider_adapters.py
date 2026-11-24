@@ -302,7 +302,9 @@ def _normalized_matches(query):
             continue
         current_sources=current.setdefault("sources",{})
         for k,v in (row.get("sources") or {}).items():
-            current_sources[k]=v
+            if v: current_sources[k]=v
+        if current_sources.get("fixture")=="Sportmonks" or (row.get("sources") or {}).get("fixture")=="Sportmonks":
+            current_sources["fixture"]="Sportmonks"
         if row.get("odds"):
             current["odds"]={**(current.get("odds") or {}),**row["odds"]}
         for field in ("lineups","statistics","events","referees","venue","score","status","competitionId","quality"):
