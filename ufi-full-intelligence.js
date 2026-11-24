@@ -232,7 +232,7 @@ async function runFixture(fixture,backend,playerProfilesEnabled){
   evidence.formation_away=physicalEvidence.formation_away;
  }
  // Only lift fields already present in the provider record; no inferred lineup or player attributes.
- if(Array.isArray(fixture.lineups)){
+ if(physicalEvidence.status!=='FETCHED'&&Array.isArray(fixture.lineups)){
   const rows=fixture.lineups.map(x=>x&&typeof x==='object'?x:null).filter(Boolean);
   const homeRows=[],awayRows=[];
   for(const row of rows){
