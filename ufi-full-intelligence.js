@@ -382,10 +382,39 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows,mark
  const evidence={...(fixture.evidence||{}),market_scan_complete:marketScanComplete===true};
  const scheduleEvidence=buildScheduleEvidence(fixture,historyRows);
  Object.assign(evidence,scheduleEvidence);
- const [physicalEvidence,weatherEvidence]=await Promise.all([
-  buildSportmonksEvidence(fixture,backend,playerProfilesEnabled),fetchWeatherEvidence(fixture,backend)
+ const [espnEnrichment,weatherEvidence]=await Promise.all([
+  (async()=>{try{const q=new URLSearchParams({sport,home,away,kickoff});return await getJSON(backend+'/api/espn/enrich?'+q.toString());}
+   catch(e){return {status:'NEEDS_DATA',source:'ESPN',reason:e.message};}})(),
+  fetchWeatherEvidence(fixture,backend)
  ]);
+ let physicalEvidence;
+ if(espnEnrichment.status==='FETCHED'&&espnEnrichment.lineups_confirmed===true){
+  physicalEvidence={status:'FETCHED',source:'ESPN boxscore + roster',home_players:espnEnrichment.home_players||[],
+   away_players:espnEnrichment.away_players||[],formation_home:espnEnrichment.formation_home,
+   formation_away:espnEnrichment.formation_away,lineups_confirmed:true};
+ }else{
+  physicalEvidence=await buildSportmonksEvidence(fixture,backend,playerProfilesEnabled);
+ }
  if(weatherEvidence.status==='FETCHED')evidence.weather=weatherEvidence;
+ if(espnEnrichment.status==='FETCHED'){
+  evidence.espn_source='ESPN';
+  evidence.espn_event_id=espnEnrichment.event_id;
+  evidence.espn_form=espnEnrichment.form;
+  evidence.head_to_head=espnEnrichment.head_to_head;
+  evidence.key_plays=espnEnrichment.key_plays;
+  evidence.team_statistics=espnEnrichment.team_statistics;
+  evidence.home_roster=espnEnrichment.rosters?.home?.players||[];
+  evidence.away_roster=espnEnrichment.rosters?.away?.players||[];
+  evidence.opponent_adjusted_form=espnEnrichment.opponent_adjusted_form;
+  if(!evidence.home_schedule&&espnEnrichment.schedules?.home)evidence.home_schedule=espnEnrichment.schedules.home;
+  if(!evidence.away_schedule&&espnEnrichment.schedules?.away)evidence.away_schedule=espnEnrichment.schedules.away;
+  if(Array.isArray(espnEnrichment.officials)&&espnEnrichment.officials.length)
+   evidence.referee_assignment={source:'ESPN officials',fetched_at:espnEnrichment.observed_at,officials:espnEnrichment.officials};
+  if(espnEnrichment.formation_home&&espnEnrichment.formation_away)
+   evidence.tactical={source:'ESPN event boxscore',formation_home:espnEnrichment.formation_home,
+    formation_away:espnEnrichment.formation_away,team_statistics:espnEnrichment.team_statistics};
+  if(espnEnrichment.lineups_confirmed===true)evidence.lineups_confirmed=true;
+ }
  if(physicalEvidence.status==='FETCHED'){
   evidence.home_players=physicalEvidence.home_players;
   evidence.away_players=physicalEvidence.away_players;
@@ -418,7 +447,7 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows,mark
   catch(e){audit={ok:false,error:e.message};}
  }else audit={ok:false,reason:'No bookmaker markets with decimal prices were returned for this fixture.'};
  const audits=selections.map(s=>({selection:s,registry:run400Audit(fixtureInfo,s,marketProbFromModel(model,s,fixtureInfo)),calculator:runCalculator([s])}));
- return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},playerProfileEvidence:physicalEvidence,weatherEvidence,scheduleEvidence,modelStatus:model.status,modelReason:model.reason||null,
+ return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},playerProfileEvidence:physicalEvidence,espnEnrichment,weatherEvidence,scheduleEvidence,modelStatus:model.status,modelReason:model.reason||null,
   model,marketCount:selections.length,audit,engines,anitaResearch,400SignalAudits:audits};
 }
 function marketProbFromModel(model,selection,fixture){
