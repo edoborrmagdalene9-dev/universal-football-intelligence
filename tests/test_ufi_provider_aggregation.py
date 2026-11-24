@@ -39,6 +39,14 @@ class NormalizedProviderAggregationTests(unittest.TestCase):
         self.assertEqual(merged["sources"]["fixture"],"SportsGameOdds")
         self.assertEqual(merged["sources"]["odds"],"The Odds API")
 
+    def test_sportmonks_health_probe_checks_api_catalog_without_exposing_token(self):
+        with patch.dict(os.environ,{"SPORTMONKS_API_TOKEN":"private-test-token"},clear=False), \
+             patch.object(adapters,"_get_json",return_value=({"data":[{"id":1}]},{})) as request:
+            result=adapters._provider_health({"providers":["sportmonks"]})
+        self.assertTrue(result["checks"]["sportmonks"]["reachable"])
+        self.assertEqual(result["checks"]["sportmonks"]["catalogRecords"],1)
+        self.assertNotIn("private-test-token",str(result))
+
     def test_caps_sport_requests_to_protect_provider_quota(self):
         with patch.dict(os.environ,{"THE_ODDS_API_KEY":"test"},clear=False):
             with self.assertRaises(adapters.AdapterError):
