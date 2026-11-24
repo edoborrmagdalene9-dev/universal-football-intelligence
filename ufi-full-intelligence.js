@@ -570,7 +570,7 @@ async function scan(options={}){
   }
  }catch(e){historyError=e.message;}
  const results=[];let cursor=0;
- async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend,playerProfilesEnabled,historyRows,!marketFallback);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
+ async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend,playerProfilesEnabled,historyRows,!marketFallback&&warnings.length===0);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
  await Promise.all(Array.from({length:Math.min(3,fixtures.length)},worker));
  return {ok:true,source:payload.source,sources:payload.sources,providerRecordCounts:payload.providerRecordCounts,
   providerWarnings:[...(payload.providerWarnings||[]),...(historyError?["Sportmonks schedule enrichment: "+historyError]:[])],marketFallback,requestedSports:payload.requestedSports||sports,
