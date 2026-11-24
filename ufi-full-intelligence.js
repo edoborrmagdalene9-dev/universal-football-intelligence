@@ -63,6 +63,46 @@ function runCraineeSuite(input){
  return out;
 }
 const playerProfileCache=new Map();
+function buildComponentEvidence(fixture,model,selection,evidence,physical){
+ const out={},fixtureSource=fixture.sources?.fixture||fixture.providerSources?.[0]||'UFI normalized provider feed';
+ const fixtureStamp=fixture.timestamps?.fetchedAt||fixture.fetchedAt||null;
+ const modelSource=(model.source||model.source_urls?.[0]||'Football-Data historical results');
+ const modelStamp=model.fetched_at||model.fetchedAt||null;
+ const marketSource=selection.bookmaker||selection.evidence?.price_source||'Bookmaker odds feed';
+ const marketStamp=selection.evidence?.price_timestamp||fixture.timestamps?.fetchedAt||fixture.fetchedAt||null;
+ const put=(key,status,source,stamp)=>{if(source&&stamp)out[key]={status,source,fetched_at:stamp};};
+ if(fixture.fixtureId||fixture.fixture_id)put('fixture_identity','ASSESSED',fixtureSource,fixtureStamp);
+ if(fixture.homeTeam&&fixture.awayTeam)put('team_orientation','ASSESSED',fixtureSource,fixtureStamp);
+ if(fixture.competition)put('competition_identity','FETCHED',fixtureSource,fixtureStamp);
+ if(fixture.kickoff)put('kickoff_timestamp','ASSESSED',fixtureSource,fixtureStamp);
+ if(fixture.venue)put('venue_identity','FETCHED',fixtureSource,fixtureStamp);
+ put('source_provider','FETCHED',fixtureSource,fixtureStamp);
+ if(fixtureStamp)put('source_freshness','FETCHED',fixtureSource,fixtureStamp);
+ if(selection.market)put('market_identity','ASSESSED',marketSource,marketStamp);
+ if(selection.selection)put('selection_identity','ASSESSED',marketSource,marketStamp);
+ if(finite(Number(selection.odds)))put('decimal_price','FETCHED',marketSource,marketStamp);
+ if(selection.bookmaker)put('bookmaker_identity','FETCHED',marketSource,marketStamp);
+ if(selection.line!==null&&selection.line!==undefined)put('market_line','FETCHED',marketSource,marketStamp);
+ if(selection.evidence?.price_timestamp)put('price_timestamp','FETCHED',marketSource,selection.evidence.price_timestamp);
+ if(model.training_matches)put('historical_sample','FETCHED',modelSource,modelStamp);
+ if(model.rate_estimate?.ok&&finite(model.rate_estimate.lambdaHome))put('home_lambda','ASSESSED',modelSource,modelStamp);
+ if(model.rate_estimate?.ok&&finite(model.rate_estimate.lambdaAway))put('away_lambda','ASSESSED',modelSource,modelStamp);
+ if(model.dixon_coles?.rho!==undefined)put('dixon_coles_rho','ASSESSED',modelSource,modelStamp);
+ if((model.models?.xg_dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles_rho_minus_0_10?.score_grid)?.length===81)put('score_grid','ASSESSED',modelSource,modelStamp);
+ if(model.rate_estimate?.leagueHomeMean!==undefined||model.xg_rate_estimate?.leagueHomeXgMean!==undefined)put('base_rate','FETCHED',modelSource,modelStamp);
+ if(model.backtest||model.chronological_backtest)put('chronological_validation','FETCHED',modelSource,modelStamp);
+ if(physical?.lineups_confirmed)put('official_lineup','FETCHED','Sportmonks lineups (provider-reported; official confirmation flag supplied)',fixtureStamp);
+ if(physical?.lineups_confirmed)put('lineup_timestamp','FETCHED','Sportmonks lineups',fixtureStamp);
+ if(physical?.home_players?.some(p=>p.position&&/goalkeeper/i.test(p.position)))put('goalkeeper_identity','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.home_players?.filter(p=>p.height_cm).length>=7)put('home_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.away_players?.filter(p=>p.height_cm).length>=7)put('away_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);
+ if(physical?.formation_home)put('home_formation','FETCHED','Sportmonks formations',fixtureStamp);
+ if(physical?.formation_away)put('away_formation','FETCHED','Sportmonks formations',fixtureStamp);
+ if(evidence?.weather?.source)put('weather_source','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+ if(evidence?.referee_assignment?.source)put('referee_assignment','FETCHED',evidence.referee_assignment.source,evidence.referee_assignment.fetched_at||fixtureStamp);
+ evidence.component_evidence=out;
+ return out;
+}
 async function buildSportmonksEvidence(fixture,backend,enabled){
  const base={};
  if(!enabled)return {status:'NEEDS_DATA',reason:'Sportmonks player profile endpoint is not configured.'};
@@ -254,6 +294,7 @@ async function runFixture(fixture,backend,playerProfilesEnabled){
   evidence.alternative_scenarios=engines.unconventional.unconventionalShortlist;
   evidence.scenario_engine_ran=true;
  }
+ buildComponentEvidence(fixture,model,selections[0]||{},evidence,physicalEvidence.status==='FETCHED'?physicalEvidence:null);
  let audit=null;
  if(selections.length){
   try{audit=await postJSON(backend+'/api/brain/audit',{fixture:fixtureInfo,model,evidence,selections});}
