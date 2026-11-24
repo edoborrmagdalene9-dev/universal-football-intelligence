@@ -36,3 +36,5 @@ jobs:
         run: python -m unittest discover -s tests -p "test_ufi_*.py" -v
       - name: Test evidence-aware 400-signal audit
         run: node tests/test_audit_intelligence.cjs
+      - name: Test full UFI engine orchestration
+        run: node tests/test_ufi_full_intelligence.cjs
