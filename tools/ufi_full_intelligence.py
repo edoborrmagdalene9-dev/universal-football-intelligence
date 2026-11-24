@@ -44,7 +44,7 @@ def _grid(model):
     models=model.get("models") or {}
     # User's configured rho=-0.10 surface is the primary selection grid.
     # The empirically fitted rho grid remains available for side-by-side sensitivity review.
-    dc=(models.get("dixon_coles_rho_minus_0_10") or models.get("dixon_coles") or {})
+    dc=(models.get("xg_dixon_coles_rho_minus_0_10") or models.get("dixon_coles_rho_minus_0_10") or models.get("dixon_coles") or {})
     return [x for x in (dc.get("score_grid") or []) if isinstance(x,dict) and _num(x.get("p")) is not None]
 
 def probability(grid, predicate):
@@ -421,7 +421,9 @@ def audit_full_fixture(payload):
         "model":{"status":model.get("status"),"lambda_home":(model.get("rate_estimate") or {}).get("lambdaHome"),
                  "lambda_away":(model.get("rate_estimate") or {}).get("lambdaAway"),
                  "fitted_rho":(model.get("dixon_coles") or {}).get("rho"),
-                 "market_rho":-0.10 if (model.get("models") or {}).get("dixon_coles_rho_minus_0_10") else (model.get("dixon_coles") or {}).get("rho"),
+                 "market_rho":-0.10 if ((model.get("models") or {}).get("xg_dixon_coles_rho_minus_0_10") or (model.get("models") or {}).get("dixon_coles_rho_minus_0_10")) else (model.get("dixon_coles") or {}).get("rho"),
+                 "xg_rate_estimate":model.get("xg_rate_estimate"),
+                 "model_grid_source":"published_xg" if (model.get("models") or {}).get("xg_dixon_coles_rho_minus_0_10") else "historical_goals_only",
                  "score_grid_cells":len(grid),
                  "training_matches":model.get("training_matches")},
         "congestion":congestion,"physical_duel":physical,"components_100":components,"market_correlations":correlations,
