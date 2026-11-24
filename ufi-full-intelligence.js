@@ -63,6 +63,59 @@ function runCraineeSuite(input){
  return out;
 }
 const playerProfileCache=new Map();
+function normalizeSportmonksRows(payload){
+ const raw=payload?.data?.data||payload?.data||[];
+ if(!Array.isArray(raw))return [];
+ return raw.map(x=>{
+  const participants=Array.isArray(x.participants)?x.participants:[];
+  let home=null,away=null;
+  for(const p of participants){const side=String(p?.meta?.location||'').toLowerCase();if(side==='home')home=p.name||p.short_code||null;if(side==='away')away=p.name||p.short_code||null;}
+  const venue=x.venue||{};
+  return {home,away,kickoff:x.starting_at||null,ending:x.ending_at||x.finished_at||null,
+   venue:{lat:Number(venue.latitude),lon:Number(venue.longitude)},raw:x};
+ }).filter(x=>x.home&&x.away&&x.kickoff);
+}
+function distanceKm(a,b){
+ if(!a||!b||!finite(a.lat)||!finite(a.lon)||!finite(b.lat)||!finite(b.lon))return null;
+ const rad=x=>x*Math.PI/180,R=6371,dLat=rad(b.lat-a.lat),dLon=rad(b.lon-a.lon);
+ const h=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLon/2)**2;
+ return 2*R*Math.asin(Math.sqrt(h));
+}
+function buildScheduleEvidence(fixture,historyRows){
+ const kickoff=Date.parse(fixture.kickoff||fixture.commence_time||'');
+ if(!Number.isFinite(kickoff)||!Array.isArray(historyRows))return {};
+ const upcomingVenue={lat:Number(fixture.venue?.latitude),lon:Number(fixture.venue?.longitude)};
+ function teamSchedule(team){
+  const past=historyRows.filter(row=>{
+   const isTeam=String(row.home).toLowerCase()===String(team).toLowerCase()||String(row.away).toLowerCase()===String(team).toLowerCase();
+   const t=Date.parse(row.kickoff);return isTeam&&Number.isFinite(t)&&t<kickoff&&t>=kickoff-14*86400000;
+  }).sort((a,b)=>Date.parse(b.kickoff)-Date.parse(a.kickoff));
+  const last=past[0];let rest=null,travel=null;
+  if(last?.ending){const end=Date.parse(last.ending);if(Number.isFinite(end))rest=(kickoff-end)/3600000;}
+  if(last)travel=distanceKm(last.venue,upcomingVenue);
+  return {last_14_days:past.map(x=>({kickoff:x.kickoff,home:x.home,away:x.away,source:'Sportmonks'})),
+   rest_hours:rest,travel_distance_km:travel,extra_time_last_match:last?.raw?.extra_time===true?true:null,
+   source:'Sportmonks fixtures range',fetched_at:fixture.timestamps?.fetchedAt||fixture.fetchedAt||null};
+ }
+ return {home_schedule:teamSchedule(fixture.homeTeam||fixture.home),away_schedule:teamSchedule(fixture.awayTeam||fixture.away)};
+}
+async function fetchWeatherEvidence(fixture,backend){
+ const venue=fixture.venue||{},lat=Number(venue.latitude),lon=Number(venue.longitude);
+ const kickoff=fixture.kickoff||fixture.commence_time;
+ if(!Number.isFinite(lat)||!Number.isFinite(lon)||!kickoff)return {status:'NEEDS_DATA',reason:'Stadium coordinates or kickoff are missing.'};
+ const date=String(kickoff).slice(0,10),hour=new Date(kickoff).getUTCHours();
+ try{
+  const q=new URLSearchParams({lat:String(lat),lon:String(lon),date,hour:String(hour)});
+  const result=await getJSON(backend+'/api/weather?'+q.toString());
+  const w=result.weather||{};
+  return {status:'FETCHED',source:result.source||'Weather provider',fetched_at:result.fetchedAt||null,
+   wind_mph:finite(Number(w.windSpeedKmh))?Number(w.windSpeedKmh)*0.621371:null,
+   wind_kmh:w.windSpeedKmh??null,temperature_c:w.temperatureC??null,
+   precipitation_mm:w.precipitationMm??null,precipitation_probability_pct:w.precipitationProbabilityPct??null,
+   humidity_pct:w.relativeHumidityPct??null,standing_water:null,
+   note:result.note||'Weather is a provider forecast/grid estimate, not a pitch sensor.'};
+ }catch(e){return {status:'NEEDS_DATA',reason:e.message};}
+}
 function buildComponentEvidence(fixture,model,selection,evidence,physical){
  const out={},fixtureSource=fixture.sources?.fixture||fixture.providerSources?.[0]||'UFI normalized provider feed';
  const fixtureStamp=fixture.timestamps?.fetchedAt||fixture.fetchedAt||null;
@@ -240,8 +293,8 @@ function marketSelections(fixture){
  }
  return found;
 }
-async function runFixture(fixture,backend,playerProfilesEnabled){
- const home=fixture.homeTeam||fixture.home,away=fixture.awayTeam||fixture.away;
+async function runFixture(fixture,backend,playerProfilesEnabled,historyRows){
+ const home=fixture.homeTeam||fixture.home,away=fixture.away;
  const kickoff=fixture.kickoff||fixture.commence_time||fixture.starting_at||null;
  const sport=fixture.sport||fixture.sport_key||'';
  const league=LEAGUES[sport]||null;
@@ -264,7 +317,12 @@ async function runFixture(fixture,backend,playerProfilesEnabled){
   anitaResearch=await getJSON(backend+'/api/ai/research-fixture?'+rq.toString());
  }catch(e){anitaResearch={status:'NEEDS_DATA',reason:e.message,verified:false};}
  const evidence={...(fixture.evidence||{})};
- const physicalEvidence=await buildSportmonksEvidence(fixture,backend,playerProfilesEnabled);
+ const scheduleEvidence=buildScheduleEvidence(fixture,historyRows);
+ Object.assign(evidence,scheduleEvidence);
+ const [physicalEvidence,weatherEvidence]=await Promise.all([
+  buildSportmonksEvidence(fixture,backend,playerProfilesEnabled),fetchWeatherEvidence(fixture,backend)
+ ]);
+ if(weatherEvidence.status==='FETCHED')evidence.weather=weatherEvidence;
  if(physicalEvidence.status==='FETCHED'){
   evidence.home_players=physicalEvidence.home_players;
   evidence.away_players=physicalEvidence.away_players;
@@ -301,7 +359,7 @@ async function runFixture(fixture,backend,playerProfilesEnabled){
   catch(e){audit={ok:false,error:e.message};}
  }else audit={ok:false,reason:'No bookmaker markets with decimal prices were returned for this fixture.'};
  const audits=selections.map(s=>({selection:s,registry:run400Audit(fixtureInfo,s,marketProbFromModel(model,s,fixtureInfo)),calculator:runCalculator([s])}));
- return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},playerProfileEvidence:physicalEvidence,modelStatus:model.status,modelReason:model.reason||null,
+ return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},playerProfileEvidence:physicalEvidence,weatherEvidence,scheduleEvidence,modelStatus:model.status,modelReason:model.reason||null,
   model,marketCount:selections.length,audit,engines,anitaResearch,400SignalAudits:audits};
 }
 function marketProbFromModel(model,selection,fixture){
@@ -407,13 +465,20 @@ async function scan(options={}){
  const payload={...firstPayload,source:'multi-provider-catalogue-scan',sources:[...sources],
   providerRecordCounts,providerWarnings:warnings,requestedSports:[...new Set(requestedSports)],data:[...deduped.values()]};
  const fixtures=rowsFrom(payload).slice(0,Math.min(100,Number(options.maxFixtures)||40));
- let playerProfilesEnabled=false;
- try{const status=await getJSON(backend+'/api/providers/status');playerProfilesEnabled=!!status.providers?.sportmonks?.configured;}catch(_){}
+ let playerProfilesEnabled=false,historyRows=[],historyError=null;
+ try{
+  const status=await getJSON(backend+'/api/providers/status');playerProfilesEnabled=!!status.providers?.sportmonks?.configured;
+  if(playerProfilesEnabled){
+   const historyStart=dateISO(addDays(new Date(start+'T12:00:00'),-14));
+   const historyPayload=await getJSON(backend+'/api/fixtures/range?'+new URLSearchParams({from:historyStart,to:end}).toString());
+   historyRows=normalizeSportmonksRows(historyPayload);
+  }
+ }catch(e){historyError=e.message;}
  const results=[];let cursor=0;
- async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend,playerProfilesEnabled);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
+ async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend,playerProfilesEnabled,historyRows);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
  await Promise.all(Array.from({length:Math.min(3,fixtures.length)},worker));
  return {ok:true,source:payload.source,sources:payload.sources,providerRecordCounts:payload.providerRecordCounts,
-  providerWarnings:payload.providerWarnings||[],marketFallback,requestedSports:payload.requestedSports||sports,
+  providerWarnings:[...(payload.providerWarnings||[]),...(historyError?["Sportmonks schedule enrichment: "+historyError]:[])],marketFallback,requestedSports:payload.requestedSports||sports,
   window:{start,end},fixtureCount:fixtures.length,results,
   summary:{modelReady:results.filter(x=>x.modelStatus==='model_output').length,
    reviewOnly:results.reduce((n,x)=>n+(x.audit?.summary?.review_only||0),0),
