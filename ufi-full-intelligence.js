@@ -382,7 +382,7 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows,mark
  const selections=marketSelections(fixture);
  let model={status:'NEEDS_DATA',reason:league?'Model request not completed.':'No supported historical league mapping for this competition.'};
  if(league&&home&&away&&kickoff){
-  const qs=new URLSearchParams({home,away,league,seasons:'5',date:String(kickoff).slice(0,10)});
+  const qs=new URLSearchParams({home,away,league,seasons:'5',date:String(kickoff).slice(0,10),include_backtest:'1'});
   try{model=await getJSON(backend+'/api/models/score?'+qs.toString());}catch(e){model={status:'NEEDS_DATA',reason:e.message};}
  }
  for(const candidate of selections){
