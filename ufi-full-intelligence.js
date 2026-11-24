@@ -120,7 +120,14 @@ function marketSelections(fixture){
    }
   }
  }
- return [...best.values()].map(({_group,...x})=>x);
+ const found=[...best.values()].map(({_group,...x})=>x);
+ const hasDC12=found.some(x=>String(x.market).toLowerCase()==='double chance'&&String(x.selection).toUpperCase()==='12');
+ const hasTeamMulti=found.some(x=>String(x.market).toLowerCase().includes('multigoals 1 3'));
+ if(!hasDC12)found.push({market:'DC12',selection:'12',odds:null,bookmaker:null,evidence:{market_key:'derived_from_score_grid_only'}});
+ for(const [team,side] of [[fixture.homeTeam||fixture.home,'home'],[fixture.awayTeam||fixture.away,'away']]){
+  if(team&&!hasTeamMulti)found.push({market:'Team Multigoals 1-3',selection:'1–3 goals',team,side,odds:null,bookmaker:null,evidence:{market_key:'derived_from_score_grid_only'}});
+ }
+ return found;
 }
 async function runFixture(fixture,backend){
  const home=fixture.homeTeam||fixture.home,away=fixture.awayTeam||fixture.away;
@@ -130,21 +137,26 @@ async function runFixture(fixture,backend){
  const selections=marketSelections(fixture);
  let model={status:'NEEDS_DATA',reason:league?'Model request not completed.':'No supported historical league mapping for this competition.'};
  if(league&&home&&away&&kickoff){
-  const qs=new URLSearchParams({home,away,league,seasons:'5',cutoff_date:String(kickoff).slice(0,10)});
+  const qs=new URLSearchParams({home,away,league,seasons:'5',date:String(kickoff).slice(0,10)});
   try{model=await getJSON(backend+'/api/models/score?'+qs.toString());}catch(e){model={status:'NEEDS_DATA',reason:e.message};}
  }
  const mainGrid=model.models?.dixon_coles?.score_grid||[];
  let mainModelScore=null;
  if(mainGrid.length){const top=mainGrid.slice().sort((a,b)=>b.p-a.p)[0];mainModelScore={home:top.home,away:top.away};}
  const fixtureInfo={fixture_id:fixture.fixtureId||fixture.id||fixture.matchId||null,home,away,kickoff,competition:fixture.competition||fixture.sport_title||null,sport};
- let audit=null;
- if(selections.length){
-  try{audit=await postJSON(backend+'/api/brain/audit',{fixture:fixtureInfo,model,evidence:fixture.evidence||{},selections});}
-  catch(e){audit={ok:false,error:e.message};}
- }else audit={ok:false,reason:'No bookmaker markets with decimal prices were returned for this fixture.'};
  const engines=runCraineeSuite({fixtureId:fixtureInfo.fixture_id,homeTeam:home,awayTeam:away,mainModelScore,
   chaos:fixture.engineEvidence?.chaos,tactical:fixture.engineEvidence?.tactical,background:fixture.engineEvidence?.background,
   subconscious:fixture.engineEvidence?.subconscious,narrativeConditions:fixture.engineEvidence?.narrativeConditions});
+ const evidence={...(fixture.evidence||{})};
+ if(engines.unconventional?.unconventionalShortlist?.length){
+  evidence.alternative_scenarios=engines.unconventional.unconventionalShortlist;
+  evidence.scenario_engine_ran=true;
+ }
+ let audit=null;
+ if(selections.length){
+  try{audit=await postJSON(backend+'/api/brain/audit',{fixture:fixtureInfo,model,evidence,selections});}
+  catch(e){audit={ok:false,error:e.message};}
+ }else audit={ok:false,reason:'No bookmaker markets with decimal prices were returned for this fixture.'};
  const audits=selections.map(s=>({selection:s,registry:run400Audit(fixtureInfo,s,marketProbFromModel(model,s,fixtureInfo)),calculator:runCalculator([s])}));
  return {fixture:fixtureInfo,providerSources:fixture.providerSources||fixture.sources||{},modelStatus:model.status,modelReason:model.reason||null,
   model,marketCount:selections.length,audit,engines,400SignalAudits:audits};
@@ -156,8 +168,13 @@ function marketProbFromModel(model,selection,fixture){
  const sum=grid.reduce((a,x)=>a+(Number(x.p)||0),0)||1;
  let hit;
  if(m==='1x2')hit=(h,a)=>pick==='home'?h>a:pick==='away'?h<a:h===a;
+ else if(m==='dc12'||m==='double chance')hit=(h,a)=>pick==='12'||pick==='home or away'?h!==a:pick==='1x'?h>=a:a>=h;
  else if(m==='btts')hit=(h,a)=>pick==='yes'?h>0&&a>0:h===0||a===0;
  else if(m==='over under'&&Number.isFinite(line))hit=(h,a)=>pick.startsWith('over')?h+a>line:h+a<line;
+ else if(m==='team multigoals 1-3'||m==='multigoals 1-3'||m==='multi score 1-3')hit=(h,a)=>selection.side==='home'?h>=1&&h<=3:a>=1&&a<=3;
+ else if(m==='team total'&&Number.isFinite(line))hit=(h,a)=>selection.side==='home'?(pick.startsWith('over')?h>line:h<line):(pick.startsWith('over')?a>line:a<line);
+ else if(m==='under 3.5')hit=(h,a)=>h+a<3.5;
+ else if(m==='under 4.5')hit=(h,a)=>h+a<4.5;
  else return null;
  return grid.filter(x=>hit(x.home,x.away)).reduce((a,x)=>a+(Number(x.p)||0),0)/sum;
 }
@@ -168,13 +185,20 @@ async function scan(options={}){
  const sports=Array.isArray(options.sports)&&options.sports.length?options.sports:DEFAULT_SPORTS;
  const markets=options.markets||'h2h,spreads,totals,team_totals,btts,draw_no_bet,alternate_totals,alternate_team_totals';
  const qs=new URLSearchParams({sports:sports.join(','),regions:'uk',markets,from:start+'T00:00:00Z',to:end+'T23:59:59Z',limit:'50'});
- const payload=await getJSON(backend+'/api/matches?'+qs.toString());
+ let payload,marketFallback=false;
+ try{payload=await getJSON(backend+'/api/matches?'+qs.toString());}
+ catch(firstError){
+  const fallbackQs=new URLSearchParams({sports:sports.join(','),regions:'uk',markets:'h2h',from:start+'T00:00:00Z',to:end+'T23:59:59Z',limit:'50'});
+  payload=await getJSON(backend+'/api/matches?'+fallbackQs.toString());
+  marketFallback=true;
+  payload.providerWarnings=[...(payload.providerWarnings||[]),'Full market request failed; automatic fallback retried with h2h only: '+firstError.message];
+ }
  const fixtures=rowsFrom(payload).slice(0,Math.min(100,Number(options.maxFixtures)||40));
  const results=[];let cursor=0;
  async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
  await Promise.all(Array.from({length:Math.min(3,fixtures.length)},worker));
  return {ok:true,source:payload.source,sources:payload.sources,providerRecordCounts:payload.providerRecordCounts,
-  providerWarnings:payload.providerWarnings||[],requestedSports:payload.requestedSports||sports,
+  providerWarnings:payload.providerWarnings||[],marketFallback,requestedSports:payload.requestedSports||sports,
   window:{start,end},fixtureCount:fixtures.length,results,
   summary:{modelReady:results.filter(x=>x.modelStatus==='model_output').length,
    reviewOnly:results.reduce((n,x)=>n+(x.audit?.summary?.review_only||0),0),
