@@ -254,7 +254,7 @@ def _provider_health(query):
         names=["sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo"]
     aliases={"sgo":"sportsgameodds","odds":"theoddsapi","the-odds-api":"theoddsapi","weatherapi.com":"weatherapi","open-meteo":"openmeteo"}
     names=[aliases.get(x,x) for x in names]
-    allowed={"sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo"}
+    allowed={"sportsgameodds","theoddsapi","weatherapi","sharpapi","openmeteo","sportmonks"}
     unknown=[x for x in names if x not in allowed]
     if unknown: raise AdapterError("Unknown provider name: "+", ".join(unknown))
     results={}
@@ -283,6 +283,15 @@ def _provider_health(query):
                 url="https://api.open-meteo.com/v1/forecast?"+urllib.parse.urlencode({"latitude":"6.5244","longitude":"3.3792","current":"temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m"})
                 data,_headers=_get_json(url)
                 return {"source":"Open-Meteo","currentAvailable":isinstance(data.get("current"),dict)}
+            if name=="sportmonks":
+                token=os.getenv("SPORTMONKS_API_TOKEN","").strip()
+                if not token: raise AdapterError("SPORTMONKS_API_TOKEN is not configured.")
+                url="https://api.sportmonks.com/v3/football/leagues?"+urllib.parse.urlencode({"api_token":token,"per_page":"1"})
+                data,_headers=_get_json(url)
+                rows=data.get("data") if isinstance(data,dict) else None
+                return {"source":"Sportmonks Football API v3","apiResponded":True,
+                        "catalogRecords":len(rows) if isinstance(rows,list) else None,
+                        "note":"Catalog connectivity only; fixture/lineup coverage is competition- and plan-specific."}
         try:
             value,cache_hit=_cached("health:"+name+":"+str((query.get("sport") or ["soccer_epl"])[0])+":"+str((query.get("q") or ["Lagos"])[0]),300,probe)
             results[name]={"reachable":True,"status":"ok","cacheHit":cache_hit,**value}
@@ -301,7 +310,8 @@ def handle_extra_route(route, query):
     if route == "/api/providers/health":
         return _provider_health(query),False
     if route == "/api/providers/status":
-        names={"sharpapi":bool(os.getenv("SHARPAPI_KEY","").strip()),
+        names={"sportmonks":bool(os.getenv("SPORTMONKS_API_TOKEN","").strip()),
+               "sharpapi":bool(os.getenv("SHARPAPI_KEY","").strip()),
                "weatherapi":bool(os.getenv("WEATHERAPI_KEY","").strip()),
                "theOddsApi":bool(os.getenv("THE_ODDS_API_KEY","").strip()),
                "sportsGameOdds":bool(os.getenv("SPORTSGAMEODDS_API_KEY","").strip()),
