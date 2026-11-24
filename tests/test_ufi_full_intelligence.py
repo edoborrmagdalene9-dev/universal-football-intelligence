@@ -38,7 +38,7 @@ class FullIntelligenceTests(unittest.TestCase):
         self.assertEqual(len(selection["pirates_layers"]),9)
         self.assertTrue(any(x["status"]=="NEEDS_DATA" for x in selection["pirates_layers"]))
 
-    def test_dc12_hard_gates_reject_missing_or_failed_checks(self):
+    def test_dc12_missing_evidence_is_needs_data_not_a_false_fail(self):
         model={"status":"model_output","rate_estimate":{"ok":True,"lambdaHome":1.5,"lambdaAway":1.0},
                "dixon_coles":{"rho":-0.1},"models":{"dixon_coles":{"score_grid":sample_grid()}}}
         result=audit_full_fixture({
@@ -46,8 +46,8 @@ class FullIntelligenceTests(unittest.TestCase):
             "model":model,"evidence":{},
             "selections":[{"market":"DC12","selection":"12","odds":1.5}]
         })
-        self.assertEqual(result["selections"][0]["decision"],"DITCH")
-        self.assertTrue(any(x["status"]=="FAIL" for x in result["selections"][0]["hard_gates"]))
+        self.assertEqual(result["selections"][0]["decision"],"NEEDS_DATA")
+        self.assertTrue(any(x["status"]=="NEEDS_DATA" for x in result["selections"][0]["hard_gates"]))
 
     def test_100_component_check_is_exactly_100_and_missing_stays_unknown(self):
         model={"status":"NEEDS_DATA"}
