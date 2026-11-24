@@ -49,6 +49,20 @@ class FullIntelligenceTests(unittest.TestCase):
         self.assertEqual(result["selections"][0]["decision"],"NEEDS_DATA")
         self.assertTrue(any(x["status"]=="NEEDS_DATA" for x in result["selections"][0]["hard_gates"]))
 
+    def test_up_is_down_calculates_market_failure_scenarios_from_grid(self):
+        model={"status":"model_output","rate_estimate":{"ok":True,"lambdaHome":1.6,"lambdaAway":1.1},
+               "dixon_coles":{"rho":-0.1},"models":{"dixon_coles_rho_minus_0_10":{"score_grid":sample_grid()}}}
+        result=audit_full_fixture({
+            "fixture":{"fixture_id":"test-updown","home":"Home","away":"Away","kickoff":"2026-11-25T19:00:00Z"},
+            "model":model,"evidence":{},
+            "selections":[{"market":"1X2","selection":"Home","odds":2.2}]
+        })
+        audit=result["selections"][0]
+        self.assertEqual(audit["up_is_down_scenarios"]["status"],"ASSESSED")
+        self.assertTrue(audit["up_is_down_scenarios"]["top_failure_scorelines"])
+        up=next(x for x in audit["pirates_layers"] if x["layer"]=="Up Is Down")
+        self.assertEqual(up["status"],"ASSESSED")
+
     def test_5400_gate_requires_independent_validation_and_fresh_snapshots(self):
         from datetime import datetime, timezone
         from tools.ufi_full_intelligence import _bookie_edge_5400
