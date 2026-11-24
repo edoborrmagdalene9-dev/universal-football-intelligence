@@ -98,8 +98,11 @@ function evaluateTacticalSurprise(matchData = {}) {
 }
 function round(n) { return Number(n.toFixed(3)); }
 if (typeof module !== 'undefined' && module.exports) module.exports = {evaluateSpatialTacticalSurprise,evaluateTacticalSurpriseEdge,evaluateChaosAndStyleMatchup,evaluateTacticalSurprise,PITCH_TOTAL_UNITS,MATCH_TOTAL_SECONDS};
+const tacticalSurpriseApi = {evaluateSpatialTacticalSurprise,evaluateTacticalSurpriseEdge,evaluateChaosAndStyleMatchup,evaluateTacticalSurprise};
+if (typeof module !== 'undefined' && module.exports) module.exports = tacticalSurpriseApi;
+if (typeof globalThis !== 'undefined') globalThis.CraineeTacticalSurprise = tacticalSurpriseApi;
 if (typeof window !== 'undefined') {
-  window.CraineeTacticalSurprise = {evaluateSpatialTacticalSurprise,evaluateTacticalSurpriseEdge,evaluateChaosAndStyleMatchup,evaluateTacticalSurprise};
+  window.CraineeTacticalSurprise = tacticalSurpriseApi;
   document.addEventListener('DOMContentLoaded', function() {
     if (!document.querySelector('#view-tactical-surprise') || !document.querySelector('[data-view="tactical-surprise"]')) {
       const nav = document.querySelector('#navigation'), main = document.querySelector('.main');
