@@ -129,6 +129,23 @@ def _flatten_roster(raw):
             result.extend(_list(group.get("items")))
     return result
 
+def _height_cm(player):
+    raw=player.get("heightInches") or player.get("height_in")
+    try:
+        inches=float(raw)
+        if 48<=inches<=96:return round(inches*2.54,1)
+    except (TypeError,ValueError):pass
+    display=str(player.get("displayHeight") or player.get("height") or "")
+    match=re.search(r"(\d+)\s*['′]\s*(\d+)",display)
+    if match:
+        inches=int(match.group(1))*12+int(match.group(2))
+        if 48<=inches<=96:return round(inches*2.54,1)
+    match=re.search(r"(\d+(?:\.\d+)?)\s*cm",display,re.I)
+    if match:
+        value=float(match.group(1))
+        if 120<=value<=230:return value
+    return None
+
 def get_roster(league,team_id):
     raw=_cached_json(_url(SITE+"/"+league+"/teams/"+str(team_id)+"/roster",{"limit":200}),ttl=21600)
     players=[]
@@ -140,7 +157,7 @@ def get_roster(league,team_id):
             "position":pos.get("displayName") or pos.get("name"),
             "height":p.get("displayHeight") or p.get("height"),
             "height_in":p.get("heightInches") or p.get("height_in"),
-            "height_cm":round(float(p.get("heightInches") or p.get("height_in"))*2.54,1) if str(p.get("heightInches") or p.get("height_in") or "").replace(".","",1).isdigit() else None,
+            "height_cm":_height_cm(p),
             "weight":p.get("displayWeight") or p.get("weight"),
             "age":p.get("age"),"date_of_birth":p.get("dateOfBirth"),
             "status":p.get("status"),"injuries":p.get("injuries") or [],
