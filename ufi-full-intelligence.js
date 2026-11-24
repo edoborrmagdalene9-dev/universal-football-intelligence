@@ -151,8 +151,23 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(physical?.away_players?.filter(p=>p.height_cm).length>=7)put('away_lineup_heights','FETCHED','Sportmonks player profiles',fixtureStamp);\n if(physical?.home_players?.some(p=>p.height_cm)&&physical?.away_players?.some(p=>p.height_cm))put('height_cm','FETCHED','Sportmonks player profiles',fixtureStamp);
  if(physical?.formation_home)put('home_formation','FETCHED','Sportmonks formations',fixtureStamp);
  if(physical?.formation_away)put('away_formation','FETCHED','Sportmonks formations',fixtureStamp);
- if(evidence?.weather?.source)put('weather_source','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+ if(evidence?.weather?.source){
+  put('weather_source','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+  if(finite(Number(evidence.weather.wind_mph)))put('wind_speed','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+  if(finite(Number(evidence.weather.temperature_c)))put('temperature','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+  if(finite(Number(evidence.weather.humidity_pct)))put('humidity','FETCHED',evidence.weather.source,evidence.weather.fetched_at||fixtureStamp);
+ }
  if(evidence?.referee_assignment?.source)put('referee_assignment','FETCHED',evidence.referee_assignment.source,evidence.referee_assignment.fetched_at||fixtureStamp);
+ for(const side of ['home','away']){
+  const schedule=evidence[side+'_schedule'];
+  if(Array.isArray(schedule?.last_14_days)){
+   put(side+'_last_fixture','FETCHED',schedule.source||'Sportmonks fixtures range',schedule.fetched_at||fixtureStamp);
+   put(side+'_games_14d','FETCHED',schedule.source||'Sportmonks fixtures range',schedule.fetched_at||fixtureStamp);
+  }
+  if(finite(Number(schedule?.rest_hours)))put(side+'_rest_hours','ASSESSED',schedule.source||'Sportmonks fixture end timestamps',schedule.fetched_at||fixtureStamp);
+  if(finite(Number(schedule?.travel_distance_km)))put('travel_distance','ESTIMATED',schedule.source||'Sportmonks venue coordinates',schedule.fetched_at||fixtureStamp);
+  if(schedule?.extra_time_last_match===true||schedule?.extra_time_last_match===false)put('extra_time_load','FETCHED',schedule.source||'Sportmonks fixture state',schedule.fetched_at||fixtureStamp);
+ }
  evidence.component_evidence=out;
  return out;
 }
