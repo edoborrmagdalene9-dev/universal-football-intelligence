@@ -188,17 +188,46 @@ async function scan(options={}){
  const backend=String(options.backend||DEFAULT_BACKEND).replace(/\/+$/,'');
  const start=options.startDate||dateISO(new Date());
  const end=options.endDate||dateISO(addDays(new Date(start+'T12:00:00'),3));
- const sports=Array.isArray(options.sports)&&options.sports.length?options.sports:DEFAULT_SPORTS;
- const markets=options.markets||'h2h,spreads,totals,team_totals,btts,draw_no_bet,alternate_totals,alternate_team_totals';
- const qs=new URLSearchParams({sports:sports.join(','),regions:'uk',markets,from:start+'T00:00:00Z',to:end+'T23:59:59Z',limit:'50'});
- let payload,marketFallback=false;
- try{payload=await getJSON(backend+'/api/matches?'+qs.toString());}
- catch(firstError){
-  const fallbackQs=new URLSearchParams({sports:sports.join(','),regions:'uk',markets:'h2h',from:start+'T00:00:00Z',to:end+'T23:59:59Z',limit:'50'});
-  payload=await getJSON(backend+'/api/matches?'+fallbackQs.toString());
-  marketFallback=true;
-  payload.providerWarnings=[...(payload.providerWarnings||[]),'Full market request failed; automatic fallback retried with h2h only: '+firstError.message];
+ let sports=Array.isArray(options.sports)&&options.sports.length?options.sports:null;
+ if(!sports){
+  try{const catalogue=await getJSON(backend+'/api/sports/catalog');sports=(catalogue.sports||[]).filter(x=>x.active!==false).map(x=>x.key);}
+  catch(_){sports=DEFAULT_SPORTS.slice();}
  }
+ if(!sports.length)sports=DEFAULT_SPORTS.slice();
+ const markets=options.markets||'h2h,spreads,totals,team_totals,btts,draw_no_bet,alternate_totals,alternate_team_totals';
+ const batches=[];for(let i=0;i<sports.length;i+=16)batches.push(sports.slice(i,i+16));
+ const allRows=[],warnings=[],sources=new Set(),providerRecordCounts={},requestedSports=[];
+ let marketFallback=false,firstPayload=null;
+ for(const batch of batches){
+  const qs=new URLSearchParams({sports:batch.join(','),regions:'uk',markets,from:start+'T00:00:00Z',to:end+'T23:59:59Z',limit:'50'});
+  let part;
+  try{part=await getJSON(backend+'/api/matches?'+qs.toString());}
+  catch(firstError){
+   const fallbackQs=new URLSearchParams({sports:batch.join(','),regions:'uk',markets:'h2h',from:start+'T00:00:00Z',to:end+'T23:59:59Z',limit:'50'});
+   try{part=await getJSON(backend+'/api/matches?'+fallbackQs.toString());marketFallback=true;warnings.push('Market fallback for '+batch.join(',')+': '+firstError.message);}
+   catch(secondError){warnings.push('Provider batch failed for '+batch.join(',')+': '+secondError.message);continue;}
+  }
+  if(!firstPayload)firstPayload=part;
+  allRows.push(...rowsFrom(part));
+  (part.sources||[]).forEach(x=>sources.add(x));
+  (part.providerWarnings||[]).forEach(x=>warnings.push(x));
+  (part.requestedSports||batch).forEach(x=>requestedSports.push(x));
+  Object.entries(part.providerRecordCounts||{}).forEach(([k,v])=>providerRecordCounts[k]=(providerRecordCounts[k]||0)+Number(v||0));
+ }
+ if(!firstPayload||!allRows.length)throw new Error(warnings.join(' | ')||'No configured provider returned fixture records.');
+ const deduped=new Map();
+ for(const row of allRows){
+  const key=[String(row.homeTeam||'').toLowerCase().replace(/\\s+/g,' ').trim(),String(row.awayTeam||'').toLowerCase().replace(/\\s+/g,' ').trim(),String(row.kickoff||'').slice(0,16)].join('|');
+  const prior=deduped.get(key);
+  if(!prior)deduped.set(key,{...row});
+  else{
+   prior.odds=[...(Array.isArray(prior.odds)?prior.odds:[]),...(Array.isArray(row.odds)?row.odds:[])];
+   prior.providerSources=[...new Set([...(prior.providerSources||[]),...(row.providerSources||[])])];
+   prior.sources={...(prior.sources||{}),...(row.sources||{})};
+  }
+ }
+ const payload={...firstPayload,source:'multi-provider-catalogue-scan',sources:[...sources],
+  providerRecordCounts,providerWarnings:warnings,requestedSports:[...new Set(requestedSports)],data:[...deduped.values()]};
  const fixtures=rowsFrom(payload).slice(0,Math.min(100,Number(options.maxFixtures)||40));
  const results=[];let cursor=0;
  async function worker(){while(cursor<fixtures.length){const index=cursor++;const item=fixtures[index];try{results[index]=await runFixture(item,backend);}catch(e){results[index]={fixture:{home:item.homeTeam,away:item.awayTeam,kickoff:item.kickoff},error:e.message,modelStatus:'NEEDS_DATA'};}}}
