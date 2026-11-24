@@ -773,9 +773,6 @@ function buildUfiSignalEvidence(row,news){
  if(providerEvidence.lineups&&((Array.isArray(providerEvidence.lineups)&&providerEvidence.lineups.length)||(!Array.isArray(providerEvidence.lineups)&&Object.keys(providerEvidence.lineups).length))){
   add('UFI-182','FETCHED','Provider returned lineup records; official/confirmed status must still be verified.',{evidenceStatus:'FETCHED',source:providerSources.join(', ')||'UFI multi-provider feed',updatedAt:f.oddsTimestamp||null});
  }
- if(providerEvidence.statistics&&((Array.isArray(providerEvidence.statistics)&&providerEvidence.statistics.length)||(!Array.isArray(providerEvidence.statistics)&&Object.keys(providerEvidence.statistics).length))){
-  add('UFI-061','FETCHED','Provider returned match statistics; field definitions and sample context require separate validation.',{evidenceStatus:'FETCHED',source:providerSources.join(', ')||'UFI multi-provider feed',updatedAt:f.oddsTimestamp||null});
- }
  if(providerSources.length>1){
   add('UFI-193','ASSESSED','Independent provider namespaces were attached to this fixture; corroboration of each fact is still field-specific.');
  }
