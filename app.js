@@ -244,7 +244,7 @@ function resolveSlipFixture(row){
   const h=normalizeTeamName(m.homeTeam),a=normalizeTeamName(m.awayTeam);
   return h&&a&&whole.includes(' '+h+' ')&&whole.includes(' '+a+' ');
  });
- const candidates=live.map(m=>({source:m.source||'live-fixture-feed',match_id:m.id||m.matchId,match_date:m.date,home_team:{home_team_name:m.homeTeam},away_team:{away_team_name:m.awayTeam},competition:m.competition,status:m.status,markets:m.markets||[],oddsTimestamp:m.oddsTimestamp||null}));
+ const candidates=live.map(m=>({source:m.source||'live-fixture-feed',match_id:m.id||m.matchId,match_date:m.date,kickoff:m.date,home_team:{home_team_name:m.homeTeam},away_team:{away_team_name:m.awayTeam},competition:m.competition,status:m.status,markets:m.markets||[],oddsTimestamp:m.oddsTimestamp||null,providerEvidence:m.providerEvidence||null}));
  const historical=(S.matches||[]).filter(m=>{
   const h=normalizeTeamName(m.home_team?.home_team_name),a=normalizeTeamName(m.away_team?.away_team_name);
   return h&&a&&whole.includes(' '+h+' ')&&whole.includes(' '+a+' ');
@@ -253,7 +253,7 @@ function resolveSlipFixture(row){
  if(all.length===1){
   const m=all[0],parsed=parseFixtureText(raw),h=normalizeTeamName(m.home_team?.home_team_name);
   const orientation=normalizeTeamName(parsed.homeText).includes(h)?'home-away':(normalizeTeamName(parsed.awayText).includes(h)?'away-home':'verify-orientation');
-  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',reason:(m.source==='live-fixture-feed'||m.source==='ufi-multi-provider-feed')?'Matched to a current/upcoming provider fixture feed. Confirm competition, kickoff, source freshness, and exact bookmaker market/price before acting.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
+  return {status:'candidate-found',matchId:String(m.match_id??''),matchDate:String(m.match_date||''),kickoff:m.kickoff||m.match_date||'',homeTeam:m.home_team?.home_team_name||'',awayTeam:m.away_team?.away_team_name||'',orientation,source:m.source||m.__source||'loaded-fixture-list',competition:m.competition?.name||m.competition||'',fixtureStatus:m.status||'',oddsTimestamp:m.oddsTimestamp||null,providerEvidence:m.providerEvidence||null,reason:(m.source==='live-fixture-feed'||m.source==='ufi-multi-provider-feed')?'Matched to a current/upcoming provider fixture feed. Confirm competition, kickoff, source freshness, and exact bookmaker market/price before acting.':'Matched to a historical StatsBomb fixture only; this does NOT verify a current/upcoming match.'};
  }
  if(all.length>1)return {status:'ambiguous',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:'Multiple fixtures match these team names. Add the date/competition and resolve manually.'};
  return {status:(S.liveFixtures.length||S.matches.length)?'not-found-in-loaded-list':'no-fixtures-loaded',matchId:'',matchDate:'',homeTeam:'',awayTeam:'',reason:(S.liveFixtures.length||S.matches.length)?'No matching fixture found in the current feed or loaded historical list.':'Load current fixtures before fixture matching.'};
@@ -768,6 +768,17 @@ function buildUfiSignalEvidence(row,news){
  add('UFI-038',Number.isFinite(odd)&&odd>1?'ASSESSED':'NEEDS_DATA',Number.isFinite(odd)&&odd>1?'Raw implied probability calculated; margin removal needs a complete outcome book.':'Valid odds required.');
  add('UFI-041',market&&market!=='Unclassified'?'ASSESSED':'PENDING',market&&market!=='Unclassified'?'Market classified as '+market+'.':'Market classification is unresolved.');
  add('UFI-198',news?.status==='live-results'?'ASSESSED':'PENDING',news?.status==='live-results'?'News search executed. Articles are leads, not verified injury facts.':'Fixture-specific news search did not complete.');
+ const providerEvidence=f.providerEvidence||{};
+ const providerSources=Object.values(providerEvidence.sources||{}).filter(Boolean);
+ if(providerEvidence.lineups&&((Array.isArray(providerEvidence.lineups)&&providerEvidence.lineups.length)||(!Array.isArray(providerEvidence.lineups)&&Object.keys(providerEvidence.lineups).length))){
+  add('UFI-182','FETCHED','Provider returned lineup records; official/confirmed status must still be verified.',{evidenceStatus:'FETCHED',source:providerSources.join(', ')||'UFI multi-provider feed',updatedAt:f.oddsTimestamp||null});
+ }
+ if(providerEvidence.statistics&&((Array.isArray(providerEvidence.statistics)&&providerEvidence.statistics.length)||(!Array.isArray(providerEvidence.statistics)&&Object.keys(providerEvidence.statistics).length))){
+  add('UFI-061','FETCHED','Provider returned match statistics; field definitions and sample context require separate validation.',{evidenceStatus:'FETCHED',source:providerSources.join(', ')||'UFI multi-provider feed',updatedAt:f.oddsTimestamp||null});
+ }
+ if(providerSources.length>1){
+  add('UFI-193','ASSESSED','Independent provider namespaces were attached to this fixture; corroboration of each fact is still field-specific.');
+ }
  // Live state fields are genuinely inapplicable to a scheduled pre-match selection.
  if(!live){
   for(const id of ['UFI-301','UFI-302','UFI-303','UFI-304','UFI-305','UFI-306'])
