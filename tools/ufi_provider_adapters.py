@@ -195,6 +195,41 @@ def calculate_arbitrage(query):
             "equalPayoutStakeFractions":[(1/x)/implied for x in odds],
             "warning":"Valid only when odds cover every mutually exclusive outcome with identical settlement rules; fees, limits and price changes can erase the margin."}
 
+def _sportmonks_fixtures(query):
+    """Load date-scoped Sportmonks fixtures through the existing authenticated proxy."""
+    if not os.getenv("SPORTMONKS_API_TOKEN","").strip():
+        return [],[]
+    raw_from=(query.get("from") or query.get("date") or [""])[0]
+    raw_to=(query.get("to") or [raw_from])[0]
+    start=str(raw_from)[:10] if raw_from else datetime.now(timezone.utc).date().isoformat()
+    end=str(raw_to)[:10] if raw_to else start
+    try:
+        first=datetime.strptime(start,"%Y-%m-%d").date()
+        last=datetime.strptime(end,"%Y-%m-%d").date()
+    except ValueError:
+        raise AdapterError("Sportmonks fixture range must use YYYY-MM-DD dates.")
+    days=(last-first).days
+    if days<0 or days>7:
+        raise AdapterError("Sportmonks fixture range is limited to 8 calendar days.")
+    try:
+        try:
+            from . import ufi_live_data_proxy as legacy
+        except ImportError:
+            import ufi_live_data_proxy as legacy
+        include="participants;league;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
+        collected=[]
+        for offset in range(days+1):
+            day=(first+__import__("datetime").timedelta(days=offset)).isoformat()
+            key="sportmonks:fixtures:"+day
+            def load(day=day):
+                return legacy.provider_get("/fixtures/date/"+day,{"include":include,"per_page":"100"})
+            raw,hit=_cached(key,300,load)
+            rows=normalize_provider_payload("Sportmonks",raw,time.time())
+            collected.extend(rows)
+        return collected,[]
+    except Exception as exc:
+        return [],["Sportmonks fixture enrichment unavailable: "+type(exc).__name__]
+
 def _normalized_matches(query):
     """Aggregate configured fixture/odds providers instead of returning the first partial feed."""
     errors=[]
@@ -203,6 +238,13 @@ def _normalized_matches(query):
     fetched=[]
     provider_counts={}
     requested_sports=[]
+    sportmonks_rows,sportmonks_errors=_sportmonks_fixtures(query)
+    provider_counts["Sportmonks"]=len(sportmonks_rows)
+    errors.extend(sportmonks_errors)
+    if sportmonks_rows:
+        collected.extend(sportmonks_rows)
+        sources.append("Sportmonks")
+        fetched.append(time.time())
     if os.getenv("SPORTSGAMEODDS_API_KEY","").strip():
         try:
             match_query=dict(query)
@@ -263,13 +305,14 @@ def _normalized_matches(query):
             current_sources[k]=v
         if row.get("odds"):
             current["odds"]={**(current.get("odds") or {}),**row["odds"]}
-        if row.get("lineups") and not current.get("lineups"):
-            current["lineups"]=row["lineups"]
-        if row.get("statistics") and not current.get("statistics"):
-            current["statistics"]=row["statistics"]
-        if row.get("events") and not current.get("events"):
-            current["events"]=row["events"]
-        current["providerSources"]=sorted(set(current.get("providerSources",[])+row.get("providerSources",[])))
+        for field in ("lineups","statistics","events","referees","venue","score","status","competitionId","quality"):
+            if row.get(field) not in (None,[],{}) and current.get(field) in (None,[],{}):
+                current[field]=row[field]
+        if row.get("sources",{}).get("fixture")=="Sportmonks":
+            current.setdefault("providerFixtureIds",{})["Sportmonks"]=row.get("fixtureId")
+            current.setdefault("sources",{})["fixture"]="Sportmonks"
+        current["providerSources"]=sorted(set(current.get("providerSources",[])+row.get("providerSources",[])+[row.get("sources",{}).get("fixture")]))
+        current["providerSources"]=[x for x in current["providerSources"] if x]
     rows=list(merged.values())
     if not rows:
         detail="; ".join(errors) if errors else "Configure SPORTSGAMEODDS_API_KEY or THE_ODDS_API_KEY on the backend to load normalized match records."
