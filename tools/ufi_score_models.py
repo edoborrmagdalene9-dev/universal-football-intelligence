@@ -22,8 +22,15 @@ def _valid_rows(rows, cutoff=None):
             hg=int(row.get("home_goals"));ag=int(row.get("away_goals"))
             if not d or not home or not away or hg<0 or ag<0:continue
             if cutoff and d>=str(cutoff)[:10]:continue
-            out.append({"date":d,"home_team":home,"away_team":away,"home_goals":hg,"away_goals":ag,
-                        "source_url":row.get("source_url"),"season":row.get("season")})
+            item={"date":d,"home_team":home,"away_team":away,"home_goals":hg,"away_goals":ag,
+                  "source_url":row.get("source_url"),"season":row.get("season")}
+            try:
+                hxg=float(row.get("home_xg"));axg=float(row.get("away_xg"))
+                if math.isfinite(hxg) and math.isfinite(axg) and 0<=hxg<=12 and 0<=axg<=12:
+                    item["home_xg"]=hxg;item["away_xg"]=axg
+            except (TypeError,ValueError,OverflowError):
+                pass
+            out.append(item)
         except (TypeError,ValueError,OverflowError):continue
     return sorted(out,key=lambda x:(x["date"],x["home_team"],x["away_team"]))
 
@@ -60,6 +67,37 @@ def estimate_lambdas(rows,home,away,prior=SHRINKAGE_MATCHES):
     return {"ok":True,"lambdaHome":lh,"lambdaAway":la,"leagueHomeMean":league_h,"leagueAwayMean":league_a,
             "matches":len(rows),"homeVenueAppearances":len(home_rows),"awayVenueAppearances":len(away_rows),
             "shrinkagePriorMatches":prior}
+
+def estimate_xg_lambdas(rows,home,away,prior=SHRINKAGE_MATCHES):
+    """Optional xG-rate model. It stays unavailable unless source xG coverage is sufficient."""
+    rows=_valid_rows(rows)
+    xg_rows=[r for r in rows if _num_xg(r.get("home_xg")) is not None and _num_xg(r.get("away_xg")) is not None]
+    if len(xg_rows)<MIN_LEAGUE_MATCHES:
+        return {"ok":False,"reason":"Fewer than 50 prior results contain published home/away xG columns.","matches":len(xg_rows)}
+    hn=norm_team(home);an=norm_team(away)
+    home_rows=[r for r in xg_rows if norm_team(r["home_team"])==hn]
+    away_rows=[r for r in xg_rows if norm_team(r["away_team"])==an]
+    if len(home_rows)<MIN_TEAM_VENUE_APPEARANCES or len(away_rows)<MIN_TEAM_VENUE_APPEARANCES:
+        return {"ok":False,"reason":"Each team needs at least 3 relevant-venue appearances with xG.","matches":len(xg_rows),
+                "homeVenueAppearances":len(home_rows),"awayVenueAppearances":len(away_rows)}
+    league_h=sum(r["home_xg"] for r in xg_rows)/len(xg_rows)
+    league_a=sum(r["away_xg"] for r in xg_rows)/len(xg_rows)
+    home_scored=(sum(r["home_xg"] for r in home_rows)+prior*league_h)/(len(home_rows)+prior)
+    away_conceded=(sum(r["away_xg"] for r in home_rows)+prior*league_a)/(len(home_rows)+prior)
+    away_scored=(sum(r["away_xg"] for r in away_rows)+prior*league_a)/(len(away_rows)+prior)
+    home_conceded=(sum(r["home_xg"] for r in away_rows)+prior*league_h)/(len(away_rows)+prior)
+    lh=max(0.05,min(5.0,league_h*(home_scored/max(.05,league_h))*(away_conceded/max(.05,league_a))))
+    la=max(0.05,min(5.0,league_a*(away_scored/max(.05,league_a))*(home_conceded/max(.05,league_h))))
+    return {"ok":True,"lambdaHome":lh,"lambdaAway":la,"leagueHomeXgMean":league_h,"leagueAwayXgMean":league_a,
+            "matches":len(xg_rows),"homeVenueAppearances":len(home_rows),"awayVenueAppearances":len(away_rows),
+            "shrinkagePriorMatches":prior,"source":"published Football-Data HxG/AxG columns"}
+
+def _num_xg(value):
+    try:
+        n=float(value)
+        return n if math.isfinite(n) and 0<=n<=12 else None
+    except (TypeError,ValueError,OverflowError):
+        return None
 
 def dixon_coles_tau(home_goals,away_goals,lambda_home,lambda_away,rho):
     if home_goals==0 and away_goals==0:return max(1e-8,1-lambda_home*lambda_away*rho)
@@ -166,13 +204,23 @@ def predict_fixture(rows,home,away,cutoff_date=None,include_backtest=True):
     # empirically fitted Dixon-Coles model; neither silently replaces the other.
     fixed_rho=-0.10
     dc_fixed=_grid(rates["lambdaHome"],rates["lambdaAway"],fixed_rho)
+    xg_rates=estimate_xg_lambdas(prior,home,away)
     def top(grid):
         return [{**x,"fair_odds":(1/x["p"] if x["p"]>0 else None)} for x in sorted(grid,key=lambda x:x["p"],reverse=True)[:12]]
+    models={"independent_poisson":{"top_scores":top(independent),"one_x_two":_outcome_probs(independent),"score_grid":independent},
+            "dixon_coles":{"top_scores":top(dc),"one_x_two":_outcome_probs(dc),"score_grid":dc},
+            "dixon_coles_rho_minus_0_10":{"rho":fixed_rho,"top_scores":top(dc_fixed),"one_x_two":_outcome_probs(dc_fixed),"score_grid":dc_fixed}}
+    if xg_rates.get("ok"):
+        xg_independent=_grid(xg_rates["lambdaHome"],xg_rates["lambdaAway"],0)
+        xg_dc=_grid(xg_rates["lambdaHome"],xg_rates["lambdaAway"],rho["rho"])
+        xg_dc_fixed=_grid(xg_rates["lambdaHome"],xg_rates["lambdaAway"],fixed_rho)
+        models.update({
+            "xg_poisson":{"top_scores":top(xg_independent),"one_x_two":_outcome_probs(xg_independent),"score_grid":xg_independent},
+            "xg_dixon_coles":{"top_scores":top(xg_dc),"one_x_two":_outcome_probs(xg_dc),"score_grid":xg_dc},
+            "xg_dixon_coles_rho_minus_0_10":{"rho":fixed_rho,"top_scores":top(xg_dc_fixed),"one_x_two":_outcome_probs(xg_dc_fixed),"score_grid":xg_dc_fixed}})
     return {"status":"model_output","fixture":{"home":home,"away":away,"cutoff_date":cutoff_date},
-            "training_matches":len(prior),"rate_estimate":rates,"dixon_coles":rho,
-            "models":{"independent_poisson":{"top_scores":top(independent),"one_x_two":_outcome_probs(independent),"score_grid":independent},
-                      "dixon_coles":{"top_scores":top(dc),"one_x_two":_outcome_probs(dc),"score_grid":dc},
-                      "dixon_coles_rho_minus_0_10":{"rho":fixed_rho,"top_scores":top(dc_fixed),"one_x_two":_outcome_probs(dc_fixed),"score_grid":dc_fixed}},
+            "training_matches":len(prior),"rate_estimate":rates,"xg_rate_estimate":xg_rates,"dixon_coles":rho,
+            "models":models,
             "historical_backtest":(chronological_backtest(prior) if include_backtest else {"status":"not_run_for_latency","reason":"Chronological holdout backtesting is available on request but is skipped for interactive prediction latency."}),
             "market_gate":"WAIT","market_gate_reason":"Exact-score odds, de-vigged market probabilities, calibrated EV and live confirmation have not been checked by this endpoint.",
             "source_urls":sorted({r.get("source_url") for r in prior if r.get("source_url")}),
