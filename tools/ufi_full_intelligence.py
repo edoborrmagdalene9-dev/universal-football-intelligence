@@ -233,7 +233,7 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
     lh,la=_num(rates.get("lambdaHome")),_num(rates.get("lambdaAway"))
     checks=[]
     def gate(name,passed,detail,available=True,applicable=True):
-        status=("NOT_APPLICABLE" if not applicable else "PASS" if passed else "FAIL" if available else "NEEDS_DATA")
+        status=("NOT_APPLICABLE" if not applicable else "NEEDS_DATA" if not available else "PASS" if passed else "FAIL")
         checks.append({"gate":name,"status":status,"detail":detail})
     if market in {"dc12","double chance 12"} or pick in {"12","home or away"}:
         draw=probability(grid,lambda h,a:h==a)
@@ -245,7 +245,7 @@ def _selection_gates(selection, fixture, model, grid, evidence, p):
         draw_odds=_num(evidence.get("draw_odds"))
         gate("dc12_draw_price",draw_odds is not None and draw_odds>3.00,f"Draw price={draw_odds}; must exceed 3.00",draw_odds is not None)
         under_odds=_num(evidence.get("short_under_odds"))
-        gate("dc12_short_under",under_odds is None or under_odds>1.75,f"Short Under 2.0/2.25 price={under_odds}; if supplied must be >1.75",under_odds is not None)
+        gate("dc12_short_under",under_odds is not None and under_odds>1.75,f"Short Under 2.0/2.25 price={under_odds}; if supplied must be >1.75",under_odds is not None)
         biscotto=evidence.get("biscotto")
         gate("dc12_biscotto",biscotto is False,"Biscotto must be explicitly checked and absent",isinstance(biscotto,bool))
         dr=_num(evidence.get("league_draw_rate"))
