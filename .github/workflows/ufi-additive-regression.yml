@@ -29,7 +29,7 @@ jobs:
         run: python -m compileall -q tools
       - name: Syntax-check existing browser modules
         run: |
-          for file in app.js exact-score-intelligence.js live-correct-score-chaos-engine.js universal-match-state-engine.js live-market-shock-backtest.js audit-intelligence.js ai-council.js calculator-risk-engine.js; do
+          for file in app.js ufi-full-intelligence.js crainee-chaos-gate.js crainee-tactical-surprise-engine.js crainee-background-break-engine.js crainee-unconventional-outcome-engine.js crainee-subconscious-narrative-engine.js bookie-edge-5400.js exact-score-intelligence.js live-correct-score-chaos-engine.js universal-match-state-engine.js live-market-shock-backtest.js audit-intelligence.js ai-council.js calculator-risk-engine.js; do
             node --check "$file"
           done
       - name: Run additive backend regression tests
