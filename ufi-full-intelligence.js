@@ -300,11 +300,23 @@ function marketSelections(fixture){
   }
  }
  const found=[...best.values()].map(({_group,...x})=>x);
- const hasDC12=found.some(x=>String(x.market).toLowerCase()==='double chance'&&String(x.selection).toUpperCase()==='12');
+ const homePick=found.find(x=>x.market==='1X2'&&x.selection==='Home');
+ const drawPick=found.find(x=>x.market==='1X2'&&x.selection==='Draw');
+ const awayPick=found.find(x=>x.market==='1X2'&&x.selection==='Away');
+ const dcNoVig=homePick&&awayPick&&hasNumber(homePick.evidence?.no_vig_probability)&&hasNumber(awayPick.evidence?.no_vig_probability)
+  ?Number(homePick.evidence.no_vig_probability)+Number(awayPick.evidence.no_vig_probability):null;
+ const ah=found.find(x=>x.market==='Asian Handicap'&&x.evidence?.market_key==='spreads'&&hasNumber(x.line));
+ const shortUnder=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('under')&&hasNumber(x.line)&&Number(x.line)<=2.25).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
+ const supportingOver=found.filter(x=>x.market==='Over Under'&&String(x.selection).toLowerCase().startsWith('over')&&hasNumber(x.line)&&Number(x.line)>=2.25&&Number(x.line)<=2.75).sort((a,b)=>Number(b.odds)-Number(a.odds))[0];
+ const dcEvidence={market_key:'derived_from_score_grid_only',no_vig_probability:dcNoVig,
+  draw_odds:drawPick?.odds??null,asian_handicap_main_line:hasNumber(ah?.line)?Math.abs(Number(ah.line)):null,
+  short_under_odds:shortUnder?.odds??null};
+ const dcPick=found.find(x=>(String(x.market).toLowerCase()==='double chance'&&String(x.selection).toUpperCase()==='12')||String(x.market).toLowerCase()==='dc12');
+ if(dcPick)dcPick.evidence={...(dcPick.evidence||{}),...dcEvidence};
+ else found.push({market:'DC12',selection:'12',odds:null,bookmaker:null,evidence:dcEvidence});
  const hasTeamMulti=found.some(x=>String(x.market).toLowerCase().includes('multigoals 1 3'));
- if(!hasDC12)found.push({market:'DC12',selection:'12',odds:null,bookmaker:null,evidence:{market_key:'derived_from_score_grid_only'}});
  for(const [team,side] of [[fixture.homeTeam||fixture.home,'home'],[fixture.awayTeam||fixture.away,'away']]){
-  if(team&&!hasTeamMulti)found.push({market:'Team Multigoals 1-3',selection:'1–3 goals',team,side,odds:null,bookmaker:null,evidence:{market_key:'derived_from_score_grid_only'}});
+  if(team&&!hasTeamMulti)found.push({market:'Team Multigoals 1-3',selection:'1–3 goals',team,side,odds:null,bookmaker:null,evidence:{market_key:'derived_from_score_grid_only',supporting_total_line:hasNumber(supportingOver?.line)?Number(supportingOver.line):null}});
  }
  return found;
 }
@@ -318,6 +330,11 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows){
  if(league&&home&&away&&kickoff){
   const qs=new URLSearchParams({home,away,league,seasons:'5',date:String(kickoff).slice(0,10)});
   try{model=await getJSON(backend+'/api/models/score?'+qs.toString());}catch(e){model={status:'NEEDS_DATA',reason:e.message};}
+ }
+ for(const candidate of selections){
+  if(String(candidate.market).toLowerCase()==='dc12'||String(candidate.market).toLowerCase()==='double chance 12'||String(candidate.selection).trim()==='12'){
+   candidate.evidence={...(candidate.evidence||{}),league_draw_rate:hasNumber(model.league_draw_rate)?Number(model.league_draw_rate):null};
+  }
  }
  const mainGrid=model.models?.xg_dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles_rho_minus_0_10?.score_grid||model.models?.dixon_coles?.score_grid||[];
  let mainModelScore=null;
