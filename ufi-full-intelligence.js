@@ -99,7 +99,12 @@ function marketSelections(fixture){
    const key=String(market.key||market.market||'').toLowerCase();
    const outcomes=Array.isArray(market.outcomes)?market.outcomes:[];
    const priced=outcomes.map(o=>({o,price:Number(o.price)})).filter(x=>Number.isFinite(x.price)&&x.price>1);
-   const invSum=priced.reduce((a,x)=>a+1/x.price,0);
+   const sums=new Map();
+   for(const x of priced){
+    const point=x.o.point===undefined?'':Number(x.o.point);
+    const group=[key,point,bookmaker].join('|');
+    sums.set(group,(sums.get(group)||0)+(1/x.price));
+   }
    for(const {o,price} of priced){
     const point=o.point===undefined?null:Number(o.point);
     const rawName=o.name||o.label||o.description||'';
@@ -111,6 +116,7 @@ function marketSelections(fixture){
     else if(key==='double_chance'){marketName='Double Chance';selection=String(rawName);}
     else if(key==='spreads'||key==='alternate_spreads'){marketName='Asian Handicap';selection=String(rawName);side=team&&String(team).toLowerCase()===String(fixture.homeTeam||fixture.home).toLowerCase()?'home':team&&String(team).toLowerCase()===String(fixture.awayTeam||fixture.away).toLowerCase()?'away':null;}
     const group=[key,line===null?'':line,bookmaker].join('|');
+    const invSum=sums.get(group)||0;
     const noVig=invSum>0?(1/price)/invSum:null;
     const evidence={no_vig_probability:noVig,market_key:key,market_line:line,price_source:'The Odds API / SportsGameOdds normalized bookmaker payload',price_timestamp:fixture.timestamps?.providerUpdatedAt||fixture.timestamps?.fetchedAt||fixture.fetchedAt||null};
     const item={market:marketName,selection,team,side,line,odds:price,bookmaker,evidence,_group:group};
