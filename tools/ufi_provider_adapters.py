@@ -72,9 +72,22 @@ def _odds_api(sport, query):
     base=os.getenv("THE_ODDS_API_BASE_URL","https://api.the-odds-api.com/v4/sports").strip().rstrip("/")
     url=base+"/"+urllib.parse.quote(sport,safe="_")+"/odds"
     cachekey="odds:"+sport+":"+urllib.parse.urlencode({k:v for k,v in params.items() if k!="apiKey"})
-    payload,hit=_cached(cachekey,_TTLS["odds"],lambda:_get_json(_query_url(url,params)))
+    response,hit=_cached(cachekey,_TTLS["odds"],lambda:_get_json(_query_url(url,params)))
+    # _get_json returns (JSON payload, response headers). Unwrap it here so
+    # normalizers receive the actual event list rather than a tuple.
+    if isinstance(response,tuple) and len(response)==2:
+        payload,headers=response
+    else:
+        payload,headers=response,{}
+    header_map={str(k).lower():v for k,v in (headers or {}).items()}
+    remaining=header_map.get("x-requests-remaining")
+    used=header_map.get("x-requests-used")
+    last=header_map.get("x-requests-last")
     return {"ok":True,"source":"The Odds API","sport":sport,"fetchedAt":time.time(),"cacheHit":hit,
-            "quota":{"remaining":None,"note":"Provider usage headers are not currently exposed by this adapter; inspect account dashboard for exact quota."},
+            "quota":{"remaining":int(remaining) if str(remaining or "").isdigit() else None,
+                     "used":int(used) if str(used or "").isdigit() else None,
+                     "lastRequest":last,
+                     "note":"Usage headers are provider-reported when present; otherwise inspect the account dashboard."},
             "data":payload}
 
 def _sgo_events(query):
