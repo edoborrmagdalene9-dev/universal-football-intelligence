@@ -320,6 +320,9 @@ def enrich_fixture(sport,league,home,away,kickoff):
     if cutoff.tzinfo is None:cutoff=cutoff.replace(tzinfo=timezone.utc)
     form={"home":_opponent_adjusted_form(schedule_rows.get("home",[]),team_ids.get("home"),standings,cutoff),
           "away":_opponent_adjusted_form(schedule_rows.get("away",[]),team_ids.get("away"),standings,cutoff)}
+    adjusted_form={"sample_size":min(form["home"].get("sample_size",0),form["away"].get("sample_size",0)),
+                   "source":"ESPN team schedule + ESPN league standings","home":form["home"],"away":form["away"],
+                   "method":"Each result weighted by opponent PPG / league average PPG; weight capped 0.5–1.5."}
     # Attach roster height/position data only to explicitly flagged match starters.
     roster_by_team={side:{p["athlete_id"]:p for p in (rosters.get(side,{}).get("players") or []) if p.get("athlete_id")} for side in ("home","away")}
     side_by_team={team_ids.get("home"):"home",team_ids.get("away"):"away"}
@@ -341,7 +344,7 @@ def enrich_fixture(sport,league,home,away,kickoff):
         "event":event,"event_status":event.get("status"),"venue":venue,"officials":officials,
         "key_plays":summary.get("key_plays") or summary.get("keyEvents") or [],
         "team_statistics":summary.get("team_statistics") or [],
-        "form":summary.get("form") or form,"opponent_adjusted_form":form,"head_to_head":h2h,"boxscore":box,"rosters":rosters,"standings":standings,
+        "form":summary.get("form") or form,"opponent_adjusted_form":adjusted_form,"head_to_head":h2h,"boxscore":box,"rosters":rosters,"standings":standings,
         "schedules":schedules,"team_ids":team_ids,
         "lineups_confirmed":box.get("starting_xi_confirmed") is True,
         "home_players":starting_players["home"],"away_players":starting_players["away"],
