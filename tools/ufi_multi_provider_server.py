@@ -258,8 +258,8 @@ class AuditHandler(legacy.Handler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path != "/api/audit/slip":
-            self._json(404, {"ok": False, "error": "Unknown POST endpoint."})
+        if parsed.path not in ("/api/audit/slip", "/api/brain/audit"):
+            self._json(404, {"ok": False, "error": "Unknown POST endpoint. Supported: /api/audit/slip, /api/brain/audit."})
             return
         if not legacy.origin_allowed(self.headers.get("Origin")):
             self._json(403, {"ok": False, "error": "Origin not allowed"})
@@ -273,11 +273,19 @@ class AuditHandler(legacy.Handler):
                 self._json(413, {"ok": False, "error": "Request body must be between 1 byte and 1 MB."})
                 return
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            try:
-                from .ufi_continuous_audit import audit_slip_payload
-            except ImportError:
-                from ufi_continuous_audit import audit_slip_payload
-            self._json(200, audit_slip_payload(payload))
+            if parsed.path == "/api/brain/audit":
+                try:
+                    from .ufi_full_intelligence import audit_full_fixture
+                except ImportError:
+                    from ufi_full_intelligence import audit_full_fixture
+                result = audit_full_fixture(payload)
+            else:
+                try:
+                    from .ufi_continuous_audit import audit_slip_payload
+                except ImportError:
+                    from ufi_continuous_audit import audit_slip_payload
+                result = audit_slip_payload(payload)
+            self._json(200, result)
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._json(400, {"ok": False, "error": "Body must be valid UTF-8 JSON."})
         except ValueError as exc:
