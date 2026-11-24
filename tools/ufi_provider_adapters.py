@@ -216,7 +216,7 @@ def _sportmonks_fixtures(query):
             from . import ufi_live_data_proxy as legacy
         except ImportError:
             import ufi_live_data_proxy as legacy
-        include="participants;league;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
+        include="participants;league;scores;state;events.type;lineups.details.type;statistics.type;referees;venue;formations"
         collected=[]
         for offset in range(days+1):
             day=(first+__import__("datetime").timedelta(days=offset)).isoformat()
@@ -307,7 +307,7 @@ def _normalized_matches(query):
             current_sources["fixture"]="Sportmonks"
         if row.get("odds"):
             current["odds"]={**(current.get("odds") or {}),**row["odds"]}
-        for field in ("lineups","statistics","events","referees","venue","score","status","competitionId","quality"):
+        for field in ("lineups","statistics","events","referees","venue","formations","participants","score","status","competitionId","quality"):
             if row.get(field) not in (None,[],{}) and current.get(field) in (None,[],{}):
                 current[field]=row[field]
         if row.get("sources",{}).get("fixture")=="Sportmonks":
