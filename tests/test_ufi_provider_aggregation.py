@@ -78,6 +78,29 @@ class NormalizedProviderAggregationTests(unittest.TestCase):
         self.assertEqual(result["checks"]["sportmonks"]["catalogRecords"],1)
         self.assertNotIn("private-test-token",str(result))
 
+    def test_sportmonks_lineup_context_merges_with_odds_event(self):
+        sportmonks=[{
+            "fixtureId":12345,"kickoff":"2026-11-25T19:00:00Z","homeTeam":"Team A","awayTeam":"Team B",
+            "lineups":[{"player_id":10,"position_id":1}],"statistics":[{"type":"shots","value":12}],
+            "referees":[{"id":4}],"venue":{"latitude":51.5,"longitude":-0.1},
+            "sources":{"fixture":"Sportmonks"},"providerSources":["Sportmonks"]
+        }]
+        odds=[{
+            "fixtureId":"odds-1","kickoff":"2026-11-25T19:00:00Z","homeTeam":"Team A","awayTeam":"Team B",
+            "odds":{"h2h":{"home":2.1}},"sources":{"fixture":"The Odds API","odds":"The Odds API"}
+        }]
+        with patch.dict(os.environ,{"THE_ODDS_API_KEY":"test"},clear=False), \
+             patch.object(adapters,"_sportmonks_fixtures",return_value=(sportmonks,[])), \
+             patch.object(adapters,"_odds_api",return_value={"data":"odds","fetchedAt":2}), \
+             patch.object(adapters,"normalize_provider_payload",side_effect=lambda provider,payload,stamp: odds if provider=="The Odds API" else []):
+            result=adapters._normalized_matches({"sports":["soccer_epl"]})
+        self.assertEqual(result["recordCount"],1)
+        merged=result["data"][0]
+        self.assertEqual(merged["sources"]["fixture"],"Sportmonks")
+        self.assertEqual(merged["sources"]["odds"],"The Odds API")
+        self.assertTrue(merged["lineups"])
+        self.assertTrue(merged["venue"])
+
     def test_caps_sport_requests_to_protect_provider_quota(self):
         with patch.dict(os.environ,{"THE_ODDS_API_KEY":"test"},clear=False):
             with self.assertRaises(adapters.AdapterError):
