@@ -411,10 +411,6 @@ async function runFixture(fixture,backend,playerProfilesEnabled,historyRows,mark
   evidence.formation_home=fixture.formations.home||null;
   evidence.formation_away=fixture.formations.away||null;
  }
- if(engines.unconventional?.unconventionalShortlist?.length){
-  evidence.alternative_scenarios=engines.unconventional.unconventionalShortlist;
-  evidence.scenario_engine_ran=true;
- }
  buildComponentEvidence(fixture,model,selections[0]||{},evidence,physicalEvidence.status==='FETCHED'?physicalEvidence:null);
  let audit=null;
  if(selections.length){
