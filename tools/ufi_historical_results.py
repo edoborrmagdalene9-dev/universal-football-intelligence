@@ -37,7 +37,16 @@ def _load_one_season(league: str, code: str, timeout: float) -> dict:
             except (TypeError,ValueError,OverflowError):continue
             home=(row.get("HomeTeam") or "").strip();away=(row.get("AwayTeam") or "").strip()
             if not match_date or not home or not away or hg<0 or ag<0:continue
-            records.append({"date":match_date,"home_team":home,"away_team":away,"home_goals":hg,"away_goals":ag,"season":code,"source_url":url})
+            record={"date":match_date,"home_team":home,"away_team":away,"home_goals":hg,"away_goals":ag,"season":code,"source_url":url}
+            # Some Football-Data league/season files publish expected-goals columns.
+            # Preserve them when present; never substitute goals or estimates for missing xG.
+            try:
+                hxg=float(row.get("HxG",""));axg=float(row.get("AxG",""))
+                if 0<=hxg<=12 and 0<=axg<=12:
+                    record["home_xg"]=hxg;record["away_xg"]=axg
+            except (TypeError,ValueError,OverflowError):
+                pass
+            records.append(record)
         if records:
             return {"season":code,"records":records,"url":url,"issue":None}
         return {"season":code,"records":[],"url":None,"issue":{"season":code,"reason":"No usable match rows"}}

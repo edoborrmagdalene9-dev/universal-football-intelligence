@@ -139,6 +139,52 @@ def _integrated_get_payload(route, query):
             return generate_score_prediction(query), False
         except ValueError as exc:
             raise legacy.ProviderError(str(exc)) from exc
+    if route == "/api/espn/leagues":
+        try:
+            try:
+                from . import ufi_espn_provider as espn
+            except ImportError:
+                import ufi_espn_provider as espn
+            return espn.leagues(),False
+        except Exception as exc:
+            return {"status":"NEEDS_DATA","source":"ESPN","reason":str(exc)},False
+    if route == "/api/espn/player":
+        try:
+            try:
+                from . import ufi_espn_provider as espn
+            except ImportError:
+                import ufi_espn_provider as espn
+            league=(query.get("league") or [""])[0]
+            athlete_id=(query.get("id") or [""])[0]
+            if not league or not athlete_id.isdigit():raise ValueError("league and numeric id are required")
+            return espn.get_player_profile(league,athlete_id),False
+        except Exception as exc:
+            return {"status":"NEEDS_DATA","source":"ESPN","reason":str(exc)},False
+    if route == "/api/espn/player-stats":
+        try:
+            try:
+                from . import ufi_espn_provider as espn
+            except ImportError:
+                import ufi_espn_provider as espn
+            league=(query.get("league") or [""])[0]
+            athlete_id=(query.get("id") or [""])[0]
+            season=(query.get("season") or [""])[0]
+            if not league or not athlete_id.isdigit() or not season.isdigit():raise ValueError("league, numeric id and season are required")
+            return espn.get_player_season_stats(league,athlete_id,season),False
+        except Exception as exc:
+            return {"status":"NEEDS_DATA","source":"ESPN","reason":str(exc)},False
+    if route == "/api/espn/enrich":
+        try:
+            try:
+                from . import ufi_espn_provider as espn
+            except ImportError:
+                import ufi_espn_provider as espn
+            def q(name,default=""):
+                value=query.get(name,[default])
+                return value[0] if isinstance(value,list) else value
+            return espn.enrich_fixture(q("sport"),q("league") or None,q("home"),q("away"),q("kickoff")),False
+        except Exception as exc:
+            return {"status":"NEEDS_DATA","source":"ESPN","reason":str(exc)},False
     try:
         extra=adapters.handle_extra_route(route,query)
         if extra is not None:
@@ -258,8 +304,8 @@ class AuditHandler(legacy.Handler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path != "/api/audit/slip":
-            self._json(404, {"ok": False, "error": "Unknown POST endpoint."})
+        if parsed.path not in ("/api/audit/slip", "/api/brain/audit"):
+            self._json(404, {"ok": False, "error": "Unknown POST endpoint. Supported: /api/audit/slip, /api/brain/audit."})
             return
         if not legacy.origin_allowed(self.headers.get("Origin")):
             self._json(403, {"ok": False, "error": "Origin not allowed"})
@@ -273,11 +319,19 @@ class AuditHandler(legacy.Handler):
                 self._json(413, {"ok": False, "error": "Request body must be between 1 byte and 1 MB."})
                 return
             payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            try:
-                from .ufi_continuous_audit import audit_slip_payload
-            except ImportError:
-                from ufi_continuous_audit import audit_slip_payload
-            self._json(200, audit_slip_payload(payload))
+            if parsed.path == "/api/brain/audit":
+                try:
+                    from .ufi_full_intelligence import audit_full_fixture
+                except ImportError:
+                    from ufi_full_intelligence import audit_full_fixture
+                result = audit_full_fixture(payload)
+            else:
+                try:
+                    from .ufi_continuous_audit import audit_slip_payload
+                except ImportError:
+                    from ufi_continuous_audit import audit_slip_payload
+                result = audit_slip_payload(payload)
+            self._json(200, result)
         except (UnicodeDecodeError, json.JSONDecodeError):
             self._json(400, {"ok": False, "error": "Body must be valid UTF-8 JSON."})
         except ValueError as exc:

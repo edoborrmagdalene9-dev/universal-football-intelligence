@@ -97,6 +97,8 @@ def generate_score_prediction(query: dict[str, list[str]]) -> dict[str, Any]:
         "historical_source_urls": historical.get("source_urls", []),
         "historical_issues": historical.get("issues", []),
         "rate_estimate": model.get("rate_estimate", {}),
+        "xg_rate_estimate": model.get("xg_rate_estimate", {}),
+        "league_draw_rate": model.get("league_draw_rate"),
         "training_matches": model.get("training_matches", 0),
         "dixon_coles": model.get("dixon_coles", {}),
         "models": model.get("models", {}),

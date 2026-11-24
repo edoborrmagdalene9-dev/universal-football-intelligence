@@ -53,6 +53,42 @@ def normalize_odds_api_event(event, fetched_at=None):
         "quality":{"missingRequiredFields":missing,"hasScore":False,"hasLineups":False,"hasEvents":False,"hasStatistics":False,"oddsOnlySource":True}
     }
 
+def normalize_sportmonks_fixture(fixture, fetched_at=None):
+    fixture=fixture if isinstance(fixture,dict) else {}
+    participants=fixture.get("participants") if isinstance(fixture.get("participants"),list) else []
+    home=away=None
+    for participant in participants:
+        if not isinstance(participant,dict): continue
+        meta=participant.get("meta") if isinstance(participant.get("meta"),dict) else {}
+        side=str(meta.get("location") or "").lower()
+        if side=="home": home=_team_name(participant)
+        elif side=="away": away=_team_name(participant)
+    league=fixture.get("league") if isinstance(fixture.get("league"),dict) else {}
+    venue=fixture.get("venue") if isinstance(fixture.get("venue"),dict) else {}
+    state=fixture.get("state") if isinstance(fixture.get("state"),dict) else {}
+    kickoff=_first(fixture.get("starting_at"),fixture.get("starting_at_timestamp"))
+    if isinstance(kickoff,(int,float)):
+        kickoff=datetime.fromtimestamp(kickoff,tz=timezone.utc).isoformat()
+    missing=[field for field,value in (("homeTeam",home),("awayTeam",away),("kickoff",kickoff)) if not value]
+    return {
+        "fixtureId":_first(fixture.get("id"),fixture.get("fixture_id")),
+        "sport":"SOCCER","competition":_first(league.get("name"),fixture.get("league_name"),fixture.get("league_id")),
+        "competitionId":_first(league.get("id"),fixture.get("league_id")),
+        "kickoff":kickoff,"homeTeam":home,"awayTeam":away,
+        "status":{"started":state.get("started"),"ended":state.get("ended"),"finalized":state.get("finished"),
+                  "state":_first(state.get("state"),state.get("name"),state.get("short_name"))},
+        "score":fixture.get("scores"),"events":fixture.get("events"),"lineups":fixture.get("lineups"),
+        "statistics":fixture.get("statistics"),"referees":fixture.get("referees"),"venue":venue,
+        "formations":fixture.get("formations"),"participants":participants,
+        "lineupsConfirmed":fixture.get("lineups_confirmed") if isinstance(fixture.get("lineups_confirmed"),bool) else None,
+        "odds":None,"sources":{"fixture":"Sportmonks","odds":None},
+        "timestamps":{"providerUpdatedAt":fixture.get("updated_at"),"fetchedAt":fetched_at},
+        "quality":{"missingRequiredFields":missing,"hasScore":fixture.get("scores") is not None,
+                   "hasLineups":fixture.get("lineups") is not None,"hasEvents":fixture.get("events") is not None,
+                   "hasStatistics":fixture.get("statistics") is not None,"hasReferees":fixture.get("referees") is not None,
+                   "hasVenue":bool(venue),"oddsOnlySource":False}
+    }
+
 def normalize_provider_payload(source, payload, fetched_at=None):
     if isinstance(payload,dict):
         rows=payload.get("data")
@@ -64,5 +100,6 @@ def normalize_provider_payload(source, payload, fetched_at=None):
         rows=payload
     else:
         rows=[]
-    normalizer=normalize_sgo_event if source=="SportsGameOdds" else normalize_odds_api_event
+    normalizer=(normalize_sgo_event if source=="SportsGameOdds" else
+                normalize_sportmonks_fixture if source=="Sportmonks" else normalize_odds_api_event)
     return [normalizer(row,fetched_at) for row in rows if isinstance(row,dict)]

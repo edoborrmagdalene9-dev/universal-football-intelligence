@@ -2,6 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 from tools import ufi_provider_adapters as adapters
+from tools.ufi_match_context import normalize_sportmonks_fixture
 
 class NormalizedProviderAggregationTests(unittest.TestCase):
     def test_aggregates_sgo_and_multiple_odds_sports_and_deduplicates(self):
@@ -56,6 +57,20 @@ class NormalizedProviderAggregationTests(unittest.TestCase):
         self.assertEqual(result["quota"]["remaining"],498)
         self.assertEqual(result["quota"]["used"],2)
 
+    def test_odds_api_sports_catalog_returns_only_soccer_keys_without_secret(self):
+        payload=[
+            {"key":"soccer_epl","title":"EPL","group":"Soccer","active":True},
+            {"key":"basketball_nba","title":"NBA","group":"Basketball","active":True},
+            {"key":"soccer_test","title":"Test League","group":"Soccer","active":False},
+        ]
+        with patch.dict(os.environ,{"THE_ODDS_API_KEY":"private-test-key"},clear=False), \
+             patch.object(adapters,"_get_json",return_value=(payload,{"X-Requests-Remaining":"90"})), \
+             patch.object(adapters,"_cached",side_effect=lambda key,ttl,fn:(fn(),False)):
+            result=adapters._odds_sports_catalog()
+        self.assertEqual([x["key"] for x in result["sports"]],["soccer_epl","soccer_test"])
+        self.assertEqual(result["quota"]["remaining"],90)
+        self.assertNotIn("private-test-key",str(result))
+
     def test_sportmonks_health_probe_checks_api_catalog_without_exposing_token(self):
         with patch.dict(os.environ,{"SPORTMONKS_API_TOKEN":"private-test-token"},clear=False), \
              patch.object(adapters,"_get_json",return_value=({"data":[{"id":1}]},{})) as request:
@@ -63,6 +78,49 @@ class NormalizedProviderAggregationTests(unittest.TestCase):
         self.assertTrue(result["checks"]["sportmonks"]["reachable"])
         self.assertEqual(result["checks"]["sportmonks"]["catalogRecords"],1)
         self.assertNotIn("private-test-token",str(result))
+
+    def test_sportmonks_normalizer_keeps_lineup_venue_and_source_fields(self):
+        row=normalize_sportmonks_fixture({
+            "id":42,"starting_at":"2026-11-25 19:00:00",
+            "participants":[
+                {"name":"Home FC","meta":{"location":"home"}},
+                {"name":"Away FC","meta":{"location":"away"}}
+            ],
+            "league":{"id":8,"name":"Test League"},
+            "state":{"state":"NS","started":False,"finished":False},
+            "lineups":[{"player_id":100,"position_id":1}],
+            "statistics":[{"type_id":1,"data":{"value":8}}],
+            "referees":[{"id":5}],"venue":{"latitude":51.5,"longitude":-0.1}
+        },"2026-11-24T12:00:00Z")
+        self.assertEqual(row["homeTeam"],"Home FC")
+        self.assertEqual(row["awayTeam"],"Away FC")
+        self.assertEqual(row["competition"],"Test League")
+        self.assertTrue(row["quality"]["hasLineups"])
+        self.assertTrue(row["quality"]["hasReferees"])
+        self.assertEqual(row["sources"]["fixture"],"Sportmonks")
+
+    def test_sportmonks_lineup_context_merges_with_odds_event(self):
+        sportmonks=[{
+            "fixtureId":12345,"kickoff":"2026-11-25T19:00:00Z","homeTeam":"Team A","awayTeam":"Team B",
+            "lineups":[{"player_id":10,"position_id":1}],"statistics":[{"type":"shots","value":12}],
+            "referees":[{"id":4}],"venue":{"latitude":51.5,"longitude":-0.1},
+            "sources":{"fixture":"Sportmonks"},"providerSources":["Sportmonks"]
+        }]
+        odds=[{
+            "fixtureId":"odds-1","kickoff":"2026-11-25T19:00:00Z","homeTeam":"Team A","awayTeam":"Team B",
+            "odds":{"h2h":{"home":2.1}},"sources":{"fixture":"The Odds API","odds":"The Odds API"}
+        }]
+        with patch.dict(os.environ,{"THE_ODDS_API_KEY":"test"},clear=False), \
+             patch.object(adapters,"_sportmonks_fixtures",return_value=(sportmonks,[])), \
+             patch.object(adapters,"_odds_api",return_value={"data":"odds","fetchedAt":2}), \
+             patch.object(adapters,"normalize_provider_payload",side_effect=lambda provider,payload,stamp: odds if provider=="The Odds API" else []):
+            result=adapters._normalized_matches({"sports":["soccer_epl"]})
+        self.assertEqual(result["recordCount"],1)
+        merged=result["data"][0]
+        self.assertEqual(merged["sources"]["fixture"],"Sportmonks")
+        self.assertEqual(merged["sources"]["odds"],"The Odds API")
+        self.assertTrue(merged["lineups"])
+        self.assertTrue(merged["venue"])
 
     def test_caps_sport_requests_to_protect_provider_quota(self):
         with patch.dict(os.environ,{"THE_ODDS_API_KEY":"test"},clear=False):
