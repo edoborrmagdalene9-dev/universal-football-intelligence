@@ -27,7 +27,7 @@ function evaluate(row,news,state){
  set('UFI-040','NEEDS_DATA','Joint hit-rate requires calibrated per-leg probabilities and dependence treatment.');
  set('UFI-041',row.marketType?'ASSESSED':'NEEDS_DATA',row.marketType?'Market type: '+row.marketType+'.':'Market type not confidently classified.');
  set('UFI-101','NEEDS_DATA','Shots line parsing needs a structured player/team shots market and source.');
- set('UFI-181',f.status==='candidate-found'?'ASSESSED':'NEEDS_DATA',f.status==='candidate-found'?'Fixture match exists; confirmed starting lineup is not implied.':'Fixture match missing; lineup cannot be assessed.');
+ set('UFI-181','NEEDS_DATA','Fixture matching does not prove a confirmed starting XI. Require a sourced official team sheet or explicitly tagged projection.');
  set('UFI-301','NEEDS_DATA','Live score, match clock, and live event verification are not connected to this pre-match audit.');
  set('UFI-198',news?.status==='ok'?'ASSESSED':'NEEDS_DATA',news?.status==='ok'?'News search returned articles; headlines are clues, not verified injury reports.':'News feed did not return verifiable results.');
  set('UFI-381','ASSESSED','The audit permits HOLD / no-pick; a survivor label is not a guarantee.');
