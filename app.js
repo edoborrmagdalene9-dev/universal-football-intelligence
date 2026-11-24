@@ -733,7 +733,7 @@ function buildUfiSignalEvidence(row,news){
  if(!/player|shot/i.test(market)) for(let n=121;n<=140;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a player-shots market.');
  if(!/card|foul/i.test(market)) for(let n=141;n<=160;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a cards/fouls market.');
  if(!/both teams|btts|clean sheet/i.test(market)) for(let n=81;n<=100;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a BTTS/clean-sheet market; shared scoring inputs remain in the goal and team-model checks.');
- if((window.UFI_APP_STATE?.manualSelections||[]).length<2) for(let n=321;n<=340;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Accumulator structure checks do not apply to a single-selection audit.');
+ if((S.manualSelections||[]).length<2) for(let n=321;n<=340;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Accumulator structure checks do not apply to a single-selection audit.');
  return out;
 }
 async function runStrictSlipAudit(){
