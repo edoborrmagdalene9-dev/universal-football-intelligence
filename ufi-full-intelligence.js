@@ -123,7 +123,8 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  const modelSource=(model.source||model.source_urls?.[0]||'Football-Data historical results');
  const modelStamp=model.fetched_at||model.fetchedAt||null;
  const marketSource=selection.bookmaker||selection.evidence?.price_source||'Bookmaker odds feed';
- const marketStamp=selection.evidence?.price_timestamp||fixture.timestamps?.fetchedAt||fixture.fetchedAt||null;
+ const marketStamp=fixture.timestamps?.fetchedAt||fixture.fetchedAt||null;
+ const priceStamp=selection.evidence?.price_timestamp||null;
  const put=(key,status,source,stamp)=>{if(source&&stamp)out[key]={status,source,fetched_at:stamp};};
  if(fixture.fixtureId||fixture.fixture_id)put('fixture_identity','ASSESSED',fixtureSource,fixtureStamp);
  if(fixture.homeTeam&&fixture.awayTeam)put('team_orientation','ASSESSED',fixtureSource,fixtureStamp);
@@ -137,7 +138,7 @@ function buildComponentEvidence(fixture,model,selection,evidence,physical){
  if(hasNumber(selection.odds))put('decimal_price','FETCHED',marketSource,marketStamp);
  if(selection.bookmaker)put('bookmaker_identity','FETCHED',marketSource,marketStamp);
  if(hasNumber(selection.line))put('market_line','FETCHED',marketSource,marketStamp);
- if(selection.evidence?.price_timestamp)put('price_timestamp','FETCHED',marketSource,selection.evidence.price_timestamp);
+ if(priceStamp)put('price_timestamp','FETCHED',marketSource,priceStamp);
  if(model.training_matches)put('historical_sample','FETCHED',modelSource,modelStamp);
  if(model.rate_estimate?.ok&&finite(model.rate_estimate.lambdaHome))put('home_lambda','ASSESSED',modelSource,modelStamp);
  if(model.rate_estimate?.ok&&finite(model.rate_estimate.lambdaAway))put('away_lambda','ASSESSED',modelSource,modelStamp);
@@ -274,7 +275,7 @@ function mapOutcome(name,home,away){
 }
 function marketSelections(fixture){
  const books=Array.isArray(fixture.odds)?fixture.odds:Array.isArray(fixture.bookmakers)?fixture.bookmakers:[];
- const best=new Map();
+ const best=new Map(),snapshotMap=new Map();
  for(const book of books){
   const bookmaker=book.title||book.key||book.name||'Unknown bookmaker';
   const markets=Array.isArray(book.markets)?book.markets:[];
@@ -301,15 +302,24 @@ function marketSelections(fixture){
     const group=[key,line===null?'':line,bookmaker].join('|');
     const invSum=sums.get(group)||0;
     const noVig=invSum>0?(1/price)/invSum:null;
-    const evidence={no_vig_probability:noVig,market_key:key,market_line:line,price_source:'The Odds API / SportsGameOdds normalized bookmaker payload',price_timestamp:fixture.timestamps?.providerUpdatedAt||fixture.timestamps?.fetchedAt||fixture.fetchedAt||null};
+    const priceTimestamp=market.last_update||market.lastUpdate||book.last_update||book.lastUpdate||fixture.timestamps?.providerUpdatedAt||null;\n    const evidence={no_vig_probability:noVig,market_key:key,market_line:line,price_source:'The Odds API / SportsGameOdds normalized bookmaker payload',price_timestamp:priceTimestamp,source_updated_at:priceTimestamp,snapshots:0};
     const item={market:marketName,selection,team,side,line,odds:price,bookmaker,evidence,_group:group};
     const identity=[key,line===null?'':line,selection,team||''].join('|');
+    if(priceTimestamp){
+     const records=snapshotMap.get(identity)||new Map();
+     records.set(String(bookmaker)+'|'+String(priceTimestamp),{bookmaker,source_updated_at:priceTimestamp});
+     snapshotMap.set(identity,records);
+    }
     const old=best.get(identity);
     if(!old||price>old.odds)best.set(identity,item);
    }
   }
  }
- const found=[...best.values()].map(({_group,...x})=>x);
+ const found=[...best.values()].map(({_group,...x})=>{
+  const identity=[x.evidence?.market_key||'',x.line===null||x.line===undefined?'':x.line,x.selection,x.team||''].join('|');
+  const records=[...(snapshotMap.get(identity)?.values()||[])];
+  return {...x,evidence:{...(x.evidence||{}),snapshots:records.length,snapshot_records:records}};
+ });
  const drawPick=found.find(x=>x.market==='1X2'&&x.selection==='Draw');
  const dcNoVigByBook=[],drawNoVigByBook=[],shortUnderProbByLine=new Map();
  for(const book of books){
