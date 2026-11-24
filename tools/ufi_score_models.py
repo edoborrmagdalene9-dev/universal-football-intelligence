@@ -83,11 +83,11 @@ def estimate_xg_lambdas(rows,home,away,prior=SHRINKAGE_MATCHES):
     league_h=sum(r["home_xg"] for r in xg_rows)/len(xg_rows)
     league_a=sum(r["away_xg"] for r in xg_rows)/len(xg_rows)
     home_scored=(sum(r["home_xg"] for r in home_rows)+prior*league_h)/(len(home_rows)+prior)
-    away_conceded=(sum(r["away_xg"] for r in home_rows)+prior*league_a)/(len(home_rows)+prior)
+    away_conceded=(sum(r["home_xg"] for r in away_rows)+prior*league_h)/(len(away_rows)+prior)
     away_scored=(sum(r["away_xg"] for r in away_rows)+prior*league_a)/(len(away_rows)+prior)
-    home_conceded=(sum(r["home_xg"] for r in away_rows)+prior*league_h)/(len(away_rows)+prior)
-    lh=max(0.05,min(5.0,league_h*(home_scored/max(.05,league_h))*(away_conceded/max(.05,league_a))))
-    la=max(0.05,min(5.0,league_a*(away_scored/max(.05,league_a))*(home_conceded/max(.05,league_h))))
+    home_conceded=(sum(r["away_xg"] for r in home_rows)+prior*league_a)/(len(home_rows)+prior)
+    lh=max(0.05,min(5.0,league_h*(home_scored/max(.05,league_h))*(away_conceded/max(.05,league_h))))
+    la=max(0.05,min(5.0,league_a*(away_scored/max(.05,league_a))*(home_conceded/max(.05,league_a))))
     return {"ok":True,"lambdaHome":lh,"lambdaAway":la,"leagueHomeXgMean":league_h,"leagueAwayXgMean":league_a,
             "matches":len(xg_rows),"homeVenueAppearances":len(home_rows),"awayVenueAppearances":len(away_rows),
             "shrinkagePriorMatches":prior,"source":"published Football-Data HxG/AxG columns"}
