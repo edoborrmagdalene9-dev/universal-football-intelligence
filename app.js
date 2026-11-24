@@ -700,8 +700,9 @@ function buildUfiSignalEvidence(row,news){
  if(pe.lineups&&((Array.isArray(pe.lineups)&&pe.lineups.length)||(!Array.isArray(pe.lineups)&&Object.keys(pe.lineups).length))){
   add('UFI-182','FETCHED','Provider returned lineup records; official/confirmed status must still be verified.',{evidenceStatus:'FETCHED',source:providerSources.join(', ')||'UFI multi-provider feed',updatedAt:f.oddsTimestamp||null});
  }
- if(providerSources.length>1) add('UFI-193','ASSESSED','Multiple provider namespaces are attached; corroboration remains field-specific.');
- if(!live) for(const id of ['UFI-301','UFI-302','UFI-303','UFI-304','UFI-305','UFI-306']) add(id,'NOT_APPLICABLE','Pre-match selection: live score/clock/events/in-play price checks do not apply.');
+ // Different providers supplying different fields is not proof that the same fact was independently corroborated.
+ const preMatch=/scheduled|upcoming|not.?started|fixture/i.test(String(f.fixtureStatus||''));
+ if(preMatch) for(const id of ['UFI-301','UFI-302','UFI-303','UFI-304','UFI-305','UFI-306']) add(id,'NOT_APPLICABLE','Pre-match selection: live score/clock/events/in-play price checks do not apply.');
  if(!/corner|set.?piece/i.test(market)) for(let n=101;n<=120;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a corners/set-piece market.');
  if(!/player|shot/i.test(market)) for(let n=121;n<=140;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a player-shots market.');
  if(!/card|foul/i.test(market)) for(let n=141;n<=160;n++) add('UFI-'+String(n).padStart(3,'0'),'NOT_APPLICABLE','Selection is not a cards/fouls market.');
