@@ -156,16 +156,26 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
             date.fromisoformat(raw_date)
         except ValueError as exc:
             raise ProviderError("date must use YYYY-MM-DD") from exc
-        includes = "participants;league;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
+        includes = "participants;league;scores;state;events.type;lineups.details.type;statistics.type;referees;venue;formations"
         key = "fixtures:" + raw_date
         data, hit = cached(key, CACHE_TTL["fixtures"], lambda: provider_get(
             "/fixtures/date/" + raw_date, {"include": includes, "per_page": "100"}))
         return {"source": "Sportmonks", "fetchedAt": time.time(), "date": raw_date, "cacheHit": hit, "data": data}, hit
     if route == "/api/live":
-        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type;referees;venue"
+        includes = "participants;scores;state;events.type;lineups.details.type;statistics.type;referees;venue;formations"
         key = "live"
         data, hit = cached(key, CACHE_TTL["live"], lambda: provider_get("/livescores/inplay", {"include": includes}))
         return {"source": "Sportmonks", "fetchedAt": time.time(), "cacheHit": hit, "data": data}, hit
+    if route == "/api/player":
+        player_id = (query.get("id") or [""])[0].strip()
+        if not player_id.isdigit():
+            raise ProviderError("id must be a numeric Sportmonks player ID")
+        includes = "metadata;position;detailedPosition;latest"
+        key = "player:" + player_id
+        data, hit = cached(key, 86400, lambda: provider_get(
+            "/players/" + player_id, {"include": includes}))
+        return {"source": "Sportmonks player profile", "fetchedAt": time.time(),
+                "playerId": player_id, "cacheHit": hit, "data": data}, hit
     if route == "/api/fixture":
         fixture_id = (query.get("id") or [""])[0].strip()
         if not fixture_id.isdigit():
@@ -175,7 +185,7 @@ def get_payload(route: str, query: dict[str, list[str]]) -> tuple[object, bool]:
         data, hit = cached(key, CACHE_TTL["fixture"], lambda: provider_get(
             "/fixtures/" + fixture_id, {"include": includes}))
         return {"source": "Sportmonks", "fetchedAt": time.time(), "cacheHit": hit, "data": data}, hit
-    raise ProviderError("Unknown endpoint. Use /api/health, /api/fixtures?date=YYYY-MM-DD, /api/live, /api/fixture?id=ID, /api/inplay-odds?id=ID&bookmaker=ID&market=1 or /api/weather?lat=..&lon=..&date=YYYY-MM-DD&hour=..")
+    raise ProviderError("Unknown endpoint. Use /api/health, /api/fixtures?date=YYYY-MM-DD, /api/live, /api/fixture?id=ID, /api/player?id=ID, /api/inplay-odds?id=ID&bookmaker=ID&market=1 or /api/weather?lat=..&lon=..&date=YYYY-MM-DD&hour=..")
 
 
 class Handler(BaseHTTPRequestHandler):
